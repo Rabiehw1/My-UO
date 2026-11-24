@@ -14,7 +14,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 public static class OrganizerAgentTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         OrganizerConfig? selectedConfig = null;
         var leftPanel = new VerticalStackPanel { Spacing = 4 };
@@ -123,7 +125,7 @@ public static class OrganizerAgentTabContent
                         destCell.Widgets.Add(new MyraButton("Set", () =>
                         {
                             GameActions.Print("Select [DESTINATION] Container for this item", 82);
-                            World.Instance.TargetManager.SetTargeting(destination =>
+                            interaction.SelectTarget(destination =>
                             {
                                 if (destination is Entity destEntity && SerialHelper.IsItem(destEntity))
                                 {
@@ -268,7 +270,7 @@ public static class OrganizerAgentTabContent
             contRow.Widgets.Add(new MyraButton("Set Source Container", () =>
             {
                 GameActions.Print("Select [SOURCE] Container", 82);
-                World.Instance.TargetManager.SetTargeting(source =>
+                interaction.SelectTarget(source =>
                 {
                     if (source is Entity sourceEntity && SerialHelper.IsItem(sourceEntity))
                     {
@@ -284,7 +286,7 @@ public static class OrganizerAgentTabContent
             contRow.Widgets.Add(new MyraButton("Set Destination Container", () =>
             {
                 GameActions.Print("Select [DESTINATION] Container", 82);
-                World.Instance.TargetManager.SetTargeting(destination =>
+                interaction.SelectTarget(destination =>
                 {
                     if (destination is Entity destEntity && SerialHelper.IsItem(destEntity))
                     {
@@ -324,7 +326,7 @@ public static class OrganizerAgentTabContent
             var addItemRow = new HorizontalStackPanel { Spacing = 4 };
             addItemRow.Widgets.Add(new MyraButton("Target Item to Add", () =>
             {
-                World.Instance.TargetManager.SetTargeting(obj =>
+                interaction.SelectTarget(obj =>
                 {
                     if (obj is Entity objEntity && SerialHelper.IsItem(objEntity))
                     {

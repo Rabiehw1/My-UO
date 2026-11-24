@@ -249,13 +249,13 @@ namespace ClassicUO.Game.Managers
             }
 
             IsTargeting = false;
+            _targetCallback = null;
         }
 
         public void Reset()
         {
             ClearTargetingWithoutTargetCancelPacket();
 
-            _targetCallback = null;
             TargetingState = 0;
             _targetCursorId = 0;
             MultiTargetInfo = null;
@@ -336,6 +336,15 @@ namespace ClassicUO.Game.Managers
 
             Reset();
             NextAutoTarget.Clear();
+        }
+
+        internal void SetGrabBag(uint serial)
+        {
+            if (!SerialHelper.IsItem(serial))
+                return;
+
+            ProfileManager.CurrentProfile.GrabBagSerial = serial;
+            GameActions.Print(_world, string.Format(TazLang.Get("grab_bag_set0"), serial));
         }
 
         public void SetTargetingMulti
@@ -513,12 +522,7 @@ namespace ClassicUO.Game.Managers
 
                     case CursorTarget.SetGrabBag:
 
-                        if (SerialHelper.IsItem(serial))
-                        {
-                            ProfileManager.CurrentProfile.GrabBagSerial = serial;
-                            GameActions.Print(_world, string.Format(TazLang.Get("grab_bag_set0"), serial));
-                        }
-
+                        SetGrabBag(serial);
                         ClearTargetingWithoutTargetCancelPacket();
 
                         return;

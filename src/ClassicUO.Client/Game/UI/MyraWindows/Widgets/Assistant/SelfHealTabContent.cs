@@ -4,6 +4,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Input;
 using Myra.Graphics2D.UI;
 using SDL3;
@@ -12,7 +13,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 public static class SelfHealTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         Profile profile = ProfileManager.CurrentProfile;
 
@@ -90,14 +93,12 @@ public static class SelfHealTabContent
             editPanel.Visible = true;
             keyLabel.Text = "Press a key...";
 
-            void Handler(string hotkey)
+            unsubscribe = interaction.CaptureKey((key, modifiers) =>
             {
-                (capturedKey, capturedMod) = HotkeyUtil.ParseHotKeyString(hotkey);
+                capturedKey = key;
+                capturedMod = modifiers;
                 keyLabel.Text = "Press a key... " + KeysTranslator.TryGetKey(capturedKey, capturedMod);
-            }
-
-            Keyboard.KeyDownEvent += Handler;
-            unsubscribe = () => Keyboard.KeyDownEvent -= Handler;
+            });
         }));
         normalPanel.Widgets.Add(new MyraButton("Clear", () =>
         {

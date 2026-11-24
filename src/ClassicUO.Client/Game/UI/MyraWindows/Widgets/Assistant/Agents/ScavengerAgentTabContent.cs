@@ -15,7 +15,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 public static class ScavengerAgentTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         Profile? profile = ProfileManager.CurrentProfile;
 
@@ -40,7 +42,7 @@ public static class ScavengerAgentTabContent
         topRow.Widgets.Add(new MyraButton(TazLang.Get("scavenger_setgrabbag", "Set Grab Bag"), () =>
         {
             GameActions.Print(Client.Game.UO.World, TazLang.Get("scavenger_grabbag_prompt", "Target container to grab items into"));
-            Client.Game.UO.World.TargetManager.SetTargeting(CursorTarget.SetGrabBag, 0, TargetType.Neutral);
+            interaction.SelectGrabBag();
         }) { Tooltip = TazLang.Get("scavenger_setgrabbag_tooltip", "Choose a container to grab items into") });
         root.Widgets.Add(topRow);
 
@@ -308,7 +310,7 @@ public static class ScavengerAgentTabContent
                 destCell.Widgets.Add(destBox);
                 destCell.Widgets.Add(new MyraButton(TazLang.Get("scavenger_entry_target", "Target"), () =>
                 {
-                    World.Instance.TargetManager.SetTargeting(targeted =>
+                    interaction.SelectTarget(targeted =>
                     {
                         if (targeted is Entity e && SerialHelper.IsItem(e))
                         {
@@ -468,7 +470,7 @@ public static class ScavengerAgentTabContent
         addRow.Widgets.Add(new MyraButton(TazLang.Get("scavenger_addmanual", "Add Manual Entry"), () => addEntryPanel.Visible = !addEntryPanel.Visible));
         addRow.Widgets.Add(new MyraButton(TazLang.Get("scavenger_addfromtarget", "Add from Target"), () =>
         {
-            World.Instance.TargetManager.SetTargeting(targeted =>
+            interaction.SelectTarget(targeted =>
             {
                 if (targeted is Entity entity && SerialHelper.IsItem(entity))
                 {

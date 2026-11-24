@@ -9,7 +9,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 public static class DressAgentTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         if (DressAgentManager.Instance == null)
             return new MyraLabel("Dress Agent not loaded", MyraLabel.TextStyle.P);
@@ -182,7 +184,7 @@ public static class DressAgentTabContent
             undressBagRow.Widgets.Add(new MyraButton("Set Undress Bag", () =>
             {
                 GameActions.Print("Select container for undressed items", 82);
-                World.Instance.TargetManager.SetTargeting(target =>
+                interaction.SelectTarget(target =>
                 {
                     if (target is Entity entity && SerialHelper.IsItem(entity))
                     {
@@ -222,7 +224,7 @@ public static class DressAgentTabContent
             itemActionRow.Widgets.Add(new MyraButton("Target Item to Add", () =>
             {
                 GameActions.Print("Target an item to add to this config", 82);
-                World.Instance.TargetManager.SetTargeting(obj =>
+                interaction.SelectTarget(obj =>
                 {
                     if (obj is Entity entity && SerialHelper.IsItem(entity))
                     {

@@ -8,6 +8,7 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemDatabase;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Macros;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Skills;
+using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows;
 
@@ -67,8 +68,16 @@ public class AssistantWindow : MyraControl
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_macros", "Macros"), () => MacrosTabContent.Build(this));
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_hotkeys", "Hotkeys"), HotkeysTabContent.Build);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_skills", "Skills"), () => _skillsTabContent = new SkillsTabContent());
+        var openDesktop = new MyraButton(
+            TazLang.Get("assistant_agents_open_desktop", "Open Desktop Agents"),
+            DesktopAgentsWindow.Show) { Visible = false, HorizontalAlignment = HorizontalAlignment.Left };
+        _tabs.SelectedIndexChanged += (_, _) => openDesktop.Visible = _tabs.SelectedIndex == 1;
+
+        var root = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
+        root.Widgets.Add(openDesktop);
+        root.Widgets.Add(_tabs);
         _tabs.SelectFirst();
-        SetRootContent(_tabs);
+        SetRootContent(root);
     }
 
     private void RefreshSelectedContent() => _tabs?.RefreshSelectedContent();

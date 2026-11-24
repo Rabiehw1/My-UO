@@ -594,6 +594,8 @@ namespace ClassicUO
             MainThreadQueue.ProcessQueue();
             Profiler.ExitContext("MainThreadQueue");
 
+            DesktopAgentsWindow.Update(GraphicsDevice);
+
             Profiler.EnterContext("FpsTiming");
             _totalElapsed += gameTime.ElapsedGameTime.TotalMilliseconds;
             _currentFpsTime += gameTime.ElapsedGameTime.TotalMilliseconds;
@@ -892,6 +894,9 @@ namespace ClassicUO
                 return true;
             }
 
+            if (DesktopAgentsWindow.TryHandleEvent(ref *sdlEvent))
+                return false;
+
             switch ((SDL_EventType)sdlEvent->type)
             {
                 case SDL_EventType.SDL_EVENT_AUDIO_DEVICE_ADDED:
@@ -948,6 +953,7 @@ namespace ClassicUO
                     // for polled hotkeys (the key-up may never reach us).
                     Keyboard.ClearModifiers();
                     Keyboard.ClearHeldKeys();
+                    SelfHealManager.ClearHeldKey();
                     ClassicUO.Game.Managers.Hotkeys.HotKeys.ClearHeldKeys();
                     if (_pluginsInitialized)
                         Plugin.OnFocusLost();
@@ -1316,6 +1322,7 @@ namespace ClassicUO
             // through the filter. Stop dispatching them to the scene now: it is being torn down, the
             // profile may already be unloaded, and game input is no longer actionable.
             _isExiting = true;
+            DesktopAgentsWindow.Close();
 
             Scene?.Dispose();
 

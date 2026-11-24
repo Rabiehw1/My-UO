@@ -11,7 +11,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 public static class AutoBuyAgentTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         Profile? profile = ProfileManager.CurrentProfile;
         if (profile == null)
@@ -220,7 +222,7 @@ public static class AutoBuyAgentTabContent
         actionRow.Widgets.Add(new MyraButton(TazLang.Get("agent_addfromtarget"), () =>
         {
             GameActions.Print(Client.Game.UO.World, TazLang.Get("autobuy_targetprompt"));
-            World.Instance.TargetManager.SetTargeting(targeted =>
+            interaction.SelectTarget(targeted =>
             {
                 if (targeted is Entity entity && SerialHelper.IsItem(entity))
                 {

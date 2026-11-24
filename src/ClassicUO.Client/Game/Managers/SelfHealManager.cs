@@ -56,6 +56,8 @@ namespace ClassicUO.Game.Managers
             _loaded = false;
         }
 
+        internal static void ClearHeldKey() => _held = false;
+
         public static void Update()
         {
             bool held = _held;
@@ -67,7 +69,7 @@ namespace ClassicUO.Game.Managers
             if (entry != null && entry.Binding != null && !entry.Binding.HasKey && !entry.Binding.IsEmpty)
                 held = entry.IsPressed();
 
-            _machine.Tick(_env, held);
+            _machine.Tick(_env, held && Client.Game.IsActive);
         }
 
         /// <summary>Called from GameSceneInputHandler.OnKeyDown (already focus-gated).</summary>

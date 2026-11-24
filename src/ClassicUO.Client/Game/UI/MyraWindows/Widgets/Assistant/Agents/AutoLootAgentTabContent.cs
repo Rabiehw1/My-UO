@@ -17,7 +17,9 @@ public static class AutoLootAgentTabContent
 {
     private static readonly string[] PriorityLabels = { "Low", "Normal", "High" };
 
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         Profile? profile = ProfileManager.CurrentProfile;
 
@@ -34,7 +36,7 @@ public static class AutoLootAgentTabContent
         topRow.Widgets.Add(new MyraButton("Set Grab Bag", () =>
         {
             GameActions.Print(Client.Game.UO.World, "Target container to grab items into");
-            Client.Game.UO.World.TargetManager.SetTargeting(CursorTarget.SetGrabBag, 0, TargetType.Neutral);
+            interaction.SelectGrabBag();
         }) { Tooltip = "Choose a container to grab items into" });
         root.Widgets.Add(topRow);
 
@@ -110,7 +112,7 @@ public static class AutoLootAgentTabContent
             TazLang.Get("autoskinning_humancorpses_tooltip", "Also auto skin human/humanoid corpses.")));
         skinRow.Widgets.Add(new MyraButton(TazLang.Get("autoskinning_targetweapon", "Target Skinning Weapon"), () =>
         {
-            World.Instance.TargetManager.SetTargeting(targeted =>
+            interaction.SelectTarget(targeted =>
             {
                 if (targeted is Entity entity && SerialHelper.IsItem(entity))
                 {
@@ -379,7 +381,7 @@ public static class AutoLootAgentTabContent
                 destCell.Widgets.Add(destBox);
                 destCell.Widgets.Add(new MyraButton("Target", () =>
                 {
-                    World.Instance.TargetManager.SetTargeting(targeted =>
+                    interaction.SelectTarget(targeted =>
                     {
                         if (targeted is Entity e && SerialHelper.IsItem(e))
                         {
@@ -565,7 +567,7 @@ public static class AutoLootAgentTabContent
         actionRow.Widgets.Add(new MyraButton("Add Manual Entry", () => addEntryPanel.Visible = !addEntryPanel.Visible));
         actionRow.Widgets.Add(new MyraButton("Add from Target", () =>
         {
-            World.Instance.TargetManager.SetTargeting(targeted =>
+            interaction.SelectTarget(targeted =>
             {
                 if (targeted is Entity entity && SerialHelper.IsItem(entity))
                 {
