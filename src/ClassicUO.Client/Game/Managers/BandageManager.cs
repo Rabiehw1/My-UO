@@ -28,6 +28,9 @@ namespace ClassicUO.Game.Managers
         // When the last bandage was sent, so a "busy" reply from the shard can be matched to it. Zero when none is
         // awaiting a reply.
         private long _lastAttemptTime = 0;
+
+        // Bandages refused in a row with a busy reply; reset when one is accepted or a pause begins.
+        private int _consecutiveRefusals = 0;
         private readonly LinkedList<uint> _pendingHeals = new();
         private readonly Dictionary<uint, long> _retryDeadlines = new();
 
@@ -38,6 +41,11 @@ namespace ClassicUO.Game.Managers
         // After the shard refuses a bandage (e.g. "I am already doing something else"), wait this long before the
         // next attempt. Keeps refused attempts from flooding the shard.
         private const int MIN_RETRY_GAP_MS = 1000;
+
+        // After this many refusals in a row, pause for BUSY_PAUSE_MS instead of retrying every MIN_RETRY_GAP_MS,
+        // so a long busy spell costs the shard a handful of attempts rather than one a second.
+        private const int MAX_REFUSALS_BEFORE_PAUSE = 5;
+        private const int BUSY_PAUSE_MS = 10_000;
 
         // A busy reply arriving later than this after a bandage was sent is assumed to be about something else.
         private const int BUSY_REPLY_WINDOW_MS = 2500;
@@ -118,8 +126,20 @@ namespace ClassicUO.Game.Managers
             if (IsBusyReplyToLastBandage(e.Text))
             {
                 // The shard refused the bandage, so no bandage started from it: try again shortly instead of
-                // waiting a full bandage cycle.
-                _nextBandageTime = _lastAttemptTime + MIN_RETRY_GAP_MS;
+                // waiting a full bandage cycle, but pause after several refusals in a row.
+                _consecutiveRefusals++;
+
+                if (_consecutiveRefusals >= MAX_REFUSALS_BEFORE_PAUSE)
+                {
+                    _consecutiveRefusals = 0;
+                    _nextBandageTime = _lastAttemptTime + BUSY_PAUSE_MS;
+                    GameActions.Print(TazLang.Get("bandageagent_busypause", [(BUSY_PAUSE_MS / 1000).ToString()]), Constants.HUE_WARN);
+                }
+                else
+                {
+                    _nextBandageTime = _lastAttemptTime + MIN_RETRY_GAP_MS;
+                }
+
                 _lastAttemptTime = 0;
                 return;
             }
@@ -431,6 +451,10 @@ namespace ClassicUO.Game.Managers
                 return false;
             }
 
+            // The previous attempt drew no busy reply (a refusal clears _lastAttemptTime), so it was accepted.
+            if (_lastAttemptTime != 0)
+                _consecutiveRefusals = 0;
+
             long now = Time.Ticks;
             _lastAttemptTime = now;
             _nextBandageTime = now + GetBandageInterval(isPlayer);
@@ -472,6 +496,7 @@ namespace ClassicUO.Game.Managers
         {
             _pendingHeals.Clear();
             _retryDeadlines.Clear();
+            _consecutiveRefusals = 0;
         }
 
         public void Dispose()
