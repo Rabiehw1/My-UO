@@ -1,7 +1,6 @@
 #nullable enable
 
 using System;
-using System.Globalization;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Support;
@@ -247,26 +246,12 @@ internal static class SupportAgentTabContent
                 break;
 
             case SupportActionType.UseItemAndGumpButton:
-                row.Widgets.Add(Hex(TazLang.Get("supportagent_itemgraphic"), ability.ItemGraphic, v => ability.ItemGraphic = v));
+                AddItemPicker(row, ability, settings, interaction, refresh);
                 row.Widgets.Add(Number(TazLang.Get("supportagent_gumpbutton"), ability.GumpButton, v => ability.GumpButton = Math.Max(0, v)));
                 break;
 
             case SupportActionType.UseItem:
-                row.Widgets.Add(Label(ability.ItemSerial != 0
-                    ? TazLang.Get("supportagent_item_picked", [HEX_PREFIX + ability.ItemSerial.ToString("X8")])
-                    : TazLang.Get("supportagent_item_none")));
-                row.Widgets.Add(new MyraButton(TazLang.Get("supportagent_pickitem"), () =>
-                    interaction.SelectTarget(target =>
-                    {
-                        if (target is Item item)
-                        {
-                            ability.ItemSerial = item.Serial;
-                            ability.ItemGraphic = item.Graphic;
-                            settings.Save();
-                            refresh();
-                        }
-                    })
-                ));
+                AddItemPicker(row, ability, settings, interaction, refresh);
                 break;
 
             case SupportActionType.Say:
@@ -278,6 +263,33 @@ internal static class SupportAgentTabContent
         row.Widgets.Add(Number(TazLang.Get("supportagent_recovery"), ability.RecoveryMs, v => ability.RecoveryMs = Math.Max(0, v)));
         row.Widgets.Add(Number(TazLang.Get("supportagent_cooldown"), ability.CooldownMs, v => ability.CooldownMs = Math.Max(0, v)));
         return row;
+    }
+
+    /// <summary>Shows the picked item and a button to pick it; item abilities only ever use this exact item.</summary>
+    private static void AddItemPicker(
+        WrapPanel row,
+        SupportAbility ability,
+        SupportAgentSave settings,
+        AgentPageInteraction interaction,
+        Action refresh
+    )
+    {
+        row.Widgets.Add(Label(ability.ItemSerial != 0
+            ? TazLang.Get("supportagent_item_picked", [HEX_PREFIX + ability.ItemSerial.ToString("X8")])
+            : TazLang.Get("supportagent_item_none")));
+
+        row.Widgets.Add(new MyraButton(TazLang.Get("supportagent_pickitem"), () =>
+            interaction.SelectTarget(target =>
+            {
+                if (target is Item item)
+                {
+                    ability.ItemSerial = item.Serial;
+                    ability.ItemGraphic = item.Graphic;
+                    settings.Save();
+                    refresh();
+                }
+            })
+        ) { Tooltip = TazLang.Get("supportagent_pickitem_tooltip") });
     }
 
     private static string LeaderText(SupportAgentSave settings) =>
@@ -301,27 +313,6 @@ internal static class SupportAgentTabContent
     {
         var box = new MyraInputBox { Text = value, MinWidth = TEXT_INPUT_WIDTH };
         box.TextChangedByUser += (_, _) => onChanged(box.Text ?? "");
-
-        var row = new HorizontalStackPanel { Spacing = 4 };
-        row.Widgets.Add(Label(label));
-        row.Widgets.Add(box);
-        return row;
-    }
-
-    /// <summary>Hex item-graphic input ("0x1C13"); only valid values are stored.</summary>
-    private static Widget Hex(string label, ushort value, Action<ushort> onChanged)
-    {
-        var box = new MyraInputBox { Text = HEX_PREFIX + value.ToString("X4"), MinWidth = SMALL_INPUT_WIDTH };
-        box.TextChangedByUser += (_, _) =>
-        {
-            string text = (box.Text ?? "").Trim();
-
-            if (text.StartsWith(HEX_PREFIX, StringComparison.OrdinalIgnoreCase))
-                text = text[HEX_PREFIX.Length..];
-
-            if (ushort.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out ushort parsed))
-                onChanged(parsed);
-        };
 
         var row = new HorizontalStackPanel { Spacing = 4 };
         row.Widgets.Add(Label(label));

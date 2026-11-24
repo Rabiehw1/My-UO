@@ -26,14 +26,16 @@ public sealed class SupportAgentSaveTests
     }
 
     [Fact]
-    public void Presets_Bard_UsesSongbookButtonSevenForAreaHeal()
+    public void Presets_Bard_UsesPickedSongbookButtonSevenForAreaHeal()
     {
         SupportAbility heal = SupportClassPresets.Create(SupportClass.Bard).Single(a => a.Role == SupportRole.Heal);
 
         heal.Action.Should().Be(SupportActionType.UseItemAndGumpButton);
         heal.Target.Should().Be(SupportTargetMode.None);
-        heal.ItemGraphic.Should().Be(0x1C13);
         heal.GumpButton.Should().Be(7);
+
+        // No item until the player picks their own songbook.
+        heal.ItemSerial.Should().Be(0u);
     }
 
     [Fact]

@@ -12,9 +12,7 @@ internal static class SupportClassPresets
 {
     #region Private members
 
-    /// <summary>Zulu Hotel songbook and the gump button of its area heal song.</summary>
-    private const ushort BARD_SONGBOOK_GRAPHIC = 0x1C13;
-
+    /// <summary>Gump button of the area heal song in the Zulu Hotel songbook.</summary>
     private const int BARD_HEAL_SONG_BUTTON = 7;
 
     /// <summary>Shard bandage time is 4.5 s; 4.7 s leaves a margin before the next one.</summary>
@@ -52,11 +50,10 @@ internal static class SupportClassPresets
         new()
         {
             Id = "bard.healsong",
-            Name = "Healing song (area)",
+            Name = "Healing song (area, pick songbook)",
             Role = SupportRole.Heal,
             Action = SupportActionType.UseItemAndGumpButton,
             Target = SupportTargetMode.None,
-            ItemGraphic = BARD_SONGBOOK_GRAPHIC,
             GumpButton = BARD_HEAL_SONG_BUTTON,
             CastTimeMs = 3000,
             RecoveryMs = 4000

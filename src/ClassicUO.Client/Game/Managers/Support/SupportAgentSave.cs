@@ -38,10 +38,10 @@ public enum SupportActionType
     /// <summary>Cast a spell by its number (e.g. 29 = Greater Heal).</summary>
     CastSpell,
 
-    /// <summary>Use an item by graphic (e.g. a songbook) and press a button on the gump it opens.</summary>
+    /// <summary>Use the picked item (e.g. a songbook) and press a button on the gump it opens.</summary>
     UseItemAndGumpButton,
 
-    /// <summary>Use a specific item picked in the agent, or the first item of a graphic.</summary>
+    /// <summary>Use the picked item.</summary>
     UseItem,
 
     /// <summary>Apply a bandage, the same way the Bandage agent does.</summary>
@@ -82,10 +82,11 @@ public sealed class SupportAbility
     /// <summary>Spell number for <see cref="SupportActionType.CastSpell" />.</summary>
     public int SpellId { get; set; }
 
-    /// <summary>Item graphic for <see cref="SupportActionType.UseItemAndGumpButton" /> and graphic-based UseItem.</summary>
+    /// <summary>Graphic of the picked item; shown for reference only, items are always used by serial.</summary>
     public ushort ItemGraphic { get; set; }
 
-    /// <summary>Specific item for <see cref="SupportActionType.UseItem" />; takes precedence over the graphic.</summary>
+    /// <summary>The item picked in the tab for <see cref="SupportActionType.UseItem" /> and
+    /// <see cref="SupportActionType.UseItemAndGumpButton" />. The ability is skipped until one is picked.</summary>
     public uint ItemSerial { get; set; }
 
     /// <summary>Gump button pressed after the item opens its gump.</summary>

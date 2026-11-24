@@ -31,6 +31,7 @@ internal sealed class SupportAbilityRunner
     private readonly Dictionary<string, long> _lastUsed = new();
 
     private int _pendingGumpButton = -1;
+    private string _pendingItemName = "";
     private Gump? _gumpBeforeUse;
     private long _gumpDeadline;
 
@@ -68,8 +69,9 @@ internal sealed class SupportAbilityRunner
         return ability.Action switch
         {
             SupportActionType.CastSpell => ability.SpellId > 0,
-            SupportActionType.UseItemAndGumpButton => ability.ItemGraphic != 0 && player.FindItemByGraphic(ability.ItemGraphic) != null,
-            SupportActionType.UseItem => FindUsableItem(ability) != null,
+            // Item abilities use the exact item picked in the tab. Its serial is sent as is: the shard accepts it even
+            // when the client hasn't been shown the container holding it.
+            SupportActionType.UseItemAndGumpButton or SupportActionType.UseItem => ability.ItemSerial != 0,
             SupportActionType.Bandage => player.FindBandage(ProfileBandageGraphic()) != null,
             SupportActionType.Say => !string.IsNullOrWhiteSpace(ability.Text),
             _ => false
@@ -120,7 +122,8 @@ internal sealed class SupportAbilityRunner
 
         if (now > _gumpDeadline)
         {
-            Log.Warn("Support agent: the item's gump never opened; button not pressed.");
+            Log.Warn($"Support agent: no gump opened after using '{_pendingItemName}'; button not pressed.");
+            GameActions.Print(TazLang.Get("supportagent_nogump", [_pendingItemName]), Constants.HUE_WARN);
             ClearPendingGump();
         }
     }
@@ -157,27 +160,25 @@ internal sealed class SupportAbilityRunner
     private bool UseItemAndPressButton(SupportAbility ability, long now)
     {
         PlayerMobile? player = _world.Player;
-        Item? item = player?.FindItemByGraphic(ability.ItemGraphic);
 
-        if (player == null || item == null)
+        if (player == null || ability.ItemSerial == 0)
             return false;
 
         _gumpBeforeUse = UIManager.GetGumpServer(player.LastGumpID);
         _pendingGumpButton = ability.GumpButton;
         _gumpDeadline = now + GUMP_WAIT_MS;
+        _pendingItemName = ability.Name;
 
-        GameActions.DoubleClick(_world, item.Serial, ignoreQueue: true);
+        GameActions.DoubleClick(_world, ability.ItemSerial, ignoreQueue: true);
         return true;
     }
 
     private bool UseItem(SupportAbility ability)
     {
-        Item? item = FindUsableItem(ability);
-
-        if (item == null)
+        if (ability.ItemSerial == 0)
             return false;
 
-        GameActions.DoubleClick(_world, item.Serial, ignoreQueue: true);
+        GameActions.DoubleClick(_world, ability.ItemSerial, ignoreQueue: true);
         return true;
     }
 
@@ -188,20 +189,6 @@ internal sealed class SupportAbilityRunner
 
         GameActions.Say(ability.Text);
         return true;
-    }
-
-    /// <summary>The picked item if it still exists, else the first item of the configured graphic.</summary>
-    private Item? FindUsableItem(SupportAbility ability)
-    {
-        if (ability.ItemSerial != 0)
-        {
-            Item? picked = _world.Items.Get(ability.ItemSerial);
-
-            if (picked is { IsDestroyed: false })
-                return picked;
-        }
-
-        return ability.ItemGraphic != 0 ? _world.Player?.FindItemByGraphic(ability.ItemGraphic) : null;
     }
 
     private static ushort ProfileBandageGraphic() =>
