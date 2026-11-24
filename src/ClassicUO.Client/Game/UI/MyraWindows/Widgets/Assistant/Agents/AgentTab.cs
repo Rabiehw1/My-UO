@@ -10,6 +10,7 @@ public static class AgentTab
     {
         ItemLists,
         HealingAndStats,
+        Support,
         LootAndScavenge,
         Vendors,
         GearAndInventory
@@ -31,7 +32,8 @@ public static class AgentTab
         new(TazLang.Get("assistant_agent_tab_healing", "Healing Assistant"), AgentGroup.HealingAndStats, HealingAssistantTabContent.Build),
         new(TazLang.Get("assistant_agent_tab_selfheal", "Self Heal"), AgentGroup.HealingAndStats, SelfHealTabContent.Build),
         new(TazLang.Get("assistant_agent_tab_organizer", "Organizer"), AgentGroup.GearAndInventory, OrganizerAgentTabContent.Build, true),
-        new(TazLang.Get("assistant_agent_tab_statlock", "Stat Lock"), AgentGroup.HealingAndStats, _ => AutoStatLockAgentTabContent.Build())
+        new(TazLang.Get("assistant_agent_tab_statlock", "Stat Lock"), AgentGroup.HealingAndStats, _ => AutoStatLockAgentTabContent.Build()),
+        new(TazLang.Get("assistant_agent_tab_support"), AgentGroup.Support, SupportAgentTabContent.Build, true)
     ];
 
     public static Widget Build()

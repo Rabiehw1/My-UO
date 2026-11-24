@@ -233,6 +233,7 @@ internal sealed class DesktopAgentsWindow
     private static string GetGroupName(AgentTab.AgentGroup group) => group switch
     {
         AgentTab.AgentGroup.HealingAndStats => TazLang.Get("assistant_agents_healing_stats", "Healing & Stats"),
+        AgentTab.AgentGroup.Support => TazLang.Get("assistant_agents_support"),
         AgentTab.AgentGroup.LootAndScavenge => TazLang.Get("assistant_agents_loot_scavenge", "Loot & Scavenge"),
         AgentTab.AgentGroup.Vendors => TazLang.Get("assistant_agents_vendors", "Vendors"),
         _ => TazLang.Get("assistant_agents_gear_inventory", "Gear & Inventory")
