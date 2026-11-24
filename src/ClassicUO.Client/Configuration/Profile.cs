@@ -745,6 +745,12 @@ namespace ClassicUO.Configuration
         public bool BeginSpellIndicatorOnCast { get; set => SetProperty(ref field, value); } = false;
         public bool EnableAutoLoot { get; set => SetProperty(ref field, value); } = false;
         public bool AutoLootHumanCorpses { get; set => SetProperty(ref field, value); } = false;
+
+        /// <summary>
+        /// When true, auto-loot single-clicks unnamed corpse items that a name (regex) entry could match, so shards
+        /// without item tooltips reveal their real names.
+        /// </summary>
+        public bool AutoLootLearnNames { get; set => SetProperty(ref field, value); } = true;
         public bool EnableAutoSkinning { get; set => SetProperty(ref field, value); } = false;
         public bool AutoSkinningHumanCorpses { get; set => SetProperty(ref field, value); } = false;
         public string AutoSkinningKnifeGraphics { get; set => SetProperty(ref field, value); }

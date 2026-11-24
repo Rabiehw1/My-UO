@@ -59,6 +59,11 @@ public static class AutoLootAgentTabContent
             b => profile.HueCorpseAfterAutoloot = b,
             "Hue Corpse After Processing",
             "Hue corpses after processing to make it easier to see if autoloot has processed them."));
+        optRow2.Widgets.Add(MyraCheckButton.CreateWithCallback(
+            profile.AutoLootLearnNames,
+            b => profile.AutoLootLearnNames = b,
+            TazLang.Get("autoloot_learnnames"),
+            TazLang.Get("autoloot_learnnames_tooltip")));
 
         var optRow3 = new HorizontalStackPanel { Spacing = 8, VerticalAlignment = Myra.Graphics2D.UI.VerticalAlignment.Center };
         optRow3.Widgets.Add(new MyraLabel("Corpse retry delay (ms):", MyraLabel.TextStyle.P)

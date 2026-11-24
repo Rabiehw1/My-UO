@@ -107,10 +107,12 @@ namespace ClassicUO.Game.Managers
         private bool IsEnabled => ProfileManager.CurrentProfile.EnableAutoLoot;
 
         private readonly World _world;
+        private readonly ItemNameRequester _nameRequester;
 
         private AutoLootManager()
         {
             _world = Client.Game.UO.World;
+            _nameRequester = new ItemNameRequester(_world, OnItemNameLearned);
             EnsureAtLeastOneList();
         }
 
@@ -173,7 +175,40 @@ namespace ClassicUO.Game.Managers
             }
 
             AutoLootConfigEntry entry = IsOnLootList(i);
-            if (entry != null) LootItem(i, entry);
+
+            if (entry != null)
+            {
+                LootItem(i, entry);
+                return;
+            }
+
+            // No match yet, but a name rule might match once the shard tells us the item's real name.
+            if (ProfileManager.CurrentProfile.AutoLootLearnNames && !ItemNameRequester.HasShardName(i) && CouldMatchByName(i))
+                _nameRequester.Request(i);
+        }
+
+        /// <summary>
+        /// Whether some name (regex) entry on the current list would accept <paramref name="i" /> by graphic and hue,
+        /// so only items that could actually be looted by name are clicked.
+        /// </summary>
+        private bool CouldMatchByName(Item i)
+        {
+            foreach (AutoLootConfigEntry entry in AutoLootEntries)
+            {
+                if (entry.CouldMatchByName(i))
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>Re-checks an item whose real name just arrived; looting proceeds only if it now matches.</summary>
+        private void OnItemNameLearned(Item item)
+        {
+            if (!_loaded || !IsEnabled || _quickContainsLookup.Contains(item.Serial)) return;
+
+            AutoLootConfigEntry entry = IsOnLootList(item);
+            if (entry != null) LootItem(item, entry);
         }
 
         /// <summary>
@@ -500,7 +535,13 @@ namespace ClassicUO.Game.Managers
 
         public void Update()
         {
-            if (!_loaded || !IsEnabled || !_world.InGame) return;
+            if (!_loaded || !IsEnabled || !_world.InGame)
+            {
+                _nameRequester.Clear();
+                return;
+            }
+
+            _nameRequester.Update();
 
             if (_pendingLootCount == 0)
             {
@@ -972,6 +1013,23 @@ namespace ClassicUO.Game.Managers
                     return false;
 
                 return !RegexMatch || RegexCheck(compareTo.World, compareTo);
+            }
+
+            /// <summary>
+            /// Whether this is a name (regex) entry whose graphic and hue accept <paramref name="compareTo" />, i.e.
+            /// the item's name alone decides whether it matches.
+            /// </summary>
+            /// <param name="compareTo">Item to test.</param>
+            /// <returns>True when learning the item's name could make this entry match.</returns>
+            public bool CouldMatchByName(Item compareTo)
+            {
+                if (!RegexMatch)
+                    return false;
+
+                if (Graphic != -1 && Graphic != ushort.MaxValue && Graphic != compareTo.Graphic)
+                    return false;
+
+                return HueCheck(compareTo.Hue);
             }
 
             private bool HueCheck(ushort value)
