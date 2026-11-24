@@ -11,6 +11,7 @@ public class HealingAssistantManagerTests
     private const uint FullTamala = 0x40000002;
     private const uint HalfTamala = 0x40000003;
     private const uint MagicFish = 0x40000004;
+    private const uint Bandage = 0x40000005;
 
     [Theory]
     [InlineData(61, 0u)]
@@ -36,50 +37,88 @@ public class HealingAssistantManagerTests
             Assert.Equal(expected, Assert.Single(used));
     }
 
+    [Theory]
+    [InlineData(81, 0u)]
+    [InlineData(80, Bandage)]
+    [InlineData(61, Bandage)]
+    [InlineData(60, GreaterHeal)]
+    [InlineData(41, GreaterHeal)]
+    [InlineData(40, HalfTamala)]
+    [InlineData(26, HalfTamala)]
+    [InlineData(25, MagicFish)]
+    [InlineData(1, MagicFish)]
+    public void EachHpRangeSelectsItsOwnMethodWithBandagesConfiguredFirst(int hits, uint expected)
+    {
+        var manager = new HealingAssistantManager();
+        Profile profile = CreateProfile();
+        profile.EnableBandageAgent = true;
+        var used = new List<uint>();
+
+        Assert.Equal(expected != 0, manager.TryHeal(profile, hits, 100, 0, Use, hits <= 80, () => Use(Bandage)));
+        if (expected == 0)
+            Assert.Empty(used);
+        else
+            Assert.Equal(expected, Assert.Single(used));
+
+        bool Use(uint serial)
+        {
+            used.Add(serial);
+            return true;
+        }
+    }
+
     [Fact]
-    public void TriesBandagesFirstEvenAtCriticalHealthThenRechecksHealthForBackup()
+    public void AMethodOnCooldownDoesNotGiveItsRangeToAnotherMethod()
     {
         var manager = new HealingAssistantManager();
         Profile profile = CreateProfile();
         profile.EnableBandageAgent = true;
 
-        Assert.True(manager.TryHeal(profile, 25, 100, 0, _ => throw new System.InvalidOperationException(), true, () => true));
-        Assert.True(manager.TryHeal(profile, 40, 100, 4700, serial =>
+        Assert.True(manager.TryHeal(profile, 25, 100, 0, serial => serial == MagicFish, true, UnexpectedBandage));
+        Assert.False(manager.TryHeal(profile, 25, 100, 2000, _ => throw new System.InvalidOperationException(), true, UnexpectedBandage));
+        Assert.True(manager.TryHeal(profile, 40, 100, 2100, serial => serial == HalfTamala, true, UnexpectedBandage));
+
+        static bool UnexpectedBandage() => throw new System.InvalidOperationException();
+    }
+
+    [Fact]
+    public void MissingStackDoesNotGiveItsRangeToAnotherMethod()
+    {
+        var manager = new HealingAssistantManager();
+        Profile profile = CreateProfile();
+        profile.EnableBandageAgent = true;
+        profile.HealingAssistantMagicFishSerial = 0;
+
+        Assert.False(manager.TryHeal(profile, 25, 100, 0, _ => throw new System.InvalidOperationException(),
+            true, () => throw new System.InvalidOperationException()));
+    }
+
+    [Fact]
+    public void DisablingAMethodRemovesItsRange()
+    {
+        var manager = new HealingAssistantManager();
+        Profile profile = CreateProfile();
+        profile.HealingAssistantUseMagicFish = false;
+
+        Assert.True(manager.TryHeal(profile, 25, 100, 0, serial =>
         {
             Assert.Equal(HalfTamala, serial);
             return true;
-        }, true, () => throw new System.InvalidOperationException()));
-        Assert.True(manager.TryHeal(profile, 40, 100, 5500, _ => throw new System.InvalidOperationException(), true, () => true));
+        }));
     }
 
     [Fact]
-    public void UsesAnEligibleBackupWhenBandagesCannotStart()
+    public void BandageForPoisonCanStillRunAboveTheConfiguredHealthRanges()
     {
         var manager = new HealingAssistantManager();
         Profile profile = CreateProfile();
         profile.EnableBandageAgent = true;
 
-        Assert.True(manager.TryHeal(profile, 60, 100, 0, serial =>
-        {
-            Assert.Equal(GreaterHeal, serial);
-            return true;
-        }, true, () => false));
+        Assert.True(manager.TryHeal(profile, 90, 100, 0, _ => throw new System.InvalidOperationException(), true, () => true));
     }
 
     [Fact]
-    public void RecoveryRestoresTheFirstChoice()
-    {
-        var manager = new HealingAssistantManager();
-        Profile profile = CreateProfile();
-        profile.EnableBandageAgent = true;
-
-        Assert.True(manager.TryHeal(profile, 70, 100, 0, _ => throw new System.InvalidOperationException(), true, () => true));
-        Assert.False(manager.TryHeal(profile, 100, 100, 4700, _ => throw new System.InvalidOperationException()));
-        Assert.True(manager.TryHeal(profile, 25, 100, 5500, _ => throw new System.InvalidOperationException(), true, () => true));
-    }
-
-    [Fact]
-    public void ChangingFirstChoiceReassignsCutoffsAndGivesTheNewChoicePriority()
+    public void ChangingFirstChoiceReassignsCutoffsAndOnlyChangesWhichHpRangesTheMethodsOwn()
     {
         var manager = new HealingAssistantManager();
         Profile profile = CreateProfile();
@@ -93,11 +132,9 @@ public class HealingAssistantManagerTests
         Assert.Equal(65, profile.BandageAgentHPPercentage);
         Assert.Equal(60, profile.HealingAssistantTamalaHealMissingHPPercentage);
         Assert.Equal(75, profile.HealingAssistantMagicFishMissingHPPercentage);
-        Assert.True(manager.TryHeal(profile, 25, 100, 0, serial =>
-        {
-            Assert.Equal(GreaterHeal, serial);
-            return true;
-        }, true, () => throw new System.InvalidOperationException()));
+        Assert.True(manager.TryHeal(profile, 80, 100, 0, serial => serial == GreaterHeal));
+        Assert.True(manager.TryHeal(profile, 25, 100, 1, serial => serial == MagicFish, true,
+            () => throw new System.InvalidOperationException()));
     }
 
     [Fact]
@@ -115,6 +152,21 @@ public class HealingAssistantManagerTests
         Assert.Equal(3, profile.BandageAgentHPPercentage);
         Assert.Equal(98, profile.HealingAssistantGreaterHealMissingHPPercentage);
         Assert.Equal(99, profile.HealingAssistantTamalaHealMissingHPPercentage);
+    }
+
+    [Fact]
+    public void FittingEnabledRangesMakesRoomForNewlyEnabledMethods()
+    {
+        Profile profile = CreateProfile();
+        profile.EnableBandageAgent = true;
+        profile.BandageAgentHPPercentage = 1;
+
+        HealingAssistantManager.FitEnabledThresholds(profile);
+
+        Assert.Equal(4, profile.BandageAgentHPPercentage);
+        Assert.Equal(97, profile.HealingAssistantGreaterHealMissingHPPercentage);
+        Assert.Equal(98, profile.HealingAssistantTamalaHealMissingHPPercentage);
+        Assert.Equal(99, profile.HealingAssistantMagicFishMissingHPPercentage);
     }
 
     [Fact]

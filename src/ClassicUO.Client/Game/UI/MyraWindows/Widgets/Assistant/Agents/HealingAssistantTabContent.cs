@@ -10,7 +10,7 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 internal static class HealingAssistantTabContent
 {
-    private sealed record MethodSetting(string Name, string ToggleLabel, Func<bool> IsEnabled, Action<bool> SetEnabled);
+    private sealed record MethodSetting(string Name, string ToggleLabel, Action<bool> SetEnabled);
 
     public static Widget Build(AgentPageInteraction interaction)
     {
@@ -21,18 +21,19 @@ internal static class HealingAssistantTabContent
         MethodSetting[] methods =
         [
             new(TazLang.Get("healingassistant_bandages", "Bandages"), TazLang.Get("healingassistant_use_bandages", "Use bandages"),
-                () => profile.EnableBandageAgent, value => profile.EnableBandageAgent = value),
+                value => profile.EnableBandageAgent = value),
             new(TazLang.Get("healingassistant_greater", "Greater Heal"), TazLang.Get("healingassistant_use_greater", "Use Greater Heal potions"),
-                () => profile.HealingAssistantUseGreaterHeal, value => profile.HealingAssistantUseGreaterHeal = value),
+                value => profile.HealingAssistantUseGreaterHeal = value),
             new(TazLang.Get("healingassistant_tamala", "Tamala Heal"), TazLang.Get("healingassistant_use_tamala", "Use Tamala Heal potions"),
-                () => profile.HealingAssistantUseTamalaHeal, value => profile.HealingAssistantUseTamalaHeal = value),
+                value => profile.HealingAssistantUseTamalaHeal = value),
             new(TazLang.Get("healingassistant_fish", "Magic fish"), TazLang.Get("healingassistant_use_fish", "Use magic healing fish"),
-                () => profile.HealingAssistantUseMagicFish, value => profile.HealingAssistantUseMagicFish = value)
+                value => profile.HealingAssistantUseMagicFish = value)
         ];
 
         var root = new VerticalStackPanel { Spacing = 8 };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
         var sliders = new LabeledHorizontalSlider[methods.Length];
+        var ranges = new MyraLabel[methods.Length];
 
         root.Widgets.Add(MyraCheckButton.CreateWithCallback(
             profile.EnableHealingAssistant,
@@ -42,13 +43,13 @@ internal static class HealingAssistantTabContent
         {
             MinWidth = 160,
             VerticalAlignment = VerticalAlignment.Center,
-            Tooltip = TazLang.Get("healingassistant_first_tooltip",
-                "Assigns the earliest threshold to this method. If more healing is needed afterward, a ready backup can go next.")
+            Tooltip = TazLang.Get("healingassistant_first_range_tooltip",
+                "Moves this method to the highest HP range. Healing uses the range that matches your current HP.")
         };
         foreach (MethodSetting method in methods)
             firstMethod.ListView.Widgets.Add(new Label { Text = method.Name });
         firstMethod.ListView.SelectedIndex = (int)profile.HealingAssistantFirstMethod;
-        root.Widgets.Add(new MyraLabel(TazLang.Get("healingassistant_first", "First choice"), MyraLabel.TextStyle.P).PlaceBefore(firstMethod));
+        root.Widgets.Add(new MyraLabel(TazLang.Get("healingassistant_first_range", "First HP range"), MyraLabel.TextStyle.P).PlaceBefore(firstMethod));
         root.Widgets.Add(status);
 
         root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_bandages", "Bandages") },
@@ -81,10 +82,10 @@ internal static class HealingAssistantTabContent
                 return;
 
             HealingAssistantManager.ChangeFirstMethod(profile, (HealingMethod)index);
-            for (int i = 0; i < sliders.Length; i++)
-                sliders[i].Value = HealingAssistantManager.GetThreshold(profile, (HealingMethod)i);
+            RefreshRanges();
             status.Visible = false;
         };
+        RefreshRanges();
 
         // The desktop already has a scrollable page. The in-game tab needs its own viewport.
         return ReferenceEquals(interaction, AgentPageInteraction.InGame)
@@ -94,50 +95,72 @@ internal static class HealingAssistantTabContent
         Widget BuildThresholdRow(HealingMethod kind)
         {
             MethodSetting method = methods[(int)kind];
-            var toggle = MyraCheckButton.CreateWithCallback(method.IsEnabled(), value =>
+            var toggle = MyraCheckButton.CreateWithCallback(HealingAssistantManager.IsEnabled(profile, kind), value =>
             {
                 method.SetEnabled(value);
+                if (value)
+                {
+                    var (min, max) = AllowedRange(kind);
+                    if (min <= max)
+                        HealingAssistantManager.SetThreshold(profile, kind,
+                            Math.Clamp(HealingAssistantManager.GetThreshold(profile, kind), min, max));
+                    else
+                        HealingAssistantManager.FitEnabledThresholds(profile);
+                }
+                RefreshRanges();
                 status.Visible = false;
             }, method.ToggleLabel);
 
-            toggle.PressedChangingByUser += (_, args) =>
-            {
-                if (!args.NewValue)
-                    return;
-
-                var (min, max) = AllowedRange(kind);
-                int threshold = HealingAssistantManager.GetThreshold(profile, kind);
-                if (threshold >= min && threshold <= max)
-                    return;
-
-                args.Cancel = true;
-                ShowRange(min, max);
-            };
-
             var row = LabeledHorizontalSlider.SliderWithLabel(
-                TazLang.Get("healingassistant_missing_hp", "Missing HP (%)"),
-                out LabeledHorizontalSlider slider, min: 1, max: 99, value: HealingAssistantManager.GetThreshold(profile, kind));
+                TazLang.Get("healingassistant_start_hp", "Start at HP (%)"),
+                out LabeledHorizontalSlider slider, min: 1, max: 99, value: 100 - HealingAssistantManager.GetThreshold(profile, kind));
             sliders[(int)kind] = slider;
             slider.ValueChangedByUser += (_, _) =>
             {
-                int value = (int)slider.Value;
-                var (min, max) = method.IsEnabled() ? AllowedRange(kind) : (1, 99);
+                int value = 100 - (int)slider.Value;
+                var (min, max) = HealingAssistantManager.IsEnabled(profile, kind) ? AllowedRange(kind) : (1, 99);
                 if (min > max)
                 {
-                    slider.Value = HealingAssistantManager.GetThreshold(profile, kind);
+                    RefreshRanges();
                     ShowRange(min, max);
                     return;
                 }
 
                 int validValue = Math.Clamp(value, min, max);
                 HealingAssistantManager.SetThreshold(profile, kind, validValue);
-                slider.Value = validValue;
+                RefreshRanges();
                 status.Visible = value != validValue;
                 if (status.Visible)
                     ShowRange(min, max);
             };
             row.Widgets.Insert(0, toggle);
-            return row;
+            var range = new MyraLabel("", MyraLabel.TextStyle.P);
+            ranges[(int)kind] = range;
+            var section = new VerticalStackPanel { Spacing = 2 };
+            section.Widgets.Add(row);
+            section.Widgets.Add(range);
+            return section;
+        }
+
+        void RefreshRanges()
+        {
+            HealingMethod[] order = HealingAssistantManager.GetThresholdOrder(profile.HealingAssistantFirstMethod);
+            int lowerHP = 0;
+            for (int i = order.Length - 1; i >= 0; i--)
+            {
+                HealingMethod method = order[i];
+                int upperHP = 100 - HealingAssistantManager.GetThreshold(profile, method);
+                sliders[(int)method].Value = upperHP;
+                MyraLabel range = ranges[(int)method];
+                range.Visible = HealingAssistantManager.IsEnabled(profile, method);
+                if (!range.Visible)
+                    continue;
+
+                range.Text = lowerHP == 0
+                    ? TazLang.GetEx("healingassistant_lowest_range", "{0}% HP or lower", [upperHP.ToString()])
+                    : TazLang.GetEx("healingassistant_active_range", "Above {0}% through {1}% HP", [lowerHP.ToString(), upperHP.ToString()]);
+                lowerHP = upperHP;
+            }
         }
 
         (int Min, int Max) AllowedRange(HealingMethod kind)
@@ -149,10 +172,10 @@ internal static class HealingAssistantTabContent
             for (int i = 0; i < order.Length; i++)
             {
                 HealingMethod other = order[i];
-                if (i == index || !methods[(int)other].IsEnabled())
+                if (i == index || !HealingAssistantManager.IsEnabled(profile, other))
                     continue;
 
-                int threshold = Math.Clamp(HealingAssistantManager.GetThreshold(profile, other), 1, 99);
+                int threshold = HealingAssistantManager.GetThreshold(profile, other);
                 if (i < index)
                     min = Math.Max(min, threshold + 1);
                 else
@@ -166,8 +189,8 @@ internal static class HealingAssistantTabContent
         {
             status.Text = min > max
                 ? TazLang.Get("healingassistant_no_threshold_range", "Adjust the other enabled thresholds to make room for this method.")
-                : TazLang.GetEx("healingassistant_threshold_range", "Set this threshold between {0}% and {1}% missing HP.",
-                    [min.ToString(), max.ToString()]);
+                : TazLang.GetEx("healingassistant_hp_threshold_range", "Set this cutoff between {0}% and {1}% HP.",
+                    [(100 - max).ToString(), (100 - min).ToString()]);
             status.Visible = true;
         }
     }

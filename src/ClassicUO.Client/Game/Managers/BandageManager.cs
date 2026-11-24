@@ -250,7 +250,7 @@ namespace ClassicUO.Game.Managers
             if (profile?.EnableHealingAssistant != true)
                 return false;
 
-            // Wait for a bandage to finish before deciding whether to use a backup or start another bandage.
+            // Wait for an active bandage to finish before picking the method for the player's current health.
             if ((profile.HealingAssistantUseGreaterHeal || profile.HealingAssistantUseTamalaHeal || profile.HealingAssistantUseMagicFish)
                 && (Time.Ticks < _bandageInProgressUntil
                     || HasUnexpiredBandageBuff(player, BuffIconType.Healing)

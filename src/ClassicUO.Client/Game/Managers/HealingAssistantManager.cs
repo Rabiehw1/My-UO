@@ -11,13 +11,10 @@ internal sealed class HealingAssistantManager
 {
     internal const int MinimumCooldownMs = 20_500;
 
-    private static readonly HealingMethod[] BackupOrder =
-        [HealingMethod.MagicFish, HealingMethod.TamalaHeal, HealingMethod.GreaterHeal, HealingMethod.Bandages];
+    private static readonly HealingMethod[] Methods = Enum.GetValues<HealingMethod>();
 
     private long? _lastPotionUse;
     private long? _lastFishUse;
-    private HealingMethod? _firstMethod;
-    private bool _tryBackupNext;
     public long NextActionTime { get; private set; }
 
     public bool TryHeal(World world, PlayerMobile player, Profile profile, bool needsBandage, Func<bool> tryBandage)
@@ -51,67 +48,29 @@ internal sealed class HealingAssistantManager
         if (!profile.EnableHealingAssistant || hits <= 0 || maxHits <= 0)
             return false;
 
-        HealingMethod first = profile.HealingAssistantFirstMethod;
-        if (_firstMethod != first || !NeedsHealingWith(first))
+        HealingMethod? method = GetMethodForHealth(profile, hits, maxHits);
+        switch (method)
         {
-            _firstMethod = first;
-            _tryBackupNext = false;
-        }
+            case null: // Bandage for poison above the configured health ranges.
+            case HealingMethod.Bandages:
+                return profile.EnableBandageAgent && needsBandage && tryBandage?.Invoke() == true;
+            case HealingMethod.MagicFish:
+                if (!IsReady(_lastFishUse, profile.HealingAssistantFishCooldownMs) || !Use(profile.HealingAssistantMagicFishSerial))
+                    return false;
 
-        if (!_tryBackupNext && TryMethod(first))
-        {
-            _tryBackupNext = true;
-            return true;
-        }
+                _lastFishUse = now;
+                return true;
+            default:
+                if (!IsReady(_lastPotionUse, profile.HealingAssistantPotionCooldownMs))
+                    return false;
 
-        // Give an eligible backup a turn before repeating the preferred method.
-        foreach (HealingMethod method in BackupOrder)
-        {
-            if (method == first || !TryMethod(method))
-                continue;
+                bool used = method == HealingMethod.TamalaHeal
+                    ? UseTamala()
+                    : Use(profile.HealingAssistantGreaterHealSerial);
+                if (used)
+                    _lastPotionUse = now;
 
-            _tryBackupNext = false;
-            return true;
-        }
-
-        return _tryBackupNext && TryMethod(first);
-
-        bool NeedsHealingWith(HealingMethod method) => method switch
-        {
-            HealingMethod.Bandages => profile.EnableBandageAgent && needsBandage,
-            HealingMethod.GreaterHeal => profile.HealingAssistantUseGreaterHeal && Matches(method),
-            HealingMethod.TamalaHeal => profile.HealingAssistantUseTamalaHeal && Matches(method),
-            HealingMethod.MagicFish => profile.HealingAssistantUseMagicFish && Matches(method),
-            _ => false
-        };
-
-        bool TryMethod(HealingMethod method)
-        {
-            if (!NeedsHealingWith(method))
-                return false;
-
-            switch (method)
-            {
-                case HealingMethod.Bandages:
-                    return tryBandage?.Invoke() == true;
-                case HealingMethod.MagicFish:
-                    if (!IsReady(_lastFishUse, profile.HealingAssistantFishCooldownMs) || !Use(profile.HealingAssistantMagicFishSerial))
-                        return false;
-
-                    _lastFishUse = now;
-                    return true;
-                default:
-                    if (!IsReady(_lastPotionUse, profile.HealingAssistantPotionCooldownMs))
-                        return false;
-
-                    bool used = method == HealingMethod.TamalaHeal
-                        ? UseTamala()
-                        : Use(profile.HealingAssistantGreaterHealSerial);
-                    if (used)
-                        _lastPotionUse = now;
-
-                    return used;
-            }
+                return used;
         }
 
         bool UseTamala()
@@ -126,13 +85,42 @@ internal sealed class HealingAssistantManager
             return Use(half) || Use(full);
         }
 
-        bool Matches(HealingMethod method) => HasMissingHealth(hits, maxHits, GetThreshold(profile, method));
         bool Use(uint serial) => SerialHelper.IsItem(serial) && tryUse(serial);
         bool IsReady(long? lastUsed, int delay) => lastUsed == null || now - lastUsed.Value >= Math.Max(MinimumCooldownMs, delay);
     }
 
+    private static HealingMethod? GetMethodForHealth(Profile profile, int hits, int maxHits)
+    {
+        // The greatest missing-HP cutoff reached owns this interval, even if its item is on cooldown.
+        HealingMethod? selected = null;
+        int highest = 0;
+        foreach (HealingMethod method in Methods)
+        {
+            if (!IsEnabled(profile, method))
+                continue;
+
+            int threshold = GetThreshold(profile, method);
+            if (threshold < highest || !HasMissingHealth(hits, maxHits, threshold))
+                continue;
+
+            selected = method;
+            highest = threshold;
+        }
+
+        return selected;
+    }
+
+    internal static bool IsEnabled(Profile profile, HealingMethod method) => method switch
+    {
+        HealingMethod.Bandages => profile.EnableBandageAgent,
+        HealingMethod.GreaterHeal => profile.HealingAssistantUseGreaterHeal,
+        HealingMethod.TamalaHeal => profile.HealingAssistantUseTamalaHeal,
+        HealingMethod.MagicFish => profile.HealingAssistantUseMagicFish,
+        _ => false
+    };
+
     internal static HealingMethod[] GetThresholdOrder(HealingMethod first) =>
-        [first, .. Enum.GetValues<HealingMethod>().Where(method => method != first)];
+        [first, .. Methods.Where(method => method != first)];
 
     internal static void ChangeFirstMethod(Profile profile, HealingMethod first)
     {
@@ -142,6 +130,18 @@ internal sealed class HealingAssistantManager
         // Keep the player's cutoff values where possible, but assign the earliest one to the new first choice.
         HealingMethod[] order = GetThresholdOrder(first);
         int[] thresholds = order.Select(method => GetThreshold(profile, method)).Order().ToArray();
+        FitThresholds(profile, order, thresholds);
+        profile.HealingAssistantFirstMethod = first;
+    }
+
+    internal static void FitEnabledThresholds(Profile profile)
+    {
+        HealingMethod[] order = GetThresholdOrder(profile.HealingAssistantFirstMethod).Where(method => IsEnabled(profile, method)).ToArray();
+        FitThresholds(profile, order, order.Select(method => GetThreshold(profile, method)).ToArray());
+    }
+
+    private static void FitThresholds(Profile profile, HealingMethod[] order, int[] thresholds)
+    {
         int min = 1;
         for (int i = 0; i < order.Length; i++)
         {
@@ -150,17 +150,16 @@ internal sealed class HealingAssistantManager
             SetThreshold(profile, order[i], threshold);
             min = threshold + 1;
         }
-        profile.HealingAssistantFirstMethod = first;
     }
 
-    internal static int GetThreshold(Profile profile, HealingMethod method) => method switch
+    internal static int GetThreshold(Profile profile, HealingMethod method) => Math.Clamp(method switch
     {
         HealingMethod.Bandages => 100 - Math.Clamp(profile.BandageAgentHPPercentage, 1, 99),
         HealingMethod.GreaterHeal => profile.HealingAssistantGreaterHealMissingHPPercentage,
         HealingMethod.TamalaHeal => profile.HealingAssistantTamalaHealMissingHPPercentage,
         HealingMethod.MagicFish => profile.HealingAssistantMagicFishMissingHPPercentage,
         _ => throw new ArgumentOutOfRangeException(nameof(method))
-    };
+    }, 1, 99);
 
     internal static void SetThreshold(Profile profile, HealingMethod method, int threshold)
     {
