@@ -1217,7 +1217,7 @@ internal static class GameActions
         if (bandage == null)
             return false;
 
-        if (profile?.BandageAgentUseNewPacket ?? true)
+        if (!UsesBandageTargetCursor(profile, Client.Game.UO.Version))
             Socket.Send_TargetSelectedObject(bandage.Serial, target);
         else
         {
@@ -1236,6 +1236,9 @@ internal static class GameActions
 
         return true;
     }
+
+    internal static bool UsesBandageTargetCursor(Profile profile, ClientVersion version) =>
+        version < ClientVersion.CV_5020 || profile?.BandageAgentUseNewPacket == false;
 
     internal static void CastSpell(int index)
     {

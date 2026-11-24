@@ -30,6 +30,14 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Search;
 
 namespace ClassicUO.Configuration
 {
+    public enum HealingMethod
+    {
+        Bandages,
+        GreaterHeal,
+        TamalaHeal,
+        MagicFish
+    }
+
     public enum NamePlateBackgroundMode
     {
         FixedColor,
@@ -222,6 +230,11 @@ namespace ClassicUO.Configuration
 
         // Healing Assistant settings. The default preserves previously enabled bandage profiles.
         public bool EnableHealingAssistant { get; set => SetProperty(ref field, value); } = true;
+        public HealingMethod HealingAssistantFirstMethod
+        {
+            get;
+            set => SetProperty(ref field, Enum.IsDefined(value) ? value : HealingMethod.Bandages);
+        } = HealingMethod.Bandages;
         public bool HealingAssistantUseGreaterHeal { get; set => SetProperty(ref field, value); }
         public int HealingAssistantGreaterHealMissingHPPercentage { get; set => SetProperty(ref field, value); } = 40;
         public uint HealingAssistantGreaterHealSerial { get; set => SetProperty(ref field, value); }
@@ -229,11 +242,11 @@ namespace ClassicUO.Configuration
         public int HealingAssistantTamalaHealMissingHPPercentage { get; set => SetProperty(ref field, value); } = 60;
         public uint HealingAssistantFullTamalaSerial { get; set => SetProperty(ref field, value); }
         public uint HealingAssistantHalfTamalaSerial { get; set => SetProperty(ref field, value); }
-        public int HealingAssistantPotionCooldownMs { get; set => SetProperty(ref field, value); } = HealingConsumableManager.MinimumCooldownMs;
+        public int HealingAssistantPotionCooldownMs { get; set => SetProperty(ref field, value); } = HealingAssistantManager.MinimumCooldownMs;
         public bool HealingAssistantUseMagicFish { get; set => SetProperty(ref field, value); }
         public int HealingAssistantMagicFishMissingHPPercentage { get; set => SetProperty(ref field, value); } = 75;
         public uint HealingAssistantMagicFishSerial { get; set => SetProperty(ref field, value); }
-        public int HealingAssistantFishCooldownMs { get; set => SetProperty(ref field, value); } = HealingConsumableManager.MinimumCooldownMs;
+        public int HealingAssistantFishCooldownMs { get; set => SetProperty(ref field, value); } = HealingAssistantManager.MinimumCooldownMs;
 
         // Bandage settings
         public bool EnableBandageAgent { get; set => SetProperty(ref field, value); } = false;

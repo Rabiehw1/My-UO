@@ -10,8 +10,7 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 internal static class HealingAssistantTabContent
 {
-    private sealed record MethodSetting(
-        string Label, Func<bool> IsEnabled, Action<bool> SetEnabled, Func<int> GetThreshold, Action<int> SetThreshold);
+    private sealed record MethodSetting(string Name, string ToggleLabel, Func<bool> IsEnabled, Action<bool> SetEnabled);
 
     public static Widget Build(AgentPageInteraction interaction)
     {
@@ -19,77 +18,96 @@ internal static class HealingAssistantTabContent
         if (profile == null)
             return new MyraLabel(TazLang.Get("bandageagent_profilenotloaded"), MyraLabel.TextStyle.P);
 
-        // The order is from routine healing to the method for the largest HP deficit.
         MethodSetting[] methods =
         [
-            new(TazLang.Get("healingassistant_use_bandages", "Use bandages"),
-                () => profile.EnableBandageAgent, value => profile.EnableBandageAgent = value,
-                () => 100 - Math.Clamp(profile.BandageAgentHPPercentage, 1, 99), value => profile.BandageAgentHPPercentage = 100 - value),
-            new(TazLang.Get("healingassistant_use_greater", "Use Greater Heal potions"),
-                () => profile.HealingAssistantUseGreaterHeal, value => profile.HealingAssistantUseGreaterHeal = value,
-                () => profile.HealingAssistantGreaterHealMissingHPPercentage, value => profile.HealingAssistantGreaterHealMissingHPPercentage = value),
-            new(TazLang.Get("healingassistant_use_tamala", "Use Tamala Heal potions"),
-                () => profile.HealingAssistantUseTamalaHeal, value => profile.HealingAssistantUseTamalaHeal = value,
-                () => profile.HealingAssistantTamalaHealMissingHPPercentage, value => profile.HealingAssistantTamalaHealMissingHPPercentage = value),
-            new(TazLang.Get("healingassistant_use_fish", "Use magic healing fish"),
-                () => profile.HealingAssistantUseMagicFish, value => profile.HealingAssistantUseMagicFish = value,
-                () => profile.HealingAssistantMagicFishMissingHPPercentage, value => profile.HealingAssistantMagicFishMissingHPPercentage = value)
+            new(TazLang.Get("healingassistant_bandages", "Bandages"), TazLang.Get("healingassistant_use_bandages", "Use bandages"),
+                () => profile.EnableBandageAgent, value => profile.EnableBandageAgent = value),
+            new(TazLang.Get("healingassistant_greater", "Greater Heal"), TazLang.Get("healingassistant_use_greater", "Use Greater Heal potions"),
+                () => profile.HealingAssistantUseGreaterHeal, value => profile.HealingAssistantUseGreaterHeal = value),
+            new(TazLang.Get("healingassistant_tamala", "Tamala Heal"), TazLang.Get("healingassistant_use_tamala", "Use Tamala Heal potions"),
+                () => profile.HealingAssistantUseTamalaHeal, value => profile.HealingAssistantUseTamalaHeal = value),
+            new(TazLang.Get("healingassistant_fish", "Magic fish"), TazLang.Get("healingassistant_use_fish", "Use magic healing fish"),
+                () => profile.HealingAssistantUseMagicFish, value => profile.HealingAssistantUseMagicFish = value)
         ];
 
         var root = new VerticalStackPanel { Spacing = 8 };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
+        var sliders = new LabeledHorizontalSlider[methods.Length];
 
         root.Widgets.Add(MyraCheckButton.CreateWithCallback(
             profile.EnableHealingAssistant,
             value => profile.EnableHealingAssistant = value,
             TazLang.Get("healingassistant_enable", "Enable Healing Assistant")));
+        var firstMethod = new ComboView
+        {
+            MinWidth = 160,
+            VerticalAlignment = VerticalAlignment.Center,
+            Tooltip = TazLang.Get("healingassistant_first_tooltip",
+                "Assigns the earliest threshold to this method. If more healing is needed afterward, a ready backup can go next.")
+        };
+        foreach (MethodSetting method in methods)
+            firstMethod.ListView.Widgets.Add(new Label { Text = method.Name });
+        firstMethod.ListView.SelectedIndex = (int)profile.HealingAssistantFirstMethod;
+        root.Widgets.Add(new MyraLabel(TazLang.Get("healingassistant_first", "First choice"), MyraLabel.TextStyle.P).PlaceBefore(firstMethod));
         root.Widgets.Add(status);
 
         root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_bandages", "Bandages") },
-            BuildThresholdRow(0), BandageAgentTabContent.BuildOptions(profile)));
+            BuildThresholdRow(HealingMethod.Bandages), BandageAgentTabContent.BuildOptions(profile)));
 
         root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_potions", "Healing potions") },
-            BuildThresholdRow(1),
+            BuildThresholdRow(HealingMethod.GreaterHeal),
             BuildSerialRow(interaction, TazLang.Get("healingassistant_greater_serial", "Greater Heal stack serial"),
                 profile.HealingAssistantGreaterHealSerial, value => profile.HealingAssistantGreaterHealSerial = value),
-            BuildThresholdRow(2),
+            BuildThresholdRow(HealingMethod.TamalaHeal),
             BuildSerialRow(interaction, TazLang.Get("healingassistant_full_tamala_serial", "Full Tamala serial"),
                 profile.HealingAssistantFullTamalaSerial, value => profile.HealingAssistantFullTamalaSerial = value),
             BuildSerialRow(interaction, TazLang.Get("healingassistant_half_tamala_serial", "Half-full Tamala serial"),
                 profile.HealingAssistantHalfTamalaSerial, value => profile.HealingAssistantHalfTamalaSerial = value),
             MyraInputBox.NumberWithLabel(TazLang.Get("healingassistant_potion_cooldown", "Shared potion cooldown (ms)"),
-                profile.HealingAssistantPotionCooldownMs, HealingConsumableManager.MinimumCooldownMs, int.MaxValue,
+                profile.HealingAssistantPotionCooldownMs, HealingAssistantManager.MinimumCooldownMs, int.MaxValue,
                 value => profile.HealingAssistantPotionCooldownMs = value)));
 
         root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_fish", "Magic fish") },
-            BuildThresholdRow(3),
+            BuildThresholdRow(HealingMethod.MagicFish),
             BuildSerialRow(interaction, TazLang.Get("healingassistant_fish_serial", "Magic fish stack serial"),
                 profile.HealingAssistantMagicFishSerial, value => profile.HealingAssistantMagicFishSerial = value),
             MyraInputBox.NumberWithLabel(TazLang.Get("healingassistant_fish_cooldown", "Fish cooldown (ms)"),
-                profile.HealingAssistantFishCooldownMs, HealingConsumableManager.MinimumCooldownMs, int.MaxValue,
+                profile.HealingAssistantFishCooldownMs, HealingAssistantManager.MinimumCooldownMs, int.MaxValue,
                 value => profile.HealingAssistantFishCooldownMs = value)));
+
+        firstMethod.ListView.SelectedIndexChanged += (_, _) =>
+        {
+            if (firstMethod.ListView.SelectedIndex is not int index)
+                return;
+
+            HealingAssistantManager.ChangeFirstMethod(profile, (HealingMethod)index);
+            for (int i = 0; i < sliders.Length; i++)
+                sliders[i].Value = HealingAssistantManager.GetThreshold(profile, (HealingMethod)i);
+            status.Visible = false;
+        };
 
         // The desktop already has a scrollable page. The in-game tab needs its own viewport.
         return ReferenceEquals(interaction, AgentPageInteraction.InGame)
             ? new ScrollViewer { Content = root, MaxHeight = Math.Max(180, ScaleHelper.LogicalWindowHeight - 140) }
             : root;
 
-        Widget BuildThresholdRow(int index)
+        Widget BuildThresholdRow(HealingMethod kind)
         {
-            MethodSetting method = methods[index];
+            MethodSetting method = methods[(int)kind];
             var toggle = MyraCheckButton.CreateWithCallback(method.IsEnabled(), value =>
             {
                 method.SetEnabled(value);
                 status.Visible = false;
-            }, method.Label);
+            }, method.ToggleLabel);
 
             toggle.PressedChangingByUser += (_, args) =>
             {
                 if (!args.NewValue)
                     return;
 
-                var (min, max) = AllowedRange(index);
-                if (method.GetThreshold() >= min && method.GetThreshold() <= max)
+                var (min, max) = AllowedRange(kind);
+                int threshold = HealingAssistantManager.GetThreshold(profile, kind);
+                if (threshold >= min && threshold <= max)
                     return;
 
                 args.Cancel = true;
@@ -98,20 +116,21 @@ internal static class HealingAssistantTabContent
 
             var row = LabeledHorizontalSlider.SliderWithLabel(
                 TazLang.Get("healingassistant_missing_hp", "Missing HP (%)"),
-                out LabeledHorizontalSlider slider, min: 1, max: 99, value: method.GetThreshold());
+                out LabeledHorizontalSlider slider, min: 1, max: 99, value: HealingAssistantManager.GetThreshold(profile, kind));
+            sliders[(int)kind] = slider;
             slider.ValueChangedByUser += (_, _) =>
             {
                 int value = (int)slider.Value;
-                var (min, max) = method.IsEnabled() ? AllowedRange(index) : (1, 99);
+                var (min, max) = method.IsEnabled() ? AllowedRange(kind) : (1, 99);
                 if (min > max)
                 {
-                    slider.Value = method.GetThreshold();
+                    slider.Value = HealingAssistantManager.GetThreshold(profile, kind);
                     ShowRange(min, max);
                     return;
                 }
 
                 int validValue = Math.Clamp(value, min, max);
-                method.SetThreshold(validValue);
+                HealingAssistantManager.SetThreshold(profile, kind, validValue);
                 slider.Value = validValue;
                 status.Visible = value != validValue;
                 if (status.Visible)
@@ -121,16 +140,19 @@ internal static class HealingAssistantTabContent
             return row;
         }
 
-        (int Min, int Max) AllowedRange(int index)
+        (int Min, int Max) AllowedRange(HealingMethod kind)
         {
+            HealingMethod[] order = HealingAssistantManager.GetThresholdOrder(profile.HealingAssistantFirstMethod);
+            int index = Array.IndexOf(order, kind);
             int min = 1;
             int max = 99;
-            for (int i = 0; i < methods.Length; i++)
+            for (int i = 0; i < order.Length; i++)
             {
-                if (i == index || !methods[i].IsEnabled())
+                HealingMethod other = order[i];
+                if (i == index || !methods[(int)other].IsEnabled())
                     continue;
 
-                int threshold = Math.Clamp(methods[i].GetThreshold(), 1, 99);
+                int threshold = Math.Clamp(HealingAssistantManager.GetThreshold(profile, other), 1, 99);
                 if (i < index)
                     min = Math.Max(min, threshold + 1);
                 else
@@ -172,11 +194,10 @@ internal static class HealingAssistantTabContent
         row.Widgets.Add(box);
         row.Widgets.Add(new MyraButton(TazLang.Get("healingassistant_select_serial", "Select item"), () =>
         {
-            GameActions.Print(TazLang.Get("healingassistant_target_prompt", "Select the healing item in your backpack."));
+            GameActions.Print(TazLang.Get("healingassistant_target_stack", "Select the potion or fish stack to use."));
             interaction.SelectTarget(target =>
             {
-                Item? backpack = World.Instance?.Player?.Backpack;
-                if (target is Item item && backpack != null && item.BackpackOrRootContainer == backpack.Serial)
+                if (target is Item item && SerialHelper.IsItem(item.Serial))
                 {
                     Set(item.Serial);
                     box.Text = FormatSerial();

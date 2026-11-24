@@ -25,7 +25,7 @@ namespace ClassicUO.Game.Managers
         private long _bandageInProgressUntil;
         private long _bandagingBuffSetTime = 0;
         private long _nextCheckTime = 0;
-        private readonly HealingConsumableManager _consumables = new();
+        private readonly HealingAssistantManager _healing = new();
 
         // When the last bandage was sent, so a "busy" reply from the shard can be matched to it. Zero when none is
         // awaiting a reply.
@@ -204,17 +204,10 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         private void ScheduleRetry(uint mobileSerial)
         {
-            if (!IsEnabled || mobileSerial == 0) return;
-
-            uint playerSerial = World.Instance?.Player?.Serial ?? 0;
+            if (!IsEnabled || mobileSerial == 0 || mobileSerial == World.Instance?.Player?.Serial) return;
 
             if (!_pendingHeals.Contains(mobileSerial))
-            {
-                if (mobileSerial == playerSerial)
-                    _pendingHeals.AddFirst(mobileSerial);
-                else
-                    _pendingHeals.AddLast(mobileSerial);
-            }
+                _pendingHeals.AddLast(mobileSerial);
 
             if (!_retryDeadlines.ContainsKey(mobileSerial))
                 _retryDeadlines[mobileSerial] = Time.Ticks + MAX_RETRY_DURATION_MS;
@@ -257,17 +250,15 @@ namespace ClassicUO.Game.Managers
             if (profile?.EnableHealingAssistant != true)
                 return false;
 
-            if (Time.Ticks >= _bandageInProgressUntil
-                && !HasUnexpiredBandageBuff(player, BuffIconType.Healing)
-                && !HasUnexpiredBandageBuff(player, BuffIconType.Veterinary)
-                && _consumables.TryHeal(World.Instance, player, profile))
+            // Wait for a bandage to finish before deciding whether to use a backup or start another bandage.
+            if ((profile.HealingAssistantUseGreaterHeal || profile.HealingAssistantUseTamalaHeal || profile.HealingAssistantUseMagicFish)
+                && (Time.Ticks < _bandageInProgressUntil
+                    || HasUnexpiredBandageBuff(player, BuffIconType.Healing)
+                    || HasUnexpiredBandageBuff(player, BuffIconType.Veterinary)))
                 return true;
 
-            if (!profile.EnableBandageAgent || !ShouldAttemptHeal(player))
-                return false;
-
-            TryHeal(player);
-            return true;
+            return _healing.TryHeal(World.Instance, player, profile, profile.EnableBandageAgent && ShouldAttemptHeal(player),
+                () => IsReadyToBandage() && SendBandage(player));
         }
 
         private bool HasUnexpiredBandageBuff(PlayerMobile player, BuffIconType type) =>
@@ -417,7 +408,7 @@ namespace ClassicUO.Game.Managers
 
         private bool NeedsBandage(Mobile mobile) =>
             (UseOnPoisoned && mobile.IsPoisoned)
-            || HealingConsumableManager.HasMissingHealth(mobile.Hits, mobile.HitsMax, MissingHpThreshold);
+            || HealingAssistantManager.HasMissingHealth(mobile.Hits, mobile.HitsMax, MissingHpThreshold);
 
         /// <summary>
         /// Whether a bandage may be sent right now: the previous one has run its course, no bandaging buff is
@@ -425,7 +416,7 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         private bool IsReadyToBandage() =>
             Time.Ticks >= _nextBandageTime
-            && Time.Ticks >= _consumables.NextActionTime
+            && Time.Ticks >= _healing.NextActionTime
             && !(CheckForBuff && IsBandagingBuffActive)
             && !Client.Game.UO.GameCursor.ItemHold.Enabled;
 
@@ -481,13 +472,13 @@ namespace ClassicUO.Game.Managers
             long estimatedDuration = CheckForBuff && !UseDexFormula ? HealDelayMs : interval;
             bool expectsTarget = isPlayer && UseSelfCommand && !string.IsNullOrWhiteSpace(SelfCommand)
                 ? SelfCommandExpectTarget
-                : ProfileManager.CurrentProfile?.BandageAgentUseNewPacket == false;
+                : GameActions.UsesBandageTargetCursor(ProfileManager.CurrentProfile, Client.Game.UO.Version);
             _bandageInProgressUntil = now + Math.Max(0, estimatedDuration) + (expectsTarget ? AUTO_TARGET_TIMEOUT_MS : 0);
 
             // Bandaging is an item use too: give queued loot and moves their usual gap after it.
             GlobalActionCooldown.BeginCooldown();
 
-            Log.Debug("Tried to heal someone");
+            Log.Debug($"Bandage agent sent a healing request for target 0x{mobile.Serial:X8}.");
             return true;
         }
 
