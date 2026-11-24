@@ -22,8 +22,10 @@ namespace ClassicUO.Game.Managers
         }
 
         private long _nextBandageTime = 0;
+        private long _bandageInProgressUntil;
         private long _bandagingBuffSetTime = 0;
         private long _nextCheckTime = 0;
+        private readonly HealingConsumableManager _consumables = new();
 
         // When the last bandage was sent, so a "busy" reply from the shard can be matched to it. Zero when none is
         // awaiting a reply.
@@ -65,13 +67,13 @@ namespace ClassicUO.Game.Managers
 
         public int PendingHealCount => _pendingHeals.Count;
 
-        private bool IsEnabled => ProfileManager.CurrentProfile?.EnableBandageAgent ?? false;
+        private bool IsEnabled => ProfileManager.CurrentProfile is { EnableHealingAssistant: true, EnableBandageAgent: true };
         private bool FriendBandagingEnabled => ProfileManager.CurrentProfile?.BandageAgentBandageFriends ?? false;
         private bool AllyBandagingEnabled => ProfileManager.CurrentProfile?.BandageAgentBandageAllies ?? false;
         private bool PetBandagingEnabled => ProfileManager.CurrentProfile?.BandageAgentBandagePets ?? false;
         private int HealDelayMs => ProfileManager.CurrentProfile?.BandageAgentDelay ?? 3000;
         private bool CheckForBuff => ProfileManager.CurrentProfile?.BandageAgentCheckForBuff ?? false;
-        private int HpPercentageThreshold => ProfileManager.CurrentProfile?.BandageAgentHPPercentage ?? 80;
+        private int MissingHpThreshold => 100 - Math.Clamp(ProfileManager.CurrentProfile?.BandageAgentHPPercentage ?? 80, 1, 99);
         private bool UseOnPoisoned => ProfileManager.CurrentProfile?.BandageAgentCheckPoisoned ?? false;
         private bool CheckHidden => ProfileManager.CurrentProfile?.BandageAgentCheckHidden ?? false;
         private bool CheckInvul => ProfileManager.CurrentProfile?.BandageAgentCheckInvul ?? false;
@@ -99,13 +101,17 @@ namespace ClassicUO.Game.Managers
 
             Mobile mobile = World.Instance?.Mobiles?.Get(serial);
 
+            if (mobile is PlayerMobile player)
+            {
+                TryHealPlayer(player);
+                return;
+            }
+
             if (ShouldAttemptHeal(mobile)) TryHeal(mobile);
         }
 
         private void OnBuffAdded(object sender, BuffEventArgs e)
         {
-            if (!IsEnabled) return;
-
             if (e.Buff.Type == BuffIconType.Healing || e.Buff.Type == BuffIconType.Veterinary)
             {
                 HasBandagingBuff = true;
@@ -121,7 +127,7 @@ namespace ClassicUO.Game.Managers
 
         private void OnJournalEntryAdded(object sender, JournalEntry e)
         {
-            if (!IsEnabled || e == null || string.IsNullOrEmpty(e.Text)) return;
+            if (e == null || string.IsNullOrEmpty(e.Text)) return;
 
             if (IsBusyReplyToLastBandage(e.Text))
             {
@@ -141,10 +147,11 @@ namespace ClassicUO.Game.Managers
                 }
 
                 _lastAttemptTime = 0;
+                _bandageInProgressUntil = 0;
                 return;
             }
 
-            if (UseJournalTrigger && ContainsAny(e.Text, JournalMessages))
+            if (IsEnabled && UseJournalTrigger && ContainsAny(e.Text, JournalMessages))
             {
                 _nextBandageTime = 0;
                 HasBandagingBuff = false;
@@ -172,18 +179,13 @@ namespace ClassicUO.Game.Managers
 
         private void OnBuffRemoved(object sender, BuffEventArgs e)
         {
-            if (e.Buff.Type == BuffIconType.Healing)
-            {
-                HasBandagingBuff = false;
-                if(CheckForBuff && Time.Ticks >= _nextBandageTime) //Add small delay after healing buff is removed
-                    _nextBandageTime = Time.Ticks + AsyncNetClient.Socket.Statistics.Ping;
-            }
-            else if (e.Buff.Type == BuffIconType.Veterinary)
-            {
-                HasBandagingBuff = false;
-                if(CheckForBuff && Time.Ticks >= _nextBandageTime) //Add small delay after healing buff is removed
-                    _nextBandageTime = Time.Ticks + AsyncNetClient.Socket.Statistics.Ping;
-            }
+            if (e.Buff.Type is not (BuffIconType.Healing or BuffIconType.Veterinary))
+                return;
+
+            HasBandagingBuff = false;
+            _bandageInProgressUntil = 0;
+            if (CheckForBuff && Time.Ticks >= _nextBandageTime)
+                _nextBandageTime = Time.Ticks + AsyncNetClient.Socket.Statistics.Ping;
         }
 
         /// <summary>
@@ -191,11 +193,10 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         public void OnMobileHpChanged(Mobile mobile, int oldHp, int newHp)
         {
-            if (!IsEnabled || mobile == null)
-                return;
-
-            // Check if we should heal this mobile
-            if (ShouldAttemptHeal(mobile)) TryHeal(mobile);
+            if (mobile is PlayerMobile player)
+                TryHealPlayer(player);
+            else if (IsEnabled && ShouldAttemptHeal(mobile))
+                TryHeal(mobile);
         }
 
         /// <summary>
@@ -226,12 +227,12 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         public void Update()
         {
-            if (!IsEnabled)
-            {
-                if (_pendingHeals.Count > 0 || _retryDeadlines.Count > 0)
-                    ClearAllPendingHeals();
+            bool bandagesEnabled = IsEnabled;
+            if (!bandagesEnabled && (_pendingHeals.Count > 0 || _retryDeadlines.Count > 0))
+                ClearAllPendingHeals();
+
+            if (ProfileManager.CurrentProfile?.EnableHealingAssistant != true)
                 return;
-            }
 
             if (Time.Ticks < _nextCheckTime)
                 return;
@@ -243,16 +244,35 @@ namespace ClassicUO.Game.Managers
             if (player == null)
                 return;
 
-            // Health monitor: the player always comes first.
-            if (ShouldAttemptHeal(player))
-            {
-                TryHeal(player);
+            if (TryHealPlayer(player))
                 return;
-            }
 
-            if (_pendingHeals.Count > 0)
+            if (bandagesEnabled && _pendingHeals.Count > 0)
                 ProcessPendingHeals();
         }
+
+        private bool TryHealPlayer(PlayerMobile player)
+        {
+            Profile profile = ProfileManager.CurrentProfile;
+            if (profile?.EnableHealingAssistant != true)
+                return false;
+
+            if (Time.Ticks >= _bandageInProgressUntil
+                && !HasUnexpiredBandageBuff(player, BuffIconType.Healing)
+                && !HasUnexpiredBandageBuff(player, BuffIconType.Veterinary)
+                && _consumables.TryHeal(World.Instance, player, profile))
+                return true;
+
+            if (!profile.EnableBandageAgent || !ShouldAttemptHeal(player))
+                return false;
+
+            TryHeal(player);
+            return true;
+        }
+
+        private bool HasUnexpiredBandageBuff(PlayerMobile player, BuffIconType type) =>
+            player.BuffIcons.TryGetValue(type, out BuffIcon buff) && Time.Ticks < buff.Timer
+            && (buff.Timer != uint.MaxValue || Time.Ticks - _bandagingBuffSetTime < MAX_BANDAGE_BUFF_AGE_MS);
 
         /// <summary>
         /// Processes a single pending heal. Always called on the main thread from Update().
@@ -351,8 +371,7 @@ namespace ClassicUO.Game.Managers
             if (mobile.HitsMax <= 0)
                 return false;
 
-            int currentHpPercentage = (int)((double)mobile.Hits / mobile.HitsMax * 100);
-            return currentHpPercentage < HpPercentageThreshold || (UseOnPoisoned && mobile.IsPoisoned);
+            return NeedsBandage(mobile);
         }
 
         private bool ShouldAttemptHeal(Mobile mobile)
@@ -393,15 +412,12 @@ namespace ClassicUO.Game.Managers
             if (CheckHidden && mobile.IsHidden)
                 return false;
 
-            int currentHpPercentage = (int)((double)mobile.Hits / mobile.HitsMax * 100);
-
-            // Check for poison status or HP threshold
-            if ((!UseOnPoisoned || !mobile.IsPoisoned) &&
-                currentHpPercentage >= HpPercentageThreshold)
-                return false;
-
-            return true;
+            return NeedsBandage(mobile);
         }
+
+        private bool NeedsBandage(Mobile mobile) =>
+            (UseOnPoisoned && mobile.IsPoisoned)
+            || HealingConsumableManager.HasMissingHealth(mobile.Hits, mobile.HitsMax, MissingHpThreshold);
 
         /// <summary>
         /// Whether a bandage may be sent right now: the previous one has run its course, no bandaging buff is
@@ -409,6 +425,7 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         private bool IsReadyToBandage() =>
             Time.Ticks >= _nextBandageTime
+            && Time.Ticks >= _consumables.NextActionTime
             && !(CheckForBuff && IsBandagingBuffActive)
             && !Client.Game.UO.GameCursor.ItemHold.Enabled;
 
@@ -457,7 +474,15 @@ namespace ClassicUO.Game.Managers
 
             long now = Time.Ticks;
             _lastAttemptTime = now;
-            _nextBandageTime = now + GetBandageInterval(isPlayer);
+            long interval = GetBandageInterval(isPlayer);
+            _nextBandageTime = now + interval;
+
+            // Even in buff mode, prevent consumables from starting while the buff or cursor is in transit.
+            long estimatedDuration = CheckForBuff && !UseDexFormula ? HealDelayMs : interval;
+            bool expectsTarget = isPlayer && UseSelfCommand && !string.IsNullOrWhiteSpace(SelfCommand)
+                ? SelfCommandExpectTarget
+                : ProfileManager.CurrentProfile?.BandageAgentUseNewPacket == false;
+            _bandageInProgressUntil = now + Math.Max(0, estimatedDuration) + (expectsTarget ? AUTO_TARGET_TIMEOUT_MS : 0);
 
             // Bandaging is an item use too: give queued loot and moves their usual gap after it.
             GlobalActionCooldown.BeginCooldown();

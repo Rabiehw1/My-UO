@@ -7,26 +7,12 @@ using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
-public static class BandageAgentTabContent
+internal static class BandageAgentTabContent
 {
-    public static Widget Build()
+    internal static Widget BuildOptions(Profile profile)
     {
-        Profile? profile = ProfileManager.CurrentProfile;
-
-        if (profile == null)
-            return new MyraLabel(TazLang.Get("bandageagent_profilenotloaded"), MyraLabel.TextStyle.P);
-
-        var root = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
-
-        // ===== Widget construction =====
-
-        // Enable and targeting options
-        var enableRow = new VisualContainer(new VisualContainerProps() { Orientation = Orientation.Horizontal },
-            MyraCheckButton.CreateWithCallback(
-                profile.EnableBandageAgent,
-                b => profile.EnableBandageAgent = b,
-                TazLang.Get("bandageagent_enable")
-            ),
+        // Bandaging other mobiles is configured independently of the player's consumables.
+        var targetingRow = new VisualContainer(new VisualContainerProps() { Orientation = Orientation.Horizontal },
             MyraCheckButton.CreateWithCallback(
                 profile.BandageAgentBandageFriends,
                 b => profile.BandageAgentBandageFriends = b,
@@ -100,14 +86,6 @@ public static class BandageAgentTabContent
         var delayRow = new HorizontalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
         delayRow.Widgets.Add(delayBox);
         delayRow.Widgets.Add(new MyraLabel(TazLang.Get("bandageagent_delay_label"), MyraLabel.TextStyle.P));
-
-        HorizontalStackPanel hpSlider = LabeledHorizontalSlider.SliderWithLabel(
-            TazLang.Get("bandageagent_hpthreshold"),
-            out _,
-            v => profile.BandageAgentHPPercentage = (int)v,
-            1, 99,
-            profile.BandageAgentHPPercentage
-        );
 
         // Journal messages
         var journalLabel = new MyraLabel(TazLang.Get("bandageagent_journalmessages_label"), MyraLabel.TextStyle.P);
@@ -233,20 +211,9 @@ public static class BandageAgentTabContent
         graphicRow.Widgets.Add(new MyraLabel(TazLang.Get("bandageagent_graphicid_label"), MyraLabel.TextStyle.P));
         graphicRow.Widgets.Add(graphicBox);
 
-        // ===== Layout =====
-        root.Widgets.Add(enableRow);
-        root.Widgets.Add(selfCommandRow);
-        root.Widgets.Add(timingContainer);
-        root.Widgets.Add(conditionRow);
-        root.Widgets.Add(new MyraSpacer(15, 1));
-        root.Widgets.Add(hpSlider);
-        root.Widgets.Add(distanceSlider);
-        root.Widgets.Add(useNewPacketCheck);
-        root.Widgets.Add(targetTypeRow);
-        root.Widgets.Add(graphicRow);
-
-
-        return root;
+        return new Expander(
+            new MyraLabel(TazLang.Get("healingassistant_bandage_options", "Bandage options"), MyraLabel.TextStyle.P),
+            targetingRow, selfCommandRow, timingContainer, conditionRow, distanceSlider, useNewPacketCheck, targetTypeRow, graphicRow
+        ) { IsExpanded = false };
     }
-
 }

@@ -220,7 +220,22 @@ namespace ClassicUO.Configuration
         public bool RestoreScaleAfterUnpressCtrl { get; set => SetProperty(ref field, value); }
         public bool BandageSelfOld { get; set => SetProperty(ref field, value); } = true;
 
-        // Bandage Agent Settings
+        // Healing Assistant settings. The default preserves previously enabled bandage profiles.
+        public bool EnableHealingAssistant { get; set => SetProperty(ref field, value); } = true;
+        public bool HealingAssistantUseGreaterHeal { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantGreaterHealMissingHPPercentage { get; set => SetProperty(ref field, value); } = 40;
+        public uint HealingAssistantGreaterHealSerial { get; set => SetProperty(ref field, value); }
+        public bool HealingAssistantUseTamalaHeal { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantTamalaHealMissingHPPercentage { get; set => SetProperty(ref field, value); } = 60;
+        public uint HealingAssistantFullTamalaSerial { get; set => SetProperty(ref field, value); }
+        public uint HealingAssistantHalfTamalaSerial { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantPotionCooldownMs { get; set => SetProperty(ref field, value); } = HealingConsumableManager.MinimumCooldownMs;
+        public bool HealingAssistantUseMagicFish { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantMagicFishMissingHPPercentage { get; set => SetProperty(ref field, value); } = 75;
+        public uint HealingAssistantMagicFishSerial { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantFishCooldownMs { get; set => SetProperty(ref field, value); } = HealingConsumableManager.MinimumCooldownMs;
+
+        // Bandage settings
         public bool EnableBandageAgent { get; set => SetProperty(ref field, value); } = false;
         public int BandageAgentDelay { get; set => SetProperty(ref field, value); } = 4700;
         public bool BandageAgentCheckForBuff { get; set => SetProperty(ref field, value); } = false;
@@ -859,6 +874,12 @@ namespace ClassicUO.Configuration
         public bool SellAgentEnabled { get; set => SetProperty(ref field, value); }
         public int SellAgentMaxUniques { get; set => SetProperty(ref field, value); } = 50;
         public int SellAgentMaxItems { get; set => SetProperty(ref field, value); } = 0;
+        public Guid? AutoLootSharedItemListId { get; set => SetProperty(ref field, value); }
+        public Guid? ScavengerSharedItemListId { get; set => SetProperty(ref field, value); }
+        public Guid? AutoBuySharedItemListId { get; set => SetProperty(ref field, value); }
+        public Guid? AutoSellSharedItemListId { get; set => SetProperty(ref field, value); }
+        public ushort AutoBuySharedItemMaxAmount { get; set => SetProperty(ref field, value); } = 1;
+        public ushort AutoSellSharedItemMaxAmount { get; set => SetProperty(ref field, value); } = 1;
         public bool BuyAgentEnabled { get; set => SetProperty(ref field, value); }
         public int BuyAgentMaxUniques { get; set => SetProperty(ref field, value); } = 50;
         public int BuyAgentMaxItems { get; set => SetProperty(ref field, value); } = 0;

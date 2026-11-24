@@ -98,6 +98,7 @@ namespace ClassicUO.Game.Managers
         private readonly HashSet<uint> _scannedCorpsesInRange = new ();
         private readonly List<AutoLootConfigEntry> _fallbackEntries = new ();
         private AutoLootData _data = new ();
+        private int _sharedListRevision;
         private AutoLootList _currentList;
         private bool _loaded = false;
         private long _nextClearRecents = Time.Ticks + (ProfileManager.CurrentProfile?.AutoLootRetryDelay ?? 5000);
@@ -184,6 +185,11 @@ namespace ClassicUO.Game.Managers
         private AutoLootConfigEntry IsOnLootList(Item i)
         {
             if (!_loaded) return null;
+
+            if (ProfileManager.CurrentProfile?.AutoLootSharedItemListId is Guid listId)
+                return ItemListLibrary.MatchRule(listId, i, AutoLootEntries,
+                    static rule => (rule.Graphic, rule.Hue), static (rule, item) => rule.Match(item),
+                    static item => new AutoLootConfigEntry { Graphic = item.Graphic, Hue = item.Hue, Name = item.Name });
 
             foreach (AutoLootConfigEntry entry in AutoLootEntries)
                 if (entry.Match(i))
@@ -473,7 +479,7 @@ namespace ClassicUO.Game.Managers
         /// <summary>
         /// Re-checks in-range corpses on the next position update.
         /// </summary>
-        private void InvalidateScannedCorpses() => _scannedCorpsesInRange.Clear();
+        internal void InvalidateScannedCorpses() => _scannedCorpsesInRange.Clear();
 
         private void OnOpenContainer(object sender, uint e)
         {
@@ -501,6 +507,13 @@ namespace ClassicUO.Game.Managers
         public void Update()
         {
             if (!_loaded || !IsEnabled || !_world.InGame) return;
+
+            if (ProfileManager.CurrentProfile.AutoLootSharedItemListId != null &&
+                _sharedListRevision != ItemListLibrary.Instance.Revision)
+            {
+                _sharedListRevision = ItemListLibrary.Instance.Revision;
+                InvalidateScannedCorpses();
+            }
 
             if (_pendingLootCount == 0)
             {
@@ -551,6 +564,13 @@ namespace ClassicUO.Game.Managers
                     _recentlyLooted.Remove(serial);
                     return;
                 }
+            }
+
+            if (entry != null && ProfileManager.CurrentProfile?.AutoLootSharedItemListId != null)
+            {
+                entry = IsOnLootList(moveItem);
+                if (entry == null)
+                    return;
             }
 
             uint destinationSerial = ResolveDestination(entry);

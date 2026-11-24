@@ -187,6 +187,11 @@ namespace ClassicUO.Game.Managers
             if (!_loaded)
                 return null;
 
+            if (ProfileManager.CurrentProfile?.ScavengerSharedItemListId is Guid listId)
+                return ItemListLibrary.MatchRule(listId, i, ScavengerEntries,
+                    static rule => (rule.Graphic, rule.Hue), static (rule, item) => rule.Match(item),
+                    static item => new ScavengerEntry { Graphic = item.Graphic, Hue = item.Hue, Name = item.Name });
+
             foreach (ScavengerEntry entry in ScavengerEntries)
                 if (entry.Match(i))
                     return entry;
@@ -379,6 +384,16 @@ namespace ClassicUO.Game.Managers
             {
                 _recentlyLooted.Remove(item);
                 return;
+            }
+
+            if (ProfileManager.CurrentProfile.ScavengerSharedItemListId != null)
+            {
+                entry = IsOnLootList(moveItem);
+                if (entry == null)
+                {
+                    _recentlyLooted.Remove(item);
+                    return;
+                }
             }
 
             uint destinationSerial = 0;

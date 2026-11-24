@@ -168,7 +168,8 @@ namespace ClassicUO.Game.Managers
         {
             if (!ProfileManager.CurrentProfile.BuyAgentEnabled) return;
 
-            if (buyItems == null) return;
+            Profile profile = ProfileManager.CurrentProfile;
+            if (buyItems == null && profile.AutoBuySharedItemListId == null) return;
 
             var buyList = new List<Tuple<uint, ushort>>();
             long val = 0;
@@ -179,7 +180,7 @@ namespace ClassicUO.Game.Managers
             int max_unique_items = ProfileManager.CurrentProfile.BuyAgentMaxUniques;
             bool limit_unique_items = max_unique_items > 0;
 
-            foreach (BuySellItemConfig buyConfigEntry in buyItems)
+            foreach (BuySellItemConfig buyConfigEntry in GetRules(profile.AutoBuySharedItemListId, buyItems, profile.AutoBuySharedItemMaxAmount))
             {
                 if (!buyConfigEntry.Enabled) continue;
 
@@ -238,6 +239,10 @@ namespace ClassicUO.Game.Managers
             UIManager.GetGump(shopSerial)?.Dispose();
         }
 
+        private static IEnumerable<BuySellItemConfig> GetRules(Guid? id, List<BuySellItemConfig> local, ushort defaultAmount) =>
+            ItemListLibrary.Rules(id, local, static rule => (rule.Graphic, rule.Hue),
+                item => new BuySellItemConfig { Graphic = item.Graphic, Hue = item.Hue, MaxAmount = defaultAmount });
+
         private ushort GetItemCount(ushort graphic, ushort hue, Item container = null)
         {
             Item searchContainer = container ?? World.Instance.Player?.Backpack;
@@ -277,7 +282,8 @@ namespace ClassicUO.Game.Managers
         {
             if (!ProfileManager.CurrentProfile.SellAgentEnabled) return;
 
-            if (sellItems == null)
+            Profile profile = ProfileManager.CurrentProfile;
+            if (sellItems == null && profile.AutoSellSharedItemListId == null)
             {
                 sellPackets.Remove(vendorSerial);
                 return;
@@ -292,7 +298,7 @@ namespace ClassicUO.Game.Managers
             int max_unique_items = ProfileManager.CurrentProfile.SellAgentMaxUniques;
             bool limit_unique_items = max_unique_items > 0;
 
-            foreach (BuySellItemConfig sellConfig in sellItems)
+            foreach (BuySellItemConfig sellConfig in GetRules(profile.AutoSellSharedItemListId, sellItems, profile.AutoSellSharedItemMaxAmount))
             {
                 if (!sellConfig.Enabled) continue;
 

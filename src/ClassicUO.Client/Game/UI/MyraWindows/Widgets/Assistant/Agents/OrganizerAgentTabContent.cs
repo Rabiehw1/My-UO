@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Utility;
 using Myra.Graphics2D;
@@ -178,7 +179,7 @@ public static class OrganizerAgentTabContent
             configList.Widgets.Clear();
             foreach (OrganizerConfig config in configs)
             {
-                int enabledItems = config.ItemConfigs.Count(ic => ic.Enabled);
+                int enabledItems = config.EffectiveItemConfigs.Count(ic => ic.Enabled);
                 configList.Widgets.Add(new Myra.Graphics2D.UI.Label
                 {
                     Text = config.Name,
@@ -317,6 +318,27 @@ public static class OrganizerAgentTabContent
             rightPanel.Widgets.Add(new MyraLabel("Items to Organize:", MyraLabel.TextStyle.H2));
 
             var itemsPanel = new VerticalStackPanel { Spacing = 2 };
+
+            OrganizerConfig config = selectedConfig;
+            rightPanel.Widgets.Add(SharedItemListPicker.Build(interaction, config.Name, config.SharedItemListId,
+                id =>
+                {
+                    config.SharedItemListId = id;
+                    BuildConfigList();
+                },
+                () => config.ItemConfigs.Select(entry => new SharedItem(entry.Graphic, entry.Hue, "")),
+                item =>
+                {
+                    if (config.ItemConfigs.Any(entry => entry.Graphic == item.Graphic && entry.Hue == item.Hue))
+                        return false;
+
+                    OrganizerItemConfig rule = config.NewItemConfig();
+                    rule.Graphic = item.Graphic;
+                    rule.Hue = item.Hue;
+                    return true;
+                },
+                () => BuildItemsGrid(itemsPanel)));
+
 
             // Add item buttons
             var addEntryPanel = new VerticalStackPanel { Visible = false, Spacing = 4 };

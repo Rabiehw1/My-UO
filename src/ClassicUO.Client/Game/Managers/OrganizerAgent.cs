@@ -137,6 +137,7 @@ namespace ClassicUO.Game.Managers
                 Name = GetUniqueName(config.Name + " Copy"),
                 SourceContSerial = config.SourceContSerial,
                 DestContSerial = config.DestContSerial,
+                SharedItemListId = config.SharedItemListId,
                 Enabled = false,
                 ItemConfigs = config.ItemConfigs.Select(c => new OrganizerItemConfig
                 {
@@ -187,7 +188,7 @@ namespace ClassicUO.Game.Managers
             {
                 OrganizerConfig config = OrganizerConfigs[i];
                 string status = config.Enabled ? "enabled" : "disabled";
-                int itemCount = config.ItemConfigs.Count(ic => ic.Enabled);
+                int itemCount = config.EffectiveItemConfigs.Count(ic => ic.Enabled);
                 GameActions.Print(World.Instance, $"  {i}: '{config.Name}' ({status}, {itemCount} item types, destination: {config.DestContSerial:X})");
             }
         }
@@ -267,11 +268,12 @@ namespace ClassicUO.Game.Managers
             var itemsToMoveByDestination = new Dictionary<uint, List<(Item Item, ushort Amount, OrganizerItemConfig Config)>>();
 
             var sourceItems = (Item)sourceCont.Items;
+            OrganizerItemConfig[] itemConfigs = config.EffectiveItemConfigs.ToArray();
 
             // First pass: identify items to move and group by destination
             for (Item item = sourceItems; item != null; item = (Item)item.Next)
             {
-                foreach (OrganizerItemConfig itemConfig in config.ItemConfigs)
+                foreach (OrganizerItemConfig itemConfig in itemConfigs)
                 {
                     if (itemConfig.Enabled && itemConfig.IsMatch(item.Graphic, item.Hue))
                     {
@@ -513,6 +515,12 @@ namespace ClassicUO.Game.Managers
         public uint DestContSerial { get; set; }
         public bool Enabled { get; set; } = true;
         public List<OrganizerItemConfig> ItemConfigs { get; set; } = new List<OrganizerItemConfig>();
+        public Guid? SharedItemListId { get; set; }
+
+        [JsonIgnore]
+        internal IEnumerable<OrganizerItemConfig> EffectiveItemConfigs =>
+            ItemListLibrary.Rules(SharedItemListId, ItemConfigs, static rule => (rule.Graphic, rule.Hue),
+                static item => new OrganizerItemConfig { Graphic = item.Graphic, Hue = item.Hue });
 
         public OrganizerItemConfig NewItemConfig()
         {

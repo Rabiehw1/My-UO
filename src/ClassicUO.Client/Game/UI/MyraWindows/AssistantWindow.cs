@@ -6,6 +6,7 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemDatabase;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Macros;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Skills;
 using Myra.Graphics2D.UI;
@@ -29,6 +30,23 @@ public class AssistantWindow : MyraControl
             }
         }
         UIManager.Add(new AssistantWindow());
+    }
+
+    internal static void ShowItemLists()
+    {
+        foreach (IGui g in UIManager.Gumps)
+        {
+            if (g is AssistantWindow window && !window.IsClosing)
+            {
+                window._tabs.TrySelectByLabel(ItemListsTabContent.Title);
+                window.BringOnTop();
+                return;
+            }
+        }
+
+        var assistant = new AssistantWindow();
+        assistant._tabs.TrySelectByLabel(ItemListsTabContent.Title);
+        UIManager.Add(assistant);
     }
 
     private SkillsTabContent _skillsTabContent;
@@ -63,6 +81,7 @@ public class AssistantWindow : MyraControl
         _tabs = new MyraTabControl();
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_general", "General"), GeneralTab.Build);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_agents", "Agents"), AgentTab.Build, rebuildOnSelect: true);
+        _tabs.AddTab(ItemListsTabContent.Title, () => ItemListsTabContent.Build(AgentPageInteraction.InGame), rebuildOnSelect: true);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_filters", "Filters"), FiltersTab.Build);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_itemdatabase", "Item Database"), ItemDatabaseTabContent.Build);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_macros", "Macros"), () => MacrosTabContent.Build(this));

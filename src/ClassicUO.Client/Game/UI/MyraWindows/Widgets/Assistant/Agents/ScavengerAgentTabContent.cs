@@ -6,6 +6,7 @@ using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Utility;
 using Myra.Graphics2D;
@@ -154,6 +155,13 @@ public static class ScavengerAgentTabContent
                 });
         }) { Tooltip = TazLang.Get("scavenger_list_delete_tooltip", "Delete the selected scavenger list. At least one list must remain.") };
         listSelectRow.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(deleteListBtn));
+
+        root.Widgets.Add(SharedItemListPicker.Build(interaction, "Scavenger", profile.ScavengerSharedItemListId, id => profile.ScavengerSharedItemListId = id,
+            () => ScavengerManager.Instance.ScavengerEntries
+                .Select(entry => SharedItemListPicker.FromLocal(entry.Graphic, entry.Hue, entry.Name)).OfType<SharedItem>(),
+            item => !ScavengerManager.Instance.ScavengerEntries.Any(entry => entry.Graphic == item.Graphic && entry.Hue == item.Hue)
+                && ScavengerManager.Instance.AddScavengerEntry(item.Graphic, item.Hue, item.Name) != null,
+            BuildEntriesList));
 
         root.Widgets.Add(listSelectRow);
 

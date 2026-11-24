@@ -1,8 +1,10 @@
 #nullable enable
 using System.Collections.Generic;
+using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
@@ -38,9 +40,27 @@ public static class AutoSellAgentTabContent
             0, 100,
             profile.SellAgentMaxUniques));
 
-        root.Widgets.Add(new MyraLabel(TazLang.Get("autosell_entries"), MyraLabel.TextStyle.H3));
-
         var entriesPanel = new VerticalStackPanel { Spacing = 4 };
+
+        root.Widgets.Add(SharedItemListPicker.Build(interaction, "Auto Sell", profile.AutoSellSharedItemListId,
+            id => profile.AutoSellSharedItemListId = id,
+            () => (BuySellAgent.Instance.SellConfigs ?? []).Select(entry => new SharedItem(entry.Graphic, entry.Hue, "")),
+            item =>
+            {
+                if (BuySellAgent.Instance.SellConfigs?.Any(entry => entry.Graphic == item.Graphic && entry.Hue == item.Hue) == true)
+                    return false;
+
+                BuySellItemConfig rule = BuySellAgent.Instance.NewSellConfig();
+                rule.Graphic = item.Graphic;
+                rule.Hue = item.Hue;
+                rule.MaxAmount = profile.AutoSellSharedItemMaxAmount;
+                return true;
+            },
+            BuildEntriesList,
+            MyraInputBox.NumberWithLabel("Default max quantity per shared item (0 skips)",
+                profile.AutoSellSharedItemMaxAmount, 0, ushort.MaxValue, value => profile.AutoSellSharedItemMaxAmount = (ushort)value)));
+
+        root.Widgets.Add(new MyraLabel(TazLang.Get("autosell_entries"), MyraLabel.TextStyle.H3));
 
         void BuildEntriesList()
         {

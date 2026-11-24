@@ -6,6 +6,7 @@ using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
@@ -226,6 +227,17 @@ public static class AutoLootAgentTabContent
                 });
         }) { Tooltip = "Delete the selected loot list. At least one list must remain." };
         listSelectRow.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(deleteListBtn));
+
+        root.Widgets.Add(SharedItemListPicker.Build(interaction, "Auto Loot", profile.AutoLootSharedItemListId, id =>
+            {
+                profile.AutoLootSharedItemListId = id;
+                AutoLootManager.Instance.InvalidateScannedCorpses();
+            },
+            () => AutoLootManager.Instance.AutoLootEntries
+                .Select(entry => SharedItemListPicker.FromLocal(entry.Graphic, entry.Hue, entry.Name)).OfType<SharedItem>(),
+            item => !AutoLootManager.Instance.AutoLootEntries.Any(entry => entry.Graphic == item.Graphic && entry.Hue == item.Hue)
+                && AutoLootManager.Instance.AddAutoLootEntry(item.Graphic, item.Hue, item.Name) != null,
+            BuildEntriesList));
 
         root.Widgets.Add(listSelectRow);
 

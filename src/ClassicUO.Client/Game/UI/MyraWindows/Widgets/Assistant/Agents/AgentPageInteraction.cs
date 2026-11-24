@@ -9,13 +9,21 @@ using SDL3;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
-internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTargetStatus = null)
+internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTargetStatus = null, Action? openItemLists = null)
 {
     public static AgentPageInteraction InGame { get; } = new();
 
     private TargetManager? _targetManager;
     private Action<object>? _targetCallback;
     private Action<SDL.SDL_KeyboardEvent>? _captureKey;
+
+    public void OpenItemLists()
+    {
+        if (openItemLists != null)
+            openItemLists();
+        else
+            AssistantWindow.ShowItemLists();
+    }
 
     public void SelectTarget(Action<object> callback)
     {

@@ -8,6 +8,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Utility.Logging;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -28,7 +29,11 @@ internal sealed class DesktopAgentsWindow
     private readonly nint _window;
     private readonly Desktop _desktop;
     private readonly AgentPageInteraction _interaction;
-    private readonly AgentTab.AgentPage[] _pages = AgentTab.GetPages();
+    private readonly AgentTab.AgentPage[] _pages =
+    [
+        ..AgentTab.GetPages(),
+        new(ItemListsTabContent.Title, AgentTab.AgentGroup.ItemLists, ItemListsTabContent.Build)
+    ];
     private readonly Dictionary<int, MyraButton> _navigation = new();
     private readonly MyraLabel _session = new("", MyraLabel.TextStyle.P);
     private readonly MyraLabel _pageTitle = new("", MyraLabel.TextStyle.H2);
@@ -52,7 +57,7 @@ internal sealed class DesktopAgentsWindow
     private DesktopAgentsWindow(nint window)
     {
         _window = window;
-        _interaction = new AgentPageInteraction(SetTargetStatus);
+        _interaction = new AgentPageInteraction(SetTargetStatus, () => SelectPage(_pages.Length - 1));
         _desktop = new Desktop { BoundsFetcher = () => _bounds };
         // Game text is broadcast globally by FNA. Feed this desktop only its own SDL text events.
         TextInputEXT.TextInput -= _desktop.OnChar;
@@ -167,15 +172,18 @@ internal sealed class DesktopAgentsWindow
 
         foreach (var group in buttons)
         {
-            navigation.Widgets.Add(new MyraLabel(GetGroupName(group.Key), MyraLabel.TextStyle.P)
+            if (group.Key != AgentTab.AgentGroup.ItemLists)
             {
-                Margin = new Thickness(3, 9, 0, 1),
-                TextColor = new Color(173, 198, 220)
-            });
+                navigation.Widgets.Add(new MyraLabel(GetGroupName(group.Key), MyraLabel.TextStyle.P)
+                {
+                    Margin = new Thickness(3, 9, 0, 1),
+                    TextColor = new Color(173, 198, 220)
+                });
+            }
 
             foreach (var (page, index) in group)
             {
-                var button = new MyraButton(page.Name, () => SelectPage(index))
+                var button = new MyraButton(page.Name)
                 {
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     Background = buttonBackground,
@@ -183,6 +191,8 @@ internal sealed class DesktopAgentsWindow
                     PressedBackground = selectedBackground,
                     DisabledBackground = selectedBackground
                 };
+                // Selecting disables this button. Let Myra release it before changing pages.
+                button.Click += (_, _) => SelectPage(index);
                 ((MyraLabel)button.Content).DisabledTextColor = Color.White;
                 _navigation.Add(index, button);
                 navigation.Widgets.Add(button);
