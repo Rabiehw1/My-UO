@@ -60,7 +60,7 @@ public class CrashSuggestedFixTests
 
         fix.Should().NotBeNullOrWhiteSpace();
         fix.Should().Contain("Legion script");
-        fix.Should().Contain("TazUO");
+        fix.Should().Contain(ClientBranding.NAME);
     }
 
     [Fact]

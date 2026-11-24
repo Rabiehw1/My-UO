@@ -529,7 +529,7 @@ internal static class JsonSaveConflictReport
         foreach (char invalid in Path.GetInvalidFileNameChars())
             stem = stem.Replace(invalid, '_');
 
-        return $"TazUO_SaveConflict_{stem}_{DateTime.Now:yyyyMMdd_HHmmss}.html";
+        return $"{ClientBranding.SHORT_NAME}_SaveConflict_{stem}_{DateTime.Now:yyyyMMdd_HHmmss}.html";
     }
 
     private static string FormatTime(DateTime utc) =>

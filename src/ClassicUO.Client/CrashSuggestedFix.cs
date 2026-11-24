@@ -134,7 +134,7 @@ internal static class CrashSuggestedFix
             argumentOutOfRangeException.StackTrace?.Contains("Microsoft.Xna.Framework.Graphics.GraphicsAdapter.get_DefaultAdapter()") != true)
             return false;
 
-        fix = "It appears TazUO was unable to find a suitable graphics adapter to use. " +
+        fix = "It appears " + ClientBranding.NAME + " was unable to find a suitable graphics adapter to use. " +
               "This can sometimes occur if your operating system shuts down your graphics adapter to preserve power.";
         return true;
     }
@@ -156,19 +156,19 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO crashed while trying to identify the display it is running on.");
+        sb.AppendLine(ClientBranding.NAME + " crashed while trying to identify the display it is running on.");
         sb.AppendLine(
             "This usually happens when the connected monitors change while the game is running - for example a monitor is unplugged, turned off, put to sleep, or switched to a different input.");
         sb.AppendLine("It can also occur when using a docking station, a KVM switch, or a laptop lid that was closed/opened.");
         sb.AppendLine();
-        sb.AppendLine("This is a low-level issue in how the operating system reports displays and is not something TazUO can prevent.");
+        sb.AppendLine("This is a low-level issue in how the operating system reports displays and is not something " + ClientBranding.NAME + " can prevent.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
-        sb.AppendLine("1. Make sure your monitor(s) stay powered on and connected while TazUO is running.");
+        sb.AppendLine("1. Make sure your monitor(s) stay powered on and connected while " + ClientBranding.NAME + " is running.");
         sb.AppendLine("2. Avoid unplugging monitors, closing your laptop lid, or switching monitor inputs while the game is open.");
         sb.AppendLine("3. If you use a docking station or KVM switch, try connecting your monitor directly to test.");
         sb.AppendLine("4. Update your graphics card drivers to the latest version.");
-        sb.AppendLine("5. Simply restart TazUO - it should start normally once your displays are stable.");
+        sb.AppendLine("5. Simply restart " + ClientBranding.NAME + " - it should start normally once your displays are stable.");
         fix = sb.ToString();
         return true;
     }
@@ -208,31 +208,31 @@ internal static class CrashSuggestedFix
 
         if (noVideoDevice && !noDisplays)
         {
-            sb.AppendLine("TazUO could not start because the graphics system found no video device to use.");
+            sb.AppendLine(ClientBranding.NAME + " could not start because the graphics system found no video device to use.");
             sb.AppendLine(
                 "The game opens its window through SDL, and this system offered it no usable video driver or device " +
                 "('No available video device').");
         }
         else
         {
-            sb.AppendLine("TazUO could not start because the graphics system had no display to use.");
+            sb.AppendLine(ClientBranding.NAME + " could not start because the graphics system had no display to use.");
             sb.AppendLine(
                 "The game opens its window through SDL, and the operating system did not offer it a single screen " +
                 "('The video driver did not add any displays').");
         }
 
-        sb.AppendLine("This is an environment problem, not a fault in TazUO: the game was started without access to a graphical desktop session.");
+        sb.AppendLine("This is an environment problem, not a fault in " + ClientBranding.NAME + ": the game was started without access to a graphical desktop session.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
         sb.AppendLine(
-            "1. Launch TazUO from your logged-in desktop - open it from Finder (macOS), the launcher, or a Terminal inside your desktop session.");
+            "1. Launch " + ClientBranding.NAME + " from your logged-in desktop - open it from Finder (macOS), the launcher, or a Terminal inside your desktop session.");
         sb.AppendLine(
             "2. Do not start it over SSH, from a scheduled task/login item, or from a script that runs outside your desktop session - those have no screen access.");
         sb.AppendLine(
-            "3. Make sure a user is logged into the machine's desktop before starting TazUO; if the machine is sitting at the login screen, log in first.");
+            "3. Make sure a user is logged into the machine's desktop before starting " + ClientBranding.NAME + "; if the machine is sitting at the login screen, log in first.");
         sb.AppendLine("4. On a virtual machine or headless setup, make sure a real or virtual display is available and powered on.");
-        sb.AppendLine("5. On a headless Linux machine or build server, run TazUO under a virtual display (for example Xvfb) and make sure your graphics drivers are installed.");
-        sb.AppendLine("6. Restart the computer and try launching TazUO normally.");
+        sb.AppendLine("5. On a headless Linux machine or build server, run " + ClientBranding.NAME + " under a virtual display (for example Xvfb) and make sure your graphics drivers are installed.");
+        sb.AppendLine("6. Restart the computer and try launching " + ClientBranding.NAME + " normally.");
         fix = sb.ToString();
         return true;
     }
@@ -254,20 +254,20 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO could not start because FNA3D was unable to find a supported graphics driver.");
+        sb.AppendLine(ClientBranding.NAME + " could not start because FNA3D was unable to find a supported graphics driver.");
         sb.AppendLine("This means none of the available rendering backends (Direct3D 11, Vulkan or OpenGL) could be initialized on your system.");
         sb.AppendLine(
             "It usually means your graphics drivers are missing or out of date, or you are running in an environment without proper GPU access (for example a remote desktop, virtual machine, or a system that fell back to a software renderer).");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
         sb.AppendLine("1. Update your graphics card drivers to the latest version, then restart your computer.");
-        sb.AppendLine("2. Make sure you are running TazUO on the machine's real display and not through a remote desktop session that blocks GPU access.");
+        sb.AppendLine("2. Make sure you are running " + ClientBranding.NAME + " on the machine's real display and not through a remote desktop session that blocks GPU access.");
         sb.AppendLine("3. Try forcing a specific graphics driver by adding one of the following command-line arguments:");
         sb.AppendLine("     -force_driver 1   (OpenGL)");
         sb.AppendLine("     -force_driver 2   (Vulkan)");
         sb.AppendLine("     -force_driver 3   (SDL/FNA auto-select)");
         sb.AppendLine("   Try each one in turn until the client starts successfully.");
-        sb.AppendLine("4. If you are running inside a virtual machine, enable 3D/GPU acceleration for it or run TazUO on physical hardware.");
+        sb.AppendLine("4. If you are running inside a virtual machine, enable 3D/GPU acceleration for it or run " + ClientBranding.NAME + " on physical hardware.");
         fix = sb.ToString();
         return true;
     }
@@ -290,12 +290,12 @@ internal static class CrashSuggestedFix
         if (noSuitableGraphicsDeviceException.Message.Contains("OpenGL 2.1 support is required!"))
         {
             var sb = new StringBuilder();
-            sb.AppendLine("TazUO was unable to find a graphics device with the required OpenGL 2.1 support.");
+            sb.AppendLine(ClientBranding.NAME + " was unable to find a graphics device with the required OpenGL 2.1 support.");
             sb.AppendLine("This usually means your graphics drivers are missing, out of date, or the client fell back to a software renderer (GDI Generic).");
             sb.AppendLine();
             sb.AppendLine("Suggested fixes:");
             sb.AppendLine("1. Update your graphics card drivers to the latest version.");
-            sb.AppendLine("2. Try launching TazUO with a different graphics driver by adding one of the following command-line arguments:");
+            sb.AppendLine("2. Try launching " + ClientBranding.NAME + " with a different graphics driver by adding one of the following command-line arguments:");
             sb.AppendLine("     -force_driver 1   (OpenGL)");
             sb.AppendLine("     -force_driver 2   (Vulkan)");
             sb.AppendLine("     -force_driver 3   (SDL/FNA auto-select)");
@@ -307,7 +307,7 @@ internal static class CrashSuggestedFix
         if (noSuitableGraphicsDeviceException.Message.Contains("Could not create swapchain!"))
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Issue analysis indicates a potential conflict with your TazUO installation.");
+            sb.AppendLine("Issue analysis indicates a potential conflict with your " + ClientBranding.NAME + " installation.");
             sb.AppendLine("The client does not support side-by-side installation of both legacy and modern builds.");
             sb.AppendLine();
             AppendCleanReinstallSteps(sb, redownloadInstruction: "Re-download *only* your selected channel (Legacy or Modern) from the launcher.");
@@ -348,7 +348,7 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO crashed inside the font rendering code (FontStashSharp) while measuring or drawing text.");
+        sb.AppendLine(ClientBranding.NAME + " crashed inside the font rendering code (FontStashSharp) while measuring or drawing text.");
         sb.AppendLine(
             "The font glyph/kerning caches are not thread-safe, so this happens when text is created from a background thread at the same time the game is drawing.");
         sb.AppendLine("This is almost always triggered by a Legion script that shows messages or builds UI directly from its own thread.");
@@ -390,12 +390,12 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("A Legion script crashed TazUO.");
+        sb.AppendLine("A Legion script crashed " + ClientBranding.NAME + ".");
         sb.AppendLine(
-            "The error above was thrown by script code that was running at the time. The stack trace shows an IronPython callback (a function the script registered for a click, hotkey, timer or event), so this is a problem in that script rather than in TazUO itself.");
+            "The error above was thrown by script code that was running at the time. The stack trace shows an IronPython callback (a function the script registered for a click, hotkey, timer or event), so this is a problem in that script rather than in " + ClientBranding.NAME + " itself.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
-        sb.AppendLine("1. Update the script to its latest version, or stop using it temporarily, then restart TazUO.");
+        sb.AppendLine("1. Update the script to its latest version, or stop using it temporarily, then restart " + ClientBranding.NAME + ".");
         sb.AppendLine("2. Start your scripts one at a time to find the one that causes the crash.");
         sb.AppendLine(
             "3. If you wrote the script, wrap the code that runs from callbacks in try/except, and use the provided API methods (for example API.Events, API.OnHotKey or API.Gumps.AddControlOnClick) instead of hooking client events directly.");
@@ -431,17 +431,17 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO crashed while loading the map data files.");
+        sb.AppendLine(ClientBranding.NAME + " crashed while loading the map data files.");
         sb.AppendLine("This usually means one of the map files is missing, incomplete, or does not match your client version.");
         sb.AppendLine(
             "The affected files are named like map0.mul (or map0.uop), staidx0.mul and statics0.mul, with the number matching the facet you were entering.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
-        sb.AppendLine("1. Make sure TazUO is pointed at a complete Ultima Online data directory that contains all of the map, staidx and statics files.");
+        sb.AppendLine("1. Make sure " + ClientBranding.NAME + " is pointed at a complete Ultima Online data directory that contains all of the map, staidx and statics files.");
         sb.AppendLine(
             "2. Verify/repair your UO installation (for example through the official installer or your shard's patcher) to restore any missing or corrupt files.");
         sb.AppendLine("3. If you copied the data files manually, re-copy them and confirm none were skipped or truncated.");
-        sb.AppendLine("4. Confirm the client version configured in TazUO matches the version of your UO data files.");
+        sb.AppendLine("4. Confirm the client version configured in " + ClientBranding.NAME + " matches the version of your UO data files.");
         fix = sb.ToString();
         return true;
     }
@@ -474,18 +474,18 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO crashed while decoding a character or creature animation.");
+        sb.AppendLine(ClientBranding.NAME + " crashed while decoding a character or creature animation.");
         sb.AppendLine("This usually means one of the animation data files is missing, incomplete, or does not match your client version.");
         sb.AppendLine(
             "The affected files are named like anim.mul, anim2.mul, anim3.mul ... (or AnimationFrame1.uop and up on UOP clients), together with their .idx index files, in your UO data directory.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
         sb.AppendLine(
-            "1. Make sure TazUO is pointed at a complete Ultima Online data directory that contains all of the animation files and their .idx files.");
+            "1. Make sure " + ClientBranding.NAME + " is pointed at a complete Ultima Online data directory that contains all of the animation files and their .idx files.");
         sb.AppendLine(
             "2. Verify/repair your UO installation (for example through the official installer or your shard's patcher) to restore any missing or corrupt files.");
         sb.AppendLine("3. If you copied the data files manually, re-copy them and confirm none were skipped or truncated.");
-        sb.AppendLine("4. Confirm the client version configured in TazUO matches the version of your UO data files.");
+        sb.AppendLine("4. Confirm the client version configured in " + ClientBranding.NAME + " matches the version of your UO data files.");
         fix = sb.ToString();
         return true;
     }
@@ -516,19 +516,19 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO crashed while loading gump artwork (an interface image).");
+        sb.AppendLine(ClientBranding.NAME + " crashed while loading gump artwork (an interface image).");
         sb.AppendLine("This usually means one of the gump art data files is missing, incomplete, or does not match your client version.");
         sb.AppendLine(
             "The affected files are named gumpart.mul and gumpidx.mul (or gumpartLegacyMUL.uop on UOP clients) in your UO data directory. A custom .gump file you added can also cause this.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
         sb.AppendLine(
-            "1. Make sure TazUO is pointed at a complete Ultima Online data directory that contains all of the gump art files and their .idx files.");
+            "1. Make sure " + ClientBranding.NAME + " is pointed at a complete Ultima Online data directory that contains all of the gump art files and their .idx files.");
         sb.AppendLine(
             "2. Verify/repair your UO installation (for example through the official installer or your shard's patcher) to restore any missing or corrupt files.");
         sb.AppendLine("3. If you added custom .gump files, remove them to confirm one of them is not the cause, then re-add them one at a time.");
         sb.AppendLine("4. If you copied the data files manually, re-copy them and confirm none were skipped or truncated.");
-        sb.AppendLine("5. Confirm the client version configured in TazUO matches the version of your UO data files.");
+        sb.AppendLine("5. Confirm the client version configured in " + ClientBranding.NAME + " matches the version of your UO data files.");
         fix = sb.ToString();
         return true;
     }
@@ -562,18 +562,18 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO crashed while loading one of the UO data files (.uop).");
+        sb.AppendLine(ClientBranding.NAME + " crashed while loading one of the UO data files (.uop).");
         sb.AppendLine(
             "The file did not start with the expected header, which means it is corrupt, truncated, still being downloaded/patched, or is not a real UOP file (for example an empty placeholder).");
         sb.AppendLine(
             "The name just above 'UOFileUop.FillEntries' in the error (for example TileArtLoader, ArtLoader, etc.) tells you which set of files is affected.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
-        sb.AppendLine("1. Make sure TazUO is pointed at a complete Ultima Online data directory and that no files are 0 bytes.");
+        sb.AppendLine("1. Make sure " + ClientBranding.NAME + " is pointed at a complete Ultima Online data directory and that no files are 0 bytes.");
         sb.AppendLine("2. Verify/repair your UO installation (through the official installer or your shard's patcher) to restore any corrupt or truncated files.");
-        sb.AppendLine("3. If a patcher or download was still running, let it finish completely and then start TazUO again.");
+        sb.AppendLine("3. If a patcher or download was still running, let it finish completely and then start " + ClientBranding.NAME + " again.");
         sb.AppendLine("4. If you copied the data files manually, re-copy them and confirm none were skipped or truncated.");
-        sb.AppendLine("5. Confirm the client version configured in TazUO matches the version of your UO data files.");
+        sb.AppendLine("5. Confirm the client version configured in " + ClientBranding.NAME + " matches the version of your UO data files.");
         fix = sb.ToString();
         return true;
     }
@@ -663,23 +663,23 @@ internal static class CrashSuggestedFix
             string librarySubject = string.IsNullOrEmpty(libraryName) ? "one of its bundled libraries" : $"its {libraryName} library";
 
             var sb = new StringBuilder();
-            sb.AppendLine($"TazUO could not start because macOS refused to load {librarySubject}.");
+            sb.AppendLine($"{ClientBranding.NAME} could not start because macOS refused to load {librarySubject}.");
             sb.AppendLine(
                 "The library file is present, but macOS rejected it with 'code signature ... not valid for use in process' / 'library load disallowed by system policy'.");
             sb.AppendLine(
-                "This usually means the TazUO folder is still marked as downloaded from the internet (quarantined), or it was copied or extracted in a way that broke the file's code signature.");
-            sb.AppendLine("TazUO comes with all the libraries it needs, so reinstalling it restores a complete, correctly signed copy.");
+                "This usually means the " + ClientBranding.NAME + " folder is still marked as downloaded from the internet (quarantined), or it was copied or extracted in a way that broke the file's code signature.");
+            sb.AppendLine(ClientBranding.NAME + " comes with all the libraries it needs, so reinstalling it restores a complete, correctly signed copy.");
             sb.AppendLine();
             sb.AppendLine("Suggested fixes:");
-            sb.AppendLine("1. Reinstall TazUO using the launcher and let it finish - it ships with all required libraries, including SDL3, so this restores the missing or blocked files.");
-            sb.AppendLine("2. If the problem persists, open Terminal and remove the quarantine flag from the whole TazUO folder, then start TazUO again:");
-            sb.AppendLine("     xattr -dr com.apple.quarantine \"/path/to/TazUO\"");
-            sb.AppendLine("   Replace /path/to/TazUO with the folder path shown in the error above (for example your Desktop or Downloads folder).");
-            sb.AppendLine("3. Re-download TazUO with the launcher and extract/open it with Finder's built-in Archive Utility rather than a third-party tool.");
-            sb.AppendLine("4. Move the TazUO folder to your Applications folder instead of running it from the Desktop, Downloads, an external drive or a network share.");
-            sb.AppendLine("5. If you built TazUO yourself, re-sign the app from Terminal and then repeat step 2:");
-            sb.AppendLine("     codesign --force --deep --sign - \"/path/to/TazUO\"");
-            sb.AppendLine("6. If macOS still blocks it, check System Settings -> Privacy & Security for a message about TazUO and allow it, and make sure no security tool is modifying the files.");
+            sb.AppendLine("1. Reinstall " + ClientBranding.NAME + " using the launcher and let it finish - it ships with all required libraries, including SDL3, so this restores the missing or blocked files.");
+            sb.AppendLine("2. If the problem persists, open Terminal and remove the quarantine flag from the whole " + ClientBranding.NAME + " folder, then start " + ClientBranding.NAME + " again:");
+            sb.AppendLine("     xattr -dr com.apple.quarantine \"/path/to/" + ClientBranding.SHORT_NAME + "\"");
+            sb.AppendLine("   Replace /path/to/" + ClientBranding.SHORT_NAME + " with the folder path shown in the error above (for example your Desktop or Downloads folder).");
+            sb.AppendLine("3. Re-download " + ClientBranding.NAME + " with the launcher and extract/open it with Finder's built-in Archive Utility rather than a third-party tool.");
+            sb.AppendLine("4. Move the " + ClientBranding.NAME + " folder to your Applications folder instead of running it from the Desktop, Downloads, an external drive or a network share.");
+            sb.AppendLine("5. If you built " + ClientBranding.NAME + " yourself, re-sign the app from Terminal and then repeat step 2:");
+            sb.AppendLine("     codesign --force --deep --sign - \"/path/to/" + ClientBranding.SHORT_NAME + "\"");
+            sb.AppendLine("6. If macOS still blocks it, check System Settings -> Privacy & Security for a message about " + ClientBranding.NAME + " and allow it, and make sure no security tool is modifying the files.");
             fix = sb.ToString();
             return true;
         }
@@ -718,8 +718,8 @@ internal static class CrashSuggestedFix
             };
 
             string header = candidate is FileLoadException
-                ? "Windows blocked a file TazUO needed to load while the game was running."
-                : "Windows prevented TazUO from starting.";
+                ? "Windows blocked a file " + ClientBranding.NAME + " needed to load while the game was running."
+                : "Windows prevented " + ClientBranding.NAME + " from starting.";
 
             fix = BuildPolicyBlockedFileFix(fileName, header);
             return true;
@@ -731,7 +731,7 @@ internal static class CrashSuggestedFix
         if (e is DllNotFoundException messageOnlyDllNotFound &&
             messageOnlyDllNotFound.Message.IndexOf(H_RESULT_BLOCKED_BY_APPLICATION_POLICY_HEX, StringComparison.OrdinalIgnoreCase) >= 0)
         {
-            fix = BuildPolicyBlockedFileFix(ExtractQuotedLibraryName(messageOnlyDllNotFound), "Windows prevented TazUO from starting.");
+            fix = BuildPolicyBlockedFileFix(ExtractQuotedLibraryName(messageOnlyDllNotFound), "Windows prevented " + ClientBranding.NAME + " from starting.");
             return true;
         }
 
@@ -807,7 +807,7 @@ internal static class CrashSuggestedFix
     /// </summary>
     /// <param name="assemblyName">File name taken from the exception; may be empty.</param>
     /// <returns>Either <c>File "name.dll"</c> or a generic stand-in, both usable as a subject.</returns>
-    private static string DescribeAffectedFile(string assemblyName) => string.IsNullOrEmpty(assemblyName) ? "A required TazUO file" : $"File \"{assemblyName}\"";
+    private static string DescribeAffectedFile(string assemblyName) => string.IsNullOrEmpty(assemblyName) ? "A required " + ClientBranding.NAME + " file" : $"File \"{assemblyName}\"";
 
     /// <summary>
     ///     Appends the clean reinstall procedure. Installing over an existing folder does not
@@ -827,12 +827,12 @@ internal static class CrashSuggestedFix
         string scriptsPath = Path.Join(CUOEnviroment.ExecutablePath, "LegionScripts");
 
         if (includeHeader)
-            sb.AppendLine("A clean reinstall of TazUO fixes this:");
+            sb.AppendLine("A clean reinstall of " + ClientBranding.NAME + " fixes this:");
 
-        sb.AppendLine("1. Close TazUO and the launcher.");
+        sb.AppendLine("1. Close " + ClientBranding.NAME + " and the launcher.");
         sb.AppendLine($"2. Back up your data folder ('{dataPath}') and your script folder ('{scriptsPath}').");
-        sb.AppendLine("3. Delete everything else in the TazUO folder. Do not install a new build on top of an old one.");
-        sb.AppendLine($"4. {redownloadInstruction ?? "Re-download TazUO from the launcher and let it finish."}");
+        sb.AppendLine("3. Delete everything else in the " + ClientBranding.NAME + " folder. Do not install a new build on top of an old one.");
+        sb.AppendLine($"4. {redownloadInstruction ?? $"Re-download {ClientBranding.NAME} from the launcher and let it finish."}");
         sb.AppendLine("5. Copy your backed up folders back.");
     }
 
@@ -841,12 +841,12 @@ internal static class CrashSuggestedFix
     private static string BuildAssemblyMissingFix(string assemblyName)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO could not start because one of its files is missing.");
+        sb.AppendLine(ClientBranding.NAME + " could not start because one of its files is missing.");
         sb.AppendLine($"{DescribeAffectedFile(assemblyName)} was not found. This usually means the install did not finish, or some files were not copied over.");
         sb.AppendLine();
         AppendCleanReinstallSteps(sb);
         sb.AppendLine();
-        sb.AppendLine("If it happens again, your antivirus may be deleting TazUO's files. Add the TazUO folder to its exclusions.");
+        sb.AppendLine("If it happens again, your antivirus may be deleting " + ClientBranding.NAME + "'s files. Add the " + ClientBranding.NAME + " folder to its exclusions.");
         return sb.ToString();
     }
 
@@ -856,7 +856,7 @@ internal static class CrashSuggestedFix
     /// </summary>
     /// <param name="assemblyName">File name from the exception, or empty if unreported.</param>
     private static string BuildAssemblyBlockedByPolicyFix(string assemblyName) =>
-        BuildPolicyBlockedFileFix(assemblyName, "Windows prevented TazUO from starting.");
+        BuildPolicyBlockedFileFix(assemblyName, "Windows prevented " + ClientBranding.NAME + " from starting.");
 
     /// <summary>
     ///     Shared advice for <see cref="H_RESULT_BLOCKED_BY_APPLICATION_POLICY" /> - a Windows
@@ -881,7 +881,7 @@ internal static class CrashSuggestedFix
             return sb.ToString();
         }
 
-        sb.AppendLine("The block comes from Windows, not from a fault in TazUO.");
+        sb.AppendLine("The block comes from Windows, not from a fault in " + ClientBranding.NAME + ".");
         sb.AppendLine();
 
         // We may still be in S mode but failed to detect it for some reason. Provide a manual check procedure for the user
@@ -908,11 +908,11 @@ internal static class CrashSuggestedFix
     private static void AppendSModeIsCauseSection(StringBuilder sb)
     {
         sb.AppendLine(
-            "Your computer runs Windows in S mode, which only allows apps from the Microsoft Store, so TazUO cannot run until you leave it. Reinstalling will not help.");
+            "Your computer runs Windows in S mode, which only allows apps from the Microsoft Store, so " + ClientBranding.NAME + " cannot run until you leave it. Reinstalling will not help.");
         sb.AppendLine();
         sb.AppendLine("Warning: leaving S mode is permanent. You cannot go back to it afterwards.");
         sb.AppendLine(
-            "To disable S mode, open Settings -> System -> Activation and use the 'Switch to Windows Home' or 'Switch to Windows Pro' link, then start TazUO again.");
+            "To disable S mode, open Settings -> System -> Activation and use the 'Switch to Windows Home' or 'Switch to Windows Pro' link, then start " + ClientBranding.NAME + " again.");
     }
 
     /// <summary>
@@ -923,11 +923,11 @@ internal static class CrashSuggestedFix
     private static void AppendSModeCheckSection(StringBuilder sb)
     {
         sb.AppendLine("First, check whether your computer runs Windows in S mode, under Settings -> System -> Activation.");
-        sb.AppendLine("S mode only allows apps from the Microsoft Store, so TazUO cannot run until you leave it. Reinstalling will not help.");
+        sb.AppendLine("S mode only allows apps from the Microsoft Store, so " + ClientBranding.NAME + " cannot run until you leave it. Reinstalling will not help.");
         sb.AppendLine("Warning: leaving S mode is permanent. You cannot go back to it afterwards.");
-        sb.AppendLine("To disable S mode, click the 'Switch to Windows Home' or 'Switch to Windows Pro' link on that page, then start TazUO again.");
+        sb.AppendLine("To disable S mode, click the 'Switch to Windows Home' or 'Switch to Windows Pro' link on that page, then start " + ClientBranding.NAME + " again.");
         sb.AppendLine();
-        sb.AppendLine("If you are not in S mode, a clean reinstall of TazUO may fix this:");
+        sb.AppendLine("If you are not in S mode, a clean reinstall of " + ClientBranding.NAME + " may fix this:");
         AppendCleanReinstallSteps(sb, false);
     }
 
@@ -939,10 +939,10 @@ internal static class CrashSuggestedFix
     /// <param name="sb">Builder the steps are appended to.</param>
     private static void AppendAssemblyBlockedRemainingSteps(StringBuilder sb)
     {
-        sb.AppendLine("If TazUO is still blocked:");
-        sb.AppendLine("- Add the TazUO folder to your antivirus exclusions. In Windows Security: 'Virus & threat protection' -> 'Manage settings' -> 'Exclusions'.");
-        sb.AppendLine(@"- Install TazUO in your Documents folder rather than directly on C:\ or D:\.");
-        sb.AppendLine("- On a work or school computer you may not be able to change this yourself. Ask whoever manages the computer to allow the TazUO folder.");
+        sb.AppendLine("If " + ClientBranding.NAME + " is still blocked:");
+        sb.AppendLine("- Add the " + ClientBranding.NAME + " folder to your antivirus exclusions. In Windows Security: 'Virus & threat protection' -> 'Manage settings' -> 'Exclusions'.");
+        sb.AppendLine(@"- Install " + ClientBranding.NAME + @" in your Documents folder rather than directly on C:\ or D:\.");
+        sb.AppendLine("- On a work or school computer you may not be able to change this yourself. Ask whoever manages the computer to allow the " + ClientBranding.NAME + " folder.");
         sb.AppendLine("- Last resort: Windows Security -> 'App & browser control' -> 'Smart App Control' blocks files it does not recognise.");
         sb.AppendLine("  Warning: switching it off is permanent. Windows will not let you switch it back on without reinstalling Windows.");
     }
@@ -956,15 +956,15 @@ internal static class CrashSuggestedFix
     private static string BuildAssemblyUntrustedZoneFix(string assemblyName)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Windows prevented TazUO from starting.");
+        sb.AppendLine("Windows prevented " + ClientBranding.NAME + " from starting.");
         sb.AppendLine(
-            $"{DescribeAffectedFile(assemblyName)} is present but Windows would not load it, because the file is still marked as downloaded from the internet, or TazUO is running from a network drive.");
+            $"{DescribeAffectedFile(assemblyName)} is present but Windows would not load it, because the file is still marked as downloaded from the internet, or {ClientBranding.NAME} is running from a network drive.");
         sb.AppendLine();
         sb.AppendLine(
-            "- If TazUO is on a network or shared drive, move the whole folder to your own computer's drive. Running it from a network drive causes this every time.");
+            "- If " + ClientBranding.NAME + " is on a network or shared drive, move the whole folder to your own computer's drive. Running it from a network drive causes this every time.");
         sb.AppendLine("- Otherwise, right-click the file, open Properties, and tick 'Unblock' near the bottom if it is there, then click OK.");
         sb.AppendLine();
-        sb.AppendLine("If that does not resolve it, a clean reinstall of TazUO fixes this:");
+        sb.AppendLine("If that does not resolve it, a clean reinstall of " + ClientBranding.NAME + " fixes this:");
         AppendCleanReinstallSteps(sb, false);
         return sb.ToString();
     }
@@ -977,14 +977,14 @@ internal static class CrashSuggestedFix
     private static string BuildAssemblyUnloadableFix(string assemblyName)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO could not start.");
+        sb.AppendLine(ClientBranding.NAME + " could not start.");
         sb.AppendLine(
-            $"{DescribeAffectedFile(assemblyName)} is present but could not be opened. It is most likely damaged, still being written, in use by another program, or left over from an older version of TazUO.");
+            $"{DescribeAffectedFile(assemblyName)} is present but could not be opened. It is most likely damaged, still being written, in use by another program, or left over from an older version of {ClientBranding.NAME}.");
         sb.AppendLine();
         AppendCleanReinstallSteps(sb);
         sb.AppendLine();
-        sb.AppendLine("Make sure TazUO and the launcher are fully closed and any update has finished before starting again.");
-        sb.AppendLine("If a clean reinstall does not help, your antivirus may be holding the file. Add the TazUO folder to its exclusions.");
+        sb.AppendLine("Make sure " + ClientBranding.NAME + " and the launcher are fully closed and any update has finished before starting again.");
+        sb.AppendLine("If a clean reinstall does not help, your antivirus may be holding the file. Add the " + ClientBranding.NAME + " folder to its exclusions.");
         return sb.ToString();
     }
 
@@ -1020,14 +1020,14 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("A plugin failed to start and crashed TazUO.");
-        sb.AppendLine("The error above was thrown by a third-party plugin's own code while it was being loaded, not by TazUO itself.");
+        sb.AppendLine("A plugin failed to start and crashed " + ClientBranding.NAME + ".");
+        sb.AppendLine("The error above was thrown by a third-party plugin's own code while it was being loaded, not by " + ClientBranding.NAME + " itself.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
         sb.AppendLine("1. Update the plugin to its latest version, or temporarily remove/disable it to confirm it is the cause.");
-        sb.AppendLine("2. Make sure the plugin is pointed at the same valid UO data directory that TazUO uses.");
+        sb.AppendLine("2. Make sure the plugin is pointed at the same valid UO data directory that " + ClientBranding.NAME + " uses.");
         sb.AppendLine("   Many assistants load the UO art/map files themselves and will crash if that path is wrong or the files are missing.");
-        sb.AppendLine("3. Verify the plugin supports your client version and this build of TazUO.");
+        sb.AppendLine("3. Verify the plugin supports your client version and this build of " + ClientBranding.NAME + ".");
         sb.AppendLine("4. If it keeps crashing, send this crash log to the plugin's author.");
 
         fix = sb.ToString();
@@ -1064,14 +1064,14 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("A plugin crashed TazUO while injecting a network packet into the client.");
+        sb.AppendLine("A plugin crashed " + ClientBranding.NAME + " while injecting a network packet into the client.");
         sb.AppendLine(
             "The error above was thrown when a third-party plugin (for example an assistant such as Razor) used the client's packet-injection API and handed over a packet that did not fit its allocated buffer.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
-        sb.AppendLine("1. Update the plugin (and any of its scripting add-ons) to the latest version - this crash is usually a plugin bug, not a TazUO bug.");
+        sb.AppendLine("1. Update the plugin (and any of its scripting add-ons) to the latest version - this crash is usually a plugin bug, not a " + ClientBranding.NAME + " bug.");
         sb.AppendLine("2. Temporarily disable the plugin to confirm it is the cause.");
-        sb.AppendLine("3. Make sure the plugin is pointed at the same UO data directory TazUO uses and that its files are not corrupt or out of date.");
+        sb.AppendLine("3. Make sure the plugin is pointed at the same UO data directory " + ClientBranding.NAME + " uses and that its files are not corrupt or out of date.");
         sb.AppendLine("4. If it keeps happening, report the crash log to the plugin's author, noting which script or feature was running when it occurred.");
 
         fix = sb.ToString();
@@ -1112,14 +1112,14 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("This crash happened on a background thread that was started by code outside TazUO.");
+        sb.AppendLine("This crash happened on a background thread that was started by code outside " + ClientBranding.NAME + ".");
         sb.AppendLine(
-            "The bottom of the stack trace shows a 'Thread.Start' call from a third-party plugin or assistant (for example a UO copilot or helper tool), not from TazUO's own game code, so the crash may be caused by that plugin.");
+            "The bottom of the stack trace shows a 'Thread.Start' call from a third-party plugin or assistant (for example a UO copilot or helper tool), not from " + ClientBranding.NAME + "'s own game code, so the crash may be caused by that plugin.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
         sb.AppendLine("1. Update the plugin/assistant to its latest version, or temporarily disable it to confirm it is the cause.");
         sb.AppendLine(
-            "2. If the error mentions a UI window or that a thread 'cannot access this object because a different thread owns it', the plugin is using its own window from the wrong thread - that is a plugin bug, not a TazUO bug.");
+            "2. If the error mentions a UI window or that a thread 'cannot access this object because a different thread owns it', the plugin is using its own window from the wrong thread - that is a plugin bug, not a " + ClientBranding.NAME + " bug.");
         sb.AppendLine("3. If it keeps happening, report the crash log to the plugin's author.");
 
         fix = sb.ToString();
@@ -1250,15 +1250,15 @@ internal static class CrashSuggestedFix
             return false;
 
         var sb = new StringBuilder();
-        sb.AppendLine("TazUO could not read or write one of its files because Windows denied access to it.");
-        sb.AppendLine("This is a Windows file permission issue, not a bug in TazUO or a corrupted file.");
+        sb.AppendLine(ClientBranding.NAME + " could not read or write one of its files because Windows denied access to it.");
+        sb.AppendLine("This is a Windows file permission issue, not a bug in " + ClientBranding.NAME + " or a corrupted file.");
         sb.AppendLine();
         sb.AppendLine("Suggested fixes:");
-        sb.AppendLine("1. Make sure TazUO is not installed directly on the C: drive root or inside a system folder like Program Files - move it to your Documents folder instead.");
-        sb.AppendLine("2. Right-click the TazUO folder -> Properties -> Security, and make sure your Windows user account has Full control.");
-        sb.AppendLine("3. Add the TazUO folder to your antivirus exclusions - some antivirus software locks files it is scanning.");
-        sb.AppendLine("4. Make sure no other program (a backup tool, cloud sync, another copy of TazUO) has the file open at the same time.");
-        sb.AppendLine("5. Try running TazUO as Administrator once to rule out a permissions problem.");
+        sb.AppendLine("1. Make sure " + ClientBranding.NAME + " is not installed directly on the C: drive root or inside a system folder like Program Files - move it to your Documents folder instead.");
+        sb.AppendLine("2. Right-click the " + ClientBranding.NAME + " folder -> Properties -> Security, and make sure your Windows user account has Full control.");
+        sb.AppendLine("3. Add the " + ClientBranding.NAME + " folder to your antivirus exclusions - some antivirus software locks files it is scanning.");
+        sb.AppendLine("4. Make sure no other program (a backup tool, cloud sync, another copy of " + ClientBranding.NAME + ") has the file open at the same time.");
+        sb.AppendLine("5. Try running " + ClientBranding.NAME + " as Administrator once to rule out a permissions problem.");
         fix = sb.ToString();
         return true;
     }
@@ -1288,19 +1288,19 @@ internal static class CrashSuggestedFix
                 continue;
 
             var sb = new StringBuilder();
-            sb.AppendLine("TazUO could not write to its own folder because the file system is read-only.");
+            sb.AppendLine(ClientBranding.NAME + " could not write to its own folder because the file system is read-only.");
             sb.AppendLine(
-                "The error 'Read-only file system' comes from the operating system refusing any change to the disk location TazUO is installed in, so " +
+                "The error 'Read-only file system' comes from the operating system refusing any change to the disk location " + ClientBranding.NAME + " is installed in, so " +
                 "it cannot create or update files it needs.");
             sb.AppendLine(
-                "This normally happens when TazUO is installed in a system location (for example /opt, /usr or /var) that your package manager mounted read-only, or when it is running inside a read-only container or immutable system image.");
+                "This normally happens when " + ClientBranding.NAME + " is installed in a system location (for example /opt, /usr or /var) that your package manager mounted read-only, or when it is running inside a read-only container or immutable system image.");
             sb.AppendLine();
             sb.AppendLine("Suggested fixes:");
-            sb.AppendLine("1. Install TazUO in a folder you own and can write to, such as your home directory (~/TazUO or ~/opt/tazuo), and run it from there.");
+            sb.AppendLine("1. Install " + ClientBranding.NAME + " in a folder you own and can write to, such as your home directory (~/" + ClientBranding.SHORT_NAME + " or ~/opt/" + ClientBranding.SHORT_NAME.ToLowerInvariant() + "), and run it from there.");
             sb.AppendLine(
                 "2. If you installed it through a package manager, make the folder writable by your user (for example: sudo chown -R $USER /opt/tazuo) or reinstall it into your home directory.");
-            sb.AppendLine("3. In a container or sandboxed environment, add a writable volume for the TazUO folder instead of leaving it read-only.");
-            sb.AppendLine("4. If the location must stay read-only, point TazUO at a data directory on a writable disk and launch it from there.");
+            sb.AppendLine("3. In a container or sandboxed environment, add a writable volume for the " + ClientBranding.NAME + " folder instead of leaving it read-only.");
+            sb.AppendLine("4. If the location must stay read-only, point " + ClientBranding.NAME + " at a data directory on a writable disk and launch it from there.");
             fix = sb.ToString();
             return true;
         }

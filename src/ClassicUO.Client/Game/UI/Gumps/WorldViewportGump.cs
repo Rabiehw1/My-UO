@@ -124,14 +124,15 @@ namespace ClassicUO.Game.UI.Gumps
             if (FileSystemHelper.IsPathWithin(Settings.GlobalSettings.ResolvedUltimaOnlineDirectory, CUOEnviroment.ExecutablePath))
             {
                 _userNotifications ??= [];
-                _userNotifications.Add(("Warning: It looks like your UO folder is stored inside TazUO, this is discouraged as you may accidentally have your UO files deleted.", Constants.HUE_ERROR));
+                _userNotifications.Add(("Warning: It looks like your UO folder is stored inside " + ClientBranding.NAME + ", this is discouraged as you may accidentally have your UO files deleted.", Constants.HUE_ERROR));
             }
 
             SetCorruptFileWarnings();
 
             // Community poll reminder is fetched asynchronously; kick it off before starting the flush
             // timer so a fast result lands in the same batch as the notifications above.
-            QueueUnvotedPollsNotification();
+            if (FirebasePollsManager.IsEnabled)
+                QueueUnvotedPollsNotification();
 
             if (_userNotifications != null) //Why is this here? This ensures the user is in-game and can see the world viewport before sending them messages
             {
@@ -176,7 +177,7 @@ namespace ClassicUO.Game.UI.Gumps
                 case CorruptConfigFallback.Preserved:
                     return TazLang.Get(
                         "corruptconfig_preserved",
-                        "It was written by a newer version of TazUO, so it was left untouched. Default settings are in use for this session and will not be saved over it."
+                        "It was written by a newer version of " + ClientBranding.NAME + ", so it was left untouched. Default settings are in use for this session and will not be saved over it."
                     );
 
                 default:

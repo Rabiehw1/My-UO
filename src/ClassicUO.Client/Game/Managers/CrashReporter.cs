@@ -84,9 +84,9 @@ public class CrashReporter
     {
         var sb = new StringBuilder();
 #if DEV_BUILD || DEBUG
-        sb.Append($"[TazUO - DEV (DEBUG: {CUOEnviroment.Debug}) - {CUOEnviroment.Version} - {DateTime.Now}]");
+        sb.Append($"[{ClientBranding.NAME} - DEV (DEBUG: {CUOEnviroment.Debug}) - {CUOEnviroment.Version} - {DateTime.Now}]");
 #else
-        sb.Append($"[TazUO [STANDARD_BUILD] - {CUOEnviroment.Version} - {DateTime.Now}]");
+        sb.Append($"[{ClientBranding.NAME} [STANDARD_BUILD] - {CUOEnviroment.Version} - {DateTime.Now}]");
 #endif
         sb.Append($" [{RuntimeInformation.FrameworkDescription}] [{RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})]");
         sb.Append($" [{Thread.CurrentThread.Name}]");

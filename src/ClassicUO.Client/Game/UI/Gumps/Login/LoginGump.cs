@@ -493,12 +493,7 @@ namespace ClassicUO.Game.UI.Gumps.Login
 
             c.Add(new ContextMenuItemEntry(TazLang.Get("tuowebsite"), () =>
             {
-                PlatformHelper.LaunchBrowser("https://tazuo.org");
-            }, true, false));
-
-            c.Add(new ContextMenuItemEntry(TazLang.Get("tuodiscord"), () =>
-            {
-                PlatformHelper.LaunchBrowser("https://discord.gg/QvqzkB95G4");
+                PlatformHelper.LaunchBrowser(ClientBranding.REPOSITORY_URL);
             }, true, false));
 
             c.Add(new ContextMenuItemEntry(TazLang.Get("cuowebsite"), () =>

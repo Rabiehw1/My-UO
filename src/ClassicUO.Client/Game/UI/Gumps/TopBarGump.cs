@@ -270,7 +270,8 @@ namespace ClassicUO.Game.UI.Gumps
 
             moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_radarmap", "Radar Map"), () => { GameActions.OpenMiniMap(World); }));
 
-            moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_polls", "Polls"), MyraWindows.PollsWindow.Show));
+            if (FirebasePollsManager.IsEnabled)
+                moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_polls", "Polls"), MyraWindows.PollsWindow.Show));
 
             var actionBarsMenu = new ContextMenuItemEntry(TazLang.Get("topbargump_actionbars", "Action Bars"));
             actionBarsMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_addactionbar", "Add action bar"), () =>

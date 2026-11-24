@@ -86,7 +86,7 @@ public readonly struct VoteResult
 }
 
 /// <summary>
-/// Fetches available polls from the TazUO Firebase realtime database and submits votes.
+/// Fetches available polls from a Firebase realtime database and submits votes.
 ///
 /// The database security rules only permit a write to an option when the new value is exactly
 /// <c>current + 1</c>, so a vote reads the option's current count and writes count + 1. If another
@@ -97,7 +97,15 @@ public readonly struct VoteResult
 /// </summary>
 public static class FirebasePollsManager
 {
-    private const string BASE_URL = "https://tazuopolls-default-rtdb.firebaseio.com/polls";
+    /// <summary>
+    /// Whether a polls backend is configured. The polls menu entry, in-game reminder and window restore are
+    /// all gated on this, so polls stay invisible until <see cref="BASE_URL" /> points at a database this
+    /// client's project owns.
+    /// </summary>
+    public static bool IsEnabled => BASE_URL.Length > 0;
+
+    /// <summary>Firebase path holding the polls. Empty disables polls entirely; see <see cref="IsEnabled" />.</summary>
+    private const string BASE_URL = "";
     private const int VOTE_RETRIES = 4;
 
     private static readonly HttpClient _httpClient = new()
@@ -188,10 +196,10 @@ public static class FirebasePollsManager
 
         return unvoted == 1
             ? TazLang.Get("polls_notify_one",
-                "There is a new TazUO poll you haven't voted on. Open Polls from the top bar menu to vote.")
+                "There is a new poll you haven't voted on. Open Polls from the top bar menu to vote.")
             : string.Format(
                 TazLang.Get("polls_notify_many",
-                    "There are {0} TazUO polls you haven't voted on. Open Polls from the top bar menu to vote."),
+                    "There are {0} polls you haven't voted on. Open Polls from the top bar menu to vote."),
                 unvoted);
     }
 

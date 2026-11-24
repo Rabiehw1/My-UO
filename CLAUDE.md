@@ -1,10 +1,14 @@
-# TazUO Project Guide for Claude
+# LordBritishKW Client Project Guide for Claude
 
 ## Project Overview
 
-**TazUO** is a feature-rich fork of ClassicUO, an open-source implementation of the Ultima Online Classic Client. Originally forked to add quality-of-life features requested by users, TazUO has evolved into an independent project that selectively incorporates updates from the original ClassicUO while focusing on enhanced gameplay features.
+**LordBritishKW Client** is an independent Ultima Online client built on **TazUO**, a feature-rich fork of ClassicUO.
+Most code, identifiers and namespaces still use the ClassicUO/TazUO names; leave them as they are.
+Player-facing product name and links come from `src/ClassicUO.Client/ClientBranding.cs`. Never hardcode the name
+or a project URL in player-facing text; use `ClientBranding` (or the matching `language.ini` value).
 
-- **Repository**: https://github.com/PlayTazUO/TazUO
+- **Repository**: https://github.com/Rabiehw1/My-UO
+- **Upstream (reference only)**: https://github.com/PlayTazUO/TazUO
 - **Language**: C# targeting .NET 10
 - **Platform**: Windows with support for Mac and Linux via Mono
 - **License**: Based on ClassicUO's open-source license

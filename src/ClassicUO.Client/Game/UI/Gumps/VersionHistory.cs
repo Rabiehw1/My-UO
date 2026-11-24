@@ -37,13 +37,11 @@ internal class VersionHistory : NineSliceGump
         _scrollArea.Add(_vBoxContainer);
 
         _vBoxContainer.Add(TextBox.GetOne(TazLang.Get("versionhistory_desc", "Version history can now be found on our GitHub repo CHANGELOG.md file."), TrueTypeLoader.EMBEDDED_FONT, 15, Color.Orange, TextBox.RTLOptions.Default(_scrollArea.Width - _scrollArea.ScrollBarWidth())));
-        _vBoxContainer.Add(pos.PositionExact(new HttpClickableLink(TazLang.Get("versionhistory_main", "Main branch changelog"), "https://github.com/PlayTazUO/TazUO/blob/main/CHANGELOG.md", Color.Orange, 15), 25, Height - 20));
-        _vBoxContainer.Add(pos.PositionExact(new HttpClickableLink(TazLang.Get("versionhistory_dev", "Dev branch changelog"), "https://github.com/PlayTazUO/TazUO/blob/dev/CHANGELOG.md", Color.Orange, 15), 25, Height - 20));
+        _vBoxContainer.Add(pos.PositionExact(new HttpClickableLink(TazLang.Get("versionhistory_main", "Main branch changelog"), ClientBranding.CHANGELOG_URL, Color.Orange, 15), 25, Height - 20));
 
         Add(pos.Position(_scrollArea));
 
         Add(pos.PositionExact(new HttpClickableLink(TazLang.Get("lang_tazuowiki"), "https://github.com/PlayTazUO/TazUO/wiki", Color.Orange, 15), 25, Height - 20));
-        Add(pos.PositionExact(new HttpClickableLink(TazLang.Get("lang_tazuodiscord"), "https://discord.gg/QvqzkB95G4", Color.Orange, 15), Width - 110, Height - 20));
     }
 
     protected override void OnResize(int oldWidth, int oldHeight, int newWidth, int newHeight)

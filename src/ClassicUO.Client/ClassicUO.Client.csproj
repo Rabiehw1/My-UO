@@ -3,11 +3,11 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <ApplicationIcon>cuoicon.ico</ApplicationIcon>
-    <AssemblyName>TazUO</AssemblyName>
+    <AssemblyName>LordBritishKW</AssemblyName>
     <RootNamespace>ClassicUO</RootNamespace>
     <AssemblyVersion>5.31.2</AssemblyVersion>
     <FileVersion>5.31.2</FileVersion>
-    <PackageProjectUrl>https://github.com/PlayTazUO/TazUO</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/Rabiehw1/My-UO</PackageProjectUrl>
     <PublishAot>false</PublishAot>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <Nullable>disable</Nullable>
@@ -65,8 +65,8 @@
   <ItemGroup>
     <EmbeddedResource Include="Game\Managers\DefaultSpellIndicatorConfig.json" />
     <EmbeddedResource Include="Configuration\language.ini" />
-    <!-- FNA loads TazUO.png at startup and SDL maps it to the macOS Dock icon. -->
-    <None Update="TazUO.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <!-- FNA loads LordBritishKW.png (AssemblyName + .png) at startup and SDL maps it to the macOS Dock icon. -->
+    <None Update="LordBritishKW.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

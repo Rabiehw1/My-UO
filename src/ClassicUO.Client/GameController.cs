@@ -70,7 +70,7 @@ namespace ClassicUO
         }
 #endif
 
-        private static string DefaultWindowTitle => $"[TazUO - {CUOEnviroment.Version}]";
+        private static string DefaultWindowTitle => $"[{ClientBranding.NAME} - {CUOEnviroment.Version}]";
 
         public GameController(IPluginHost pluginHost)
         {
@@ -328,7 +328,7 @@ namespace ClassicUO
             if (string.IsNullOrEmpty(title))
             {
 #if DEV_BUILD
-                Window.Title = $"TazUO [dev] - {CUOEnviroment.Version}";
+                Window.Title = $"{ClientBranding.NAME} [dev] - {CUOEnviroment.Version}";
 #else
                 Window.Title = DefaultWindowTitle;
 #endif
@@ -336,7 +336,7 @@ namespace ClassicUO
             else
             {
 #if DEV_BUILD
-                Window.Title = $"{title} - TazUO [dev] - {CUOEnviroment.Version}";
+                Window.Title = $"{title} - {ClientBranding.NAME} [dev] - {CUOEnviroment.Version}";
 #else
                 Window.Title = $"{title} - {DefaultWindowTitle}";
 #endif

@@ -32,7 +32,7 @@ public static class HtmlCrashLogGen
     }
   }
 
-  public static void Generate(string stackTrace, string title = "TazUO Crash Report", string description = "Oh no! TazUO crashed.", string additional_notes = "")
+  public static void Generate(string stackTrace, string title = ClientBranding.NAME + " Crash Report", string description = "Oh no! " + ClientBranding.NAME + " crashed.", string additional_notes = "")
   {
     const string TEMPLATE = """
                               <!DOCTYPE html>
@@ -98,7 +98,7 @@ public static class HtmlCrashLogGen
                               </head>
                               <body>
                                 <h1>[TITLE]</h1>
-                                <p>[DESCRIPTION]<br>If you'd like support for this please copy and send this to our <a href="https://github.com/PlayTazUO/TazUO/issues">GitHub</a> or <a href="https://discord.gg/QvqzkB95G4">Discord</a>:</p>
+                                <p>[DESCRIPTION]<br>If you'd like support for this please copy and report it on our <a href="[ISSUES URL]">GitHub issues page</a>:</p>
                                 <pre id="stackTrace">
                               ```
                               [STACK TRACE]
@@ -155,6 +155,7 @@ public static class HtmlCrashLogGen
     string html = TEMPLATE.Replace("[STACK TRACE]", encodedStackTrace);
     html = html.Replace("[TITLE]", encodedTitle);
     html = html.Replace("[DESCRIPTION]", encodedDescription);
+    html = html.Replace("[ISSUES URL]", ClientBranding.ISSUES_URL);
 
     if (additional_notes.NotNullNotEmpty())
       html = html.Replace("[ADDITIONAL NOTES]", $"<p>{additional_notes}</p>");
@@ -166,7 +167,7 @@ public static class HtmlCrashLogGen
       Log.Trace("Generating HTML Crash report...");
 
       // Create unique filename with proper path handling (avoids race condition)
-      string filePath = Path.Combine(Path.GetTempPath(), $"TazUO_Crash_{Guid.NewGuid():N}.html");
+      string filePath = Path.Combine(Path.GetTempPath(), $"{ClientBranding.SHORT_NAME}_Crash_{Guid.NewGuid():N}.html");
       FileSystemHelper.WriteAllTextSafe(filePath, html);
 
       // Launch browser with proper file path (skipValidation: true for local files)
