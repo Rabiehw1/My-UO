@@ -1003,7 +1003,7 @@ namespace ClassicUO.LegionScripting
                                        public static LegionAPI API { get; } = null!;
                                    }
                                    """;
-            const string csProj = """
+            const string csProj = $$"""
                                   <Project Sdk="Microsoft.NET.Sdk">
 
                                     <!--
@@ -1023,8 +1023,8 @@ namespace ClassicUO.LegionScripting
 
                                     <!-- Reference game assemblies for API IntelliSense -->
                                     <ItemGroup>
-                                      <Reference Include="TazUO">
-                                        <HintPath>../TazUO.dll</HintPath>
+                                      <Reference Include="{{ClientBranding.SHORT_NAME}}">
+                                        <HintPath>../{{ClientBranding.SHORT_NAME}}.dll</HintPath>
                                         <Private>false</Private>
                                       </Reference>
                                       <Reference Include="FNA">

@@ -152,7 +152,7 @@ internal static class OpenCompressedGump
         {
             HtmlCrashLogGen.Generate(e.ToString(),
                 description:
-                "TazUO almost crashed, it was prevented but this was put in place for debugging, please post this on our discord.");
+                ClientBranding.NAME + " almost crashed, it was prevented but this was put in place for debugging, please report this on our GitHub issues page: " + ClientBranding.ISSUES_URL);
         }
     }
 }

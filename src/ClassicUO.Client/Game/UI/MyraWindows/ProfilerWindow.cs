@@ -192,7 +192,7 @@ namespace ClassicUO.Game.UI.MyraWindows
 
             double totalAvg = data.Sum(pd => pd.AverageTime);
             var sb = new StringBuilder();
-            sb.AppendLine("TazUO Profiler Output");
+            sb.AppendLine(ClientBranding.NAME + " Profiler Output");
             sb.AppendLine(GetStatsLabel());
             sb.AppendLine($"{"Context",-40}  {"Avg(ms)",7}  {"Peak(ms)",8}  {"Last(ms)",8}  {"% Total",7}");
             sb.AppendLine(new string('-', 76));

@@ -1571,7 +1571,7 @@ namespace ClassicUO.Configuration
                     smw.Load(xml);
                     UIManager.Add(smw);
                     break;
-                case "ClassicUO.Game.UI.MyraWindows.PollsWindow":
+                case "ClassicUO.Game.UI.MyraWindows.PollsWindow" when FirebasePollsManager.IsEnabled:
                     var polls = new PollsWindow();
                     polls.Load(xml);
                     UIManager.Add(polls);

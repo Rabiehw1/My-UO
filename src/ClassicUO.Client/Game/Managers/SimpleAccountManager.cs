@@ -10,7 +10,7 @@ namespace ClassicUO.Game.Managers
     {
         private static readonly string appDataRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "TazUO"
+            ClientBranding.SHORT_NAME
         );
 
         private static string accountPath = Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Profiles");
@@ -36,7 +36,7 @@ namespace ClassicUO.Game.Managers
         /// none has been saved. Optional convenience; the client still works with
         /// a single global password when no per-account password exists.
         /// Passwords are stored outside the game folder under
-        /// %APPDATA%/TazUO/&lt;server&gt;/&lt;account&gt;/account.password.
+        /// %APPDATA%/LordBritishKW/&lt;server&gt;/&lt;account&gt;/account.password.
         /// </summary>
         public static string GetAccountPassword(string account)
         {
@@ -59,7 +59,7 @@ namespace ClassicUO.Game.Managers
 
         /// <summary>
         /// Persists the (encrypted) password for an account outside the game folder,
-        /// keyed by the last server used: %APPDATA%/TazUO/&lt;server&gt;/&lt;account&gt;/account.password.
+        /// keyed by the last server used: %APPDATA%/LordBritishKW/&lt;server&gt;/&lt;account&gt;/account.password.
         /// Passing null or empty removes any stored password for that account.
         /// </summary>
         public static void SetAccountPassword(string account, string encryptedPassword)

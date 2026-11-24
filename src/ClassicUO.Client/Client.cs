@@ -297,12 +297,12 @@ namespace ClassicUO
         /// environment problem (outdated/unavailable OpenGL) rather than a bug in the shader itself.
         /// </summary>
         public const string GraphicsShaderHelpMessage =
-            "TazUO could not compile its graphics shaders. This almost always means your system's OpenGL " +
+            ClientBranding.NAME + " could not compile its graphics shaders. This almost always means your system's OpenGL " +
             "support is too old or unavailable - common causes are running over Remote Desktop, running in a " +
             "virtual machine without 3D acceleration, or missing/outdated GPU drivers.\n\n" +
             "Try: update your GPU drivers, run on the local console (not Remote Desktop), or change the renderer " +
             "in settings (e.g. Vulkan).\n\n" +
-            "You can also try launching TazUO with a different graphics driver by adding one of the following " +
+            "You can also try launching " + ClientBranding.NAME + " with a different graphics driver by adding one of the following " +
             "command-line arguments:\n" +
             "     -force_driver 1   (OpenGL)\n" +
             "     -force_driver 2   (Vulkan)\n" +

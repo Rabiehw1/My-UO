@@ -16,7 +16,7 @@ using Myra.Graphics2D.UI;
 namespace ClassicUO.Game.UI.MyraWindows;
 
 /// <summary>
-/// Displays the community polls hosted in the TazUO Firebase realtime database and lets the user vote.
+/// Displays the community polls hosted in the configured Firebase realtime database and lets the user vote.
 /// Single-choice polls (type 0) present the options as a radio-style group; multiple-choice polls
 /// (type 1) allow any number of options. Once the user votes on a poll — tracked machine-wide via
 /// <see cref="GlobalSettingsSave.VotedPolls"/> — that poll is shown as read-only results instead of a voting form.
@@ -28,7 +28,7 @@ public sealed class PollsWindow : MyraControl
     private bool _loading;
     private ScrollViewer _mainScroll;
 
-    public PollsWindow() : base(TazLang.Get("polls_title", "TazUO Polls"))
+    public PollsWindow() : base(TazLang.Get("polls_title", "Polls"))
     {
         CanBeSaved = true;
         Build();
@@ -237,7 +237,7 @@ public sealed class PollsWindow : MyraControl
         if (selected.Count == 0)
         {
             new MyraDialog(
-                TazLang.Get("polls_title", "TazUO Polls"),
+                TazLang.Get("polls_title", "Polls"),
                 new MyraLabel(TazLang.Get("polls_select_prompt", "Please select an option before voting."), MyraLabel.TextStyle.P),
                 _ => { });
             return;
@@ -278,7 +278,7 @@ public sealed class PollsWindow : MyraControl
                         message += $"\n\n{error}";
 
                     new MyraDialog(
-                        TazLang.Get("polls_title", "TazUO Polls"),
+                        TazLang.Get("polls_title", "Polls"),
                         new MyraLabel(message, MyraLabel.TextStyle.P),
                         _ => { });
                 }
