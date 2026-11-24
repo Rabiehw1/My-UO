@@ -431,6 +431,12 @@ namespace ClassicUO.Configuration
 
         public bool IgnoreStaminaCheck { get; set => SetProperty(ref field, value); }
 
+        /// <summary>
+        /// When true, a blocked diagonal step stops the player instead of sliding into a neighboring straight
+        /// direction to get around the obstacle.
+        /// </summary>
+        public bool DisableCornerSliding { get; set => SetProperty(ref field, value); }
+
         public bool ShowJournalClient { get; set => SetProperty(ref field, value); } = true;
         public bool ShowJournalObjects { get; set => SetProperty(ref field, value); } = true;
         public bool ShowJournalSystem { get; set => SetProperty(ref field, value); } = true;

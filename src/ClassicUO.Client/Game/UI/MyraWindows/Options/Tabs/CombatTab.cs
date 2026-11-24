@@ -63,6 +63,15 @@ public static class CombatTab
                 search: new SearchMetadata(TazLang.Get("mog_general_ignorestaminacheck"), Keywords: [TazLang.Get("mog_kw_stamina"), TazLang.Get("mog_kw_disable")])
             ),
             Option.Checkbox(
+                TazLang.Get("mog_general_disablecornersliding"),
+                new Accessor<bool>(() => profile.DisableCornerSliding),
+                TazLang.Get("mog_general_disablecornerslidingtooltip"),
+                new SearchMetadata(
+                    TazLang.Get("mog_general_disablecornersliding"),
+                    Keywords: [TazLang.Get("mog_kw_movement"), TazLang.Get("mog_kw_disable"), TazLang.Get("mog_kw_corner")]
+                )
+            ),
+            Option.Checkbox(
                 TazLang.Get("mog_general_disabledismountwarmode"),
                 new Accessor<bool>(() => profile.DisableDismountInWarMode),
                 search: new SearchMetadata(TazLang.Get("mog_general_disabledismountwarmode"), Keywords: [TazLang.Get("mog_kw_dismount"), TazLang.Get("mog_kw_warmode")])

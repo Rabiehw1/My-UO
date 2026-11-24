@@ -723,7 +723,9 @@ namespace ClassicUO.Game
                     }
                 }
 
-                if (!passed)
+                // Slide around the obstacle by trying the two neighboring straight directions, unless the player
+                // turned that off and wants a blocked diagonal to simply stop them.
+                if (!passed && !(ProfileManager.CurrentProfile?.DisableCornerSliding ?? false))
                 {
                     for (int i = 0; i < 2 && !passed; i++)
                     {
