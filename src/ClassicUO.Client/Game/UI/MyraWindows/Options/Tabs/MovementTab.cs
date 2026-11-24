@@ -62,7 +62,11 @@ public static class MovementTab
             Option.Checkbox(
                 TazLang.Get("mog_movementtab_autoavoidobstacles"),
                 new Accessor<bool>(() => profile.AutoAvoidObstacules),
-                search: new SearchMetadata(TazLang.Get("mog_movementtab_autoavoidobstacles"), Keywords: [TazLang.Get("mog_kw_avoid"), TazLang.Get("mog_kw_obstacle")])
+                TazLang.Get("mog_movementtab_autoavoidobstacles_tooltip"),
+                new SearchMetadata(
+                    TazLang.Get("mog_movementtab_autoavoidobstacles"),
+                    Keywords: [TazLang.Get("mog_kw_avoid"), TazLang.Get("mog_kw_obstacle"), TazLang.Get("mog_kw_corner")]
+                )
             ),
             Option.Checkbox(
                 TazLang.Get("mog_movementtab_usewasdmovement"),

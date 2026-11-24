@@ -201,7 +201,11 @@ namespace ClassicUO.Configuration
         public bool HighlightMobilesByInvul { get; set => SetProperty(ref field, value); } = true;
         public bool ShowMobilesHP { get; set => SetProperty(ref field, value); }
         public bool ShowTargetIndicator { get; set => SetProperty(ref field, value); }
-        public bool AutoAvoidObstacules { get; set => SetProperty(ref field, value); } = true;
+        /// <summary>
+        /// When true, walking into an obstacle steps around it (sideways on straight moves, around corners on
+        /// diagonals). When false the player just stops. Pathfinding always follows its own computed path.
+        /// </summary>
+        public bool AutoAvoidObstacules { get; set => SetProperty(ref field, value); }
         public int MobileHPType { get; set => SetProperty(ref field, value); }     // 0 = %, 1 = line, 2 = both
         public int MobileHPShowWhen { get; set => SetProperty(ref field, value); } // 0 = Always, 1 - <100%
         public bool DrawRoofs { get; set => SetProperty(ref field, value); } = true;
@@ -458,12 +462,6 @@ namespace ClassicUO.Configuration
         public bool UseSmoothBoatMovement { get; set => SetProperty(ref field, value); }
 
         public bool IgnoreStaminaCheck { get; set => SetProperty(ref field, value); }
-
-        /// <summary>
-        /// When true, a blocked diagonal step stops the player instead of sliding into a neighboring straight
-        /// direction to get around the obstacle.
-        /// </summary>
-        public bool DisableCornerSliding { get; set => SetProperty(ref field, value); }
 
         public bool ShowJournalClient { get; set => SetProperty(ref field, value); } = true;
         public bool ShowJournalObjects { get; set => SetProperty(ref field, value); } = true;

@@ -723,9 +723,9 @@ namespace ClassicUO.Game
                     }
                 }
 
-                // Slide around the obstacle by trying the two neighboring straight directions, unless the player
-                // turned that off and wants a blocked diagonal to simply stop them.
-                if (!passed && !(ProfileManager.CurrentProfile?.DisableCornerSliding ?? false))
+                // Slide around the obstacle by trying the two neighboring straight directions, only when the player
+                // wants obstacles avoided or a computed path is being walked; otherwise a blocked step just stops.
+                if (!passed && ((ProfileManager.CurrentProfile?.AutoAvoidObstacules ?? false) || AutoWalking))
                 {
                     for (int i = 0; i < 2 && !passed; i++)
                     {
