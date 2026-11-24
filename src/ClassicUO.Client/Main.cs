@@ -5,6 +5,7 @@ using ClassicUO.Game;
 using ClassicUO.Game.Managers;
 using ClassicUO.IO;
 using ClassicUO.Network;
+using ClassicUO.Setup;
 using ClassicUO.Utility;
 using ClassicUO.Utility.Logging;
 using SDL3;
@@ -109,6 +110,13 @@ namespace ClassicUO
 
                     Settings.GlobalSettings.Language = "ENU";
                 }
+            }
+
+            // Welcome screen when the UO files can't be found, so nobody has to edit settings.json by hand.
+            if (!FirstRunSetup.EnsureReady())
+            {
+                Log.Trace("Setup cancelled, closing...");
+                Environment.Exit(0);
             }
 
             if (string.IsNullOrWhiteSpace(Settings.GlobalSettings.UltimaOnlineDirectory))

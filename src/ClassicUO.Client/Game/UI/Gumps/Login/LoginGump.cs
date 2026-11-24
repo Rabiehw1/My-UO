@@ -8,6 +8,7 @@ using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.Input;
 using ClassicUO.Assets;
 using ClassicUO.Renderer;
+using ClassicUO.Setup;
 using ClassicUO.Utility;
 using Microsoft.Xna.Framework;
 using SDL3;
@@ -521,6 +522,27 @@ namespace ClassicUO.Game.UI.Gumps.Login
             var w = new QuickOptionsWindow(TazLang.Get("editsettings"));
 
             w.AddInput(TazLang.Get("ipentry"), s.IP, v => { s.IP = v; s.Save(); }, 200, TazLang.Get("iporhostnamedesc"));
+
+            // Only saved once the value is usable, so a half-typed path or version never breaks the next start.
+            w.AddInput(TazLang.Get("editsettings_uofolder"), s.UltimaOnlineDirectory, v =>
+            {
+                if (FirstRunSetup.IsUltimaOnlineFolder(v))
+                {
+                    s.UltimaOnlineDirectory = v;
+                    s.Save();
+                }
+            }, 300, TazLang.Get("editsettings_uofoldertooltip"));
+
+            w.AddInput(TazLang.Get("editsettings_clientversion"), s.ClientVersion, v =>
+            {
+                if (ClientVersionHelper.IsClientVersionValid(v, out _))
+                {
+                    s.ClientVersion = v;
+                    s.Save();
+                }
+            }, 120, TazLang.Get("editsettings_clientversiontooltip"));
+
+            w.AddLabel(TazLang.Get("editsettings_restartnote"));
 
             w.AddInput(TazLang.Get("portentry"), s.Port.ToString(), v =>
             {
