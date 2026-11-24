@@ -491,6 +491,8 @@ namespace ClassicUO.Game.UI.Gumps.Login
 
             c.Add(new ContextMenuItemEntry(TazLang.Get("logingump_loghistory", "Log History"), LogHistoryWindow.Show, true, false));
 
+            c.Add(new ContextMenuItemEntry(TazLang.Get("logingump_checkforupdates"), UpdateWindow.CheckNow, true, false));
+
             c.Add(new ContextMenuItemEntry(TazLang.Get("tuowebsite"), () =>
             {
                 PlatformHelper.LaunchBrowser(ClientBranding.REPOSITORY_URL);

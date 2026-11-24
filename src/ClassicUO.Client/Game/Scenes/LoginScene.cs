@@ -5,6 +5,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Updates;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Game.UI.Gumps.CharCreation;
 using ClassicUO.Game.UI.Gumps.Login;
@@ -87,6 +88,9 @@ namespace ClassicUO.Game.Scenes
             _autoLogin = Settings.GlobalSettings.AutoLogin;
 
             UIManager.Add(new LoginBackground(_world));
+
+            ClientUpdater.DeleteLeftoversInBackground();
+            UpdateWindow.ShowIfUpdateAvailable();
 
             if (string.IsNullOrEmpty(Settings.GlobalSettings.IP))
             {

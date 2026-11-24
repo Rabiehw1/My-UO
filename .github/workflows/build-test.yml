@@ -2,9 +2,9 @@ name: Build-Test
 
 on:
   push:
+    # Every branch, so work pushed without a pull request is still built and tested.
     branches:
-      - dev
-      - main
+      - '**'
     paths-ignore:
       - '**/build-release.yml'
       - 'appveyor.yml'

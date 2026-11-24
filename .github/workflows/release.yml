@@ -1,0 +1,160 @@
+name: Release
+
+# Publishes a new release after every successful Build-Test run on main. Installed clients find it through the
+# GitHub "latest release" API and offer it on their update screen (see ClientUpdater.cs). The zip names and the
+# v.txt marker file below are what the updater looks for; change them together.
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Build-Test]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  PROJECT_PATH: src/ClassicUO.Client/ClassicUO.Client.csproj
+  OUTPUT_PATH: build/dist
+  ZIP_PREFIX: LordBritishKW
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  NUGET_XMLDOC_MODE: skip
+
+jobs:
+  version:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.VERSION }}
+      sha: ${{ steps.version.outputs.SHA }}
+    steps:
+      - id: version
+        name: Compute version
+        shell: bash
+        run: |
+          # year.monthday.run, e.g. 26.1124.12 - always increases, and each part fits an assembly version.
+          echo "VERSION=$(date -u +%y).$((10#$(date -u +%m%d))).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # Release exactly the commit Build-Test checked, not whatever main points at now.
+          echo "SHA=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: macos-latest
+            rid: osx-arm64
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+
+      - name: Get submodules
+        shell: bash
+        run: |
+          git config --global url."https://".insteadOf git://
+          git submodule update --init --recursive
+
+      - name: Stamp version
+        shell: bash
+        run: |
+          PY="$(command -v python3 || command -v python)"
+          "$PY" - <<'PYEOF'
+          import os, re
+          path = os.environ["PROJECT_PATH"]
+          version = os.environ["VERSION"]
+          content = open(path).read()
+          for tag in ("AssemblyVersion", "FileVersion"):
+              content, count = re.subn(rf"<{tag}>.*?</{tag}>", f"<{tag}>{version}</{tag}>", content, count=1)
+              assert count == 1, f"{tag} not found in {path}"
+          open(path, "w").write(content)
+          PYEOF
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10
+
+      - name: Publish
+        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r ${{ matrix.rid }} -o ${{ env.OUTPUT_PATH }}
+
+      - name: Write release marker
+        shell: bash
+        run: echo "$VERSION" > "$OUTPUT_PATH/v.txt"
+
+      - name: Zip
+        shell: bash
+        run: |
+          ZIP="$ZIP_PREFIX-${{ matrix.rid }}.zip"
+          mkdir -p flat
+          # Copy everything except macOS debug symbol bundles, keeping subfolders.
+          find "$OUTPUT_PATH" -name '*.dSYM' -prune -o -type f -print | while IFS= read -r file; do
+            dest="flat/${file#$OUTPUT_PATH/}"
+            mkdir -p "$(dirname "$dest")"
+            cp -p "$file" "$dest"
+          done
+          cd flat
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            pwsh -Command "Compress-Archive -Path * -DestinationPath ../$ZIP -Force"
+          else
+            zip -qr "../$ZIP" .
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_PREFIX }}-${{ matrix.rid }}
+          path: ${{ env.ZIP_PREFIX }}-${{ matrix.rid }}.zip
+          retention-days: 3
+
+  publish:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      SHA: ${{ needs.version.outputs.sha }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 --match 'v*' "$SHA" 2>/dev/null || true)"
+          {
+            if [ -n "$PREVIOUS_TAG" ]; then
+              git log "$PREVIOUS_TAG..$SHA" --no-merges --pretty=format:'- %s'
+            else
+              git log -10 "$SHA" --no-merges --pretty=format:'- %s'
+            fi
+            echo
+          } > notes.md
+          cat notes.md
+
+      - name: Create release
+        shell: bash
+        run: |
+          gh release create "v$VERSION" artifacts/*/*.zip \
+            --target "$SHA" \
+            --title "LordBritishKW Client $VERSION" \
+            --notes-file notes.md \
+            --latest

@@ -125,6 +125,12 @@ namespace ClassicUO.Configuration
         /// </summary>
         public bool SendCrashReports { get; set => SetProperty(ref field, value); } = true;
 
+        /// <summary>
+        /// When true, the login screen looks for a newer release and opens the update screen if one exists.
+        /// Machine-wide because it runs before any profile is loaded.
+        /// </summary>
+        public bool CheckForUpdates { get; set => SetProperty(ref field, value); } = true;
+
 
         
         public int MigrationVersion { get; set => SetProperty(ref field, value); } = 0;

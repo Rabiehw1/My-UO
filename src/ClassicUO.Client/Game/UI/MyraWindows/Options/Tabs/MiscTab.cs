@@ -215,6 +215,13 @@ public static class MiscTab
                     Keywords: [TazLang.Get("mog_kw_crash"), TazLang.Get("mog_kw_report"), TazLang.Get("mog_kw_privacy")])
             ),
             Option.Checkbox(
+                TazLang.Get("mog_misctab_checkforupdates"),
+                new Accessor<bool>(() => ProfileManager.GlobalSettings.CheckForUpdates),
+                TazLang.Get("mog_misctab_checkforupdatestooltip"),
+                new SearchMetadata(TazLang.Get("mog_misctab_checkforupdates"),
+                    Keywords: [TazLang.Get("mog_kw_update"), TazLang.Get("mog_kw_version")])
+            ),
+            Option.Checkbox(
                 TazLang.Get("mog_tazuo_enableasyncmaploading"),
                 new Accessor<bool>(
                     () => profile.EnableASyncMapLoading,
