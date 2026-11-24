@@ -122,6 +122,19 @@ public static class BandageAgentTabContent
             profile.BandageAgentJournalMessages = journalMessageBox.Text ?? "";
         };
 
+        // Shard replies meaning the bandage was refused (busy), which trigger a quick retry
+        var busyLabel = new MyraLabel(TazLang.Get("bandageagent_busymessages_label"), MyraLabel.TextStyle.P);
+        var busyMessageBox = new MyraInputBox
+        {
+            Text = profile.BandageAgentBusyMessages,
+            Tooltip = TazLang.Get("bandageagent_busymessages_tooltip"),
+            MaxWidth = 650
+        };
+        busyMessageBox.TextChangedByUser += (_, _) =>
+        {
+            profile.BandageAgentBusyMessages = busyMessageBox.Text ?? "";
+        };
+
         // Timing mode checkboxes
         var timingRow = new HorizontalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
         timingRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
@@ -147,7 +160,9 @@ public static class BandageAgentTabContent
             delayRow,
             journalLabel,
             journalMessageBox,
-            timingRow
+            timingRow,
+            busyLabel,
+            busyMessageBox
         );
 
         // Poison, hidden and yellow hit settings

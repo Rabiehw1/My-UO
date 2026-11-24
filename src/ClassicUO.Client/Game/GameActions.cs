@@ -1199,7 +1199,15 @@ internal static class GameActions
     /// target type come from the bandage agent profile settings.
     /// </summary>
     /// <returns><see langword="false"/> when no bandage matching the configured graphic is available.</returns>
-    internal static bool UseBandageOnTarget(World world, uint target)
+    /// <summary>Uses a bandage from the player's backpack on <paramref name="target" />.</summary>
+    /// <param name="world">The game world.</param>
+    /// <param name="target">Serial of the mobile to bandage.</param>
+    /// <param name="autoTargetTimeoutMs">
+    /// When double-clicking (old packet mode), how long to wait for the bandage's target cursor before giving up
+    /// on auto-targeting it. Zero waits indefinitely.
+    /// </param>
+    /// <returns>False if no bandage was found.</returns>
+    internal static bool UseBandageOnTarget(World world, uint target, int autoTargetTimeoutMs = 0)
     {
         Profile profile = ProfileManager.CurrentProfile;
         ushort graphic = profile?.BandageAgentGraphic ?? 0x0E21;
@@ -1213,8 +1221,17 @@ internal static class GameActions
             Socket.Send_TargetSelectedObject(bandage.Serial, target);
         else
         {
-            TargetManager.SetAutoTarget(target, profile?.BandageAgentTargetType ?? TargetType.Beneficial);
-            DoubleClick(world, bandage.Serial);
+            // The cursor that follows this double-click belongs to the bandage, so answer it whatever cursor type
+            // the shard uses; the timeout keeps the auto-target from answering a later, unrelated cursor.
+            TargetManager.SetAutoTarget(
+                target,
+                profile?.BandageAgentTargetType ?? TargetType.Beneficial,
+                matchAnyTargetType: true,
+                autoTargetTimeoutMs
+            );
+
+            // Sent straight away: bandages must not wait in the manual item-use queue.
+            DoubleClick(world, bandage.Serial, ignoreQueue: true);
         }
 
         return true;

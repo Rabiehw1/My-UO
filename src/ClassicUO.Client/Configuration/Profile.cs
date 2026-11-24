@@ -222,7 +222,7 @@ namespace ClassicUO.Configuration
 
         // Bandage Agent Settings
         public bool EnableBandageAgent { get; set => SetProperty(ref field, value); } = false;
-        public int BandageAgentDelay { get; set => SetProperty(ref field, value); } = 3000;
+        public int BandageAgentDelay { get; set => SetProperty(ref field, value); } = 4700;
         public bool BandageAgentCheckForBuff { get; set => SetProperty(ref field, value); } = false;
         public ushort BandageAgentGraphic { get; set => SetProperty(ref field, value); } = 0x0E21;
         public bool BandageAgentUseNewPacket { get; set => SetProperty(ref field, value); } = true;
@@ -883,6 +883,12 @@ namespace ClassicUO.Configuration
         public EnhancedMapConfig EnhancedMap { get; set => SetProperty(ref field, value); } = new();
         public string BandageAgentJournalMessages { get; set; } = "You apply the bandages;You finish applying;You heal what little;You have been cured;You failed to cure;Your fingers slip";
         public bool BandageAgentUseJournalTrigger { get; set; }
+
+        /// <summary>
+        /// ';'-separated shard replies meaning a bandage was refused because the player is busy. Seen right after a
+        /// bandage is sent, they make the agent retry shortly instead of waiting a full bandage cycle.
+        /// </summary>
+        public string BandageAgentBusyMessages { get; set; } = "already doing something else;You must wait to perform another action";
         public bool CounterBarDisableIconScaling { get; set; }
         public bool CounterBarDisableItemScaling { get; set; }
         public bool CounterBarShowHotkeys { get; set; }
