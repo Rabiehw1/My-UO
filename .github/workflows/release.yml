@@ -1,6 +1,6 @@
 name: Release
 
-# Publishes a new release after every successful Build-Test run on main. Installed clients find it through the
+# Publishes a Windows x64 release after every successful Build-Test run on main. Installed clients find it through the
 # GitHub "latest release" API and offer it on their update screen (see ClientUpdater.cs). The zip names and the
 # v.txt marker file below are what the updater looks for; change them together.
 
@@ -21,7 +21,7 @@ concurrency:
 env:
   PROJECT_PATH: src/ClassicUO.Client/ClassicUO.Client.csproj
   OUTPUT_PATH: build/dist
-  ZIP_PREFIX: LordBritishKW
+  PACKAGE_NAME: LordBritishKW-win-x64
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   NUGET_XMLDOC_MODE: skip
@@ -45,16 +45,7 @@ jobs:
 
   build:
     needs: version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: windows-latest
-            rid: win-x64
-          - os: ubuntu-latest
-            rid: linux-x64
-          - os: macos-latest
-            rid: osx-arm64
+    runs-on: windows-latest
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -89,34 +80,20 @@ jobs:
           dotnet-version: 10
 
       - name: Publish
-        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r ${{ matrix.rid }} -o ${{ env.OUTPUT_PATH }}
+        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release -r win-x64 -o ${{ env.OUTPUT_PATH }}
 
       - name: Write release marker
         shell: bash
         run: echo "$VERSION" > "$OUTPUT_PATH/v.txt"
 
       - name: Zip
-        shell: bash
-        run: |
-          ZIP="$ZIP_PREFIX-${{ matrix.rid }}.zip"
-          mkdir -p flat
-          # Copy everything except macOS debug symbol bundles, keeping subfolders.
-          find "$OUTPUT_PATH" -name '*.dSYM' -prune -o -type f -print | while IFS= read -r file; do
-            dest="flat/${file#$OUTPUT_PATH/}"
-            mkdir -p "$(dirname "$dest")"
-            cp -p "$file" "$dest"
-          done
-          cd flat
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            pwsh -Command "Compress-Archive -Path * -DestinationPath ../$ZIP -Force"
-          else
-            zip -qr "../$ZIP" .
-          fi
+        shell: pwsh
+        run: Compress-Archive -Path "${env:OUTPUT_PATH}/*" -DestinationPath "${env:PACKAGE_NAME}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ZIP_PREFIX }}-${{ matrix.rid }}
-          path: ${{ env.ZIP_PREFIX }}-${{ matrix.rid }}.zip
+          name: ${{ env.PACKAGE_NAME }}
+          path: ${{ env.PACKAGE_NAME }}.zip
           retention-days: 3
 
   publish:
