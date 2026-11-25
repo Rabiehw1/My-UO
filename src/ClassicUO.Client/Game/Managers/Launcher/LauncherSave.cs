@@ -125,8 +125,8 @@ internal sealed class LauncherSave
             UltimaOnlineDirectory = settings.ResolvedUltimaOnlineDirectory,
             ClientVersion = settings.ClientVersion,
             ShardName = settings.LastServerName,
-            Address = settings.IP,
-            Port = settings.Port,
+            Address = string.IsNullOrWhiteSpace(settings.IP) ? ClientBranding.DEFAULT_SHARD_ADDRESS : settings.IP,
+            Port = string.IsNullOrWhiteSpace(settings.IP) ? ClientBranding.DEFAULT_SHARD_PORT : settings.Port,
             Account = settings.Username,
             EncryptedPassword = settings.Password,
             Reconnect = settings.Reconnect
