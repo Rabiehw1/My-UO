@@ -78,22 +78,27 @@ internal sealed class ShardSpellCaster : IDisposable
     /// <param name="book">Book holding the spell.</param>
     /// <param name="index">Position of the spell in the book.</param>
     public void Cast(ShardSpellBook book, int index)
+        => TryCast(book, index);
+
+    internal bool TryCast(ShardSpellBook book, int index, Action? onCast = null)
     {
         ShardSpell? spell = ShardSpellCatalog.GetSpell(book, index);
 
         if (spell == null || !_world.InGame || IsCasting)
-            return;
+            return false;
 
         uint bookSerial = GetBookSerial(book);
 
         if (bookSerial == 0)
         {
-            GameActions.Print(TazLang.Get("shardspells_nobook", [ShardSpellCatalog.Get(book).Name]), Constants.HUE_WARN);
-            return;
+            if (onCast == null)
+                GameActions.Print(TazLang.Get("shardspells_nobook", [ShardSpellCatalog.Get(book).Name]), Constants.HUE_WARN);
+            return false;
         }
 
-        _pendingGump.Arm(GetButton(book, index), ShardSpellCatalog.Get(book).Name, Time.Ticks);
+        _pendingGump.Arm(GetButton(book, index), ShardSpellCatalog.Get(book).Name, Time.Ticks, onCast);
         GameActions.DoubleClick(_world, bookSerial, ignoreQueue: true);
+        return true;
     }
 
     /// <param name="book">Book to look up.</param>

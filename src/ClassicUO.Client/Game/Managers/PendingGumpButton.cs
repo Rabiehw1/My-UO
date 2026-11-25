@@ -22,6 +22,7 @@ internal sealed class PendingGumpButton
     private int _button = -1;
     private Gump? _gumpBeforeUse;
     private long _deadline;
+    private Action? _onPressed;
     private string _sourceName = "";
 
     /// <param name="world">The game world.</param>
@@ -40,8 +41,9 @@ internal sealed class PendingGumpButton
     /// <param name="button">Gump button to press.</param>
     /// <param name="sourceName">What was used, for the message if no gump opens.</param>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
-    public void Arm(int button, string sourceName, long now)
+    public void Arm(int button, string sourceName, long now, Action? onPressed = null)
     {
+        _onPressed = onPressed;
         PlayerMobile? player = _world.Player;
 
         // Remember the gump showing now, so only a newly opened one is answered.
@@ -65,7 +67,9 @@ internal sealed class PendingGumpButton
         {
             GameActions.ReplyGump(_world, gump.LocalSerial, gump.ServerSerial, _button);
             gump.Dispose();
+            Action? onPressed = _onPressed;
             Clear();
+            onPressed?.Invoke();
             return;
         }
 
@@ -84,6 +88,7 @@ internal sealed class PendingGumpButton
     public void Clear()
     {
         _button = -1;
+        _onPressed = null;
         _gumpBeforeUse = null;
     }
 }

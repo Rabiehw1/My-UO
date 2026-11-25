@@ -251,7 +251,7 @@ namespace ClassicUO.Game.Managers
                 return false;
 
             // Wait for an active bandage to finish before picking the method for the player's current health.
-            if ((profile.HealingAssistantUseGreaterHeal || profile.HealingAssistantUseTamalaHeal || profile.HealingAssistantUseMagicFish)
+            if (HealingAssistantManager.HasNonBandageMethod(profile)
                 && (Time.Ticks < _bandageInProgressUntil
                     || HasUnexpiredBandageBuff(player, BuffIconType.Healing)
                     || HasUnexpiredBandageBuff(player, BuffIconType.Veterinary)))

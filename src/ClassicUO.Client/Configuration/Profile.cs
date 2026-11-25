@@ -35,7 +35,12 @@ namespace ClassicUO.Configuration
         Bandages,
         GreaterHeal,
         TamalaHeal,
-        MagicFish
+        MagicFish,
+        NaturesTouch,
+        HealSpell,
+        GreaterHealSpell,
+        AngelicAura,
+        SongOfLife
     }
 
     public enum NamePlateBackgroundMode
@@ -251,6 +256,18 @@ namespace ClassicUO.Configuration
         public int HealingAssistantMagicFishMissingHPPercentage { get; set => SetProperty(ref field, value); } = 75;
         public uint HealingAssistantMagicFishSerial { get; set => SetProperty(ref field, value); }
         public int HealingAssistantFishCooldownMs { get; set => SetProperty(ref field, value); } = HealingAssistantManager.MinimumCooldownMs;
+
+        public int HealingAssistantSpellCooldownMs { get; set => SetProperty(ref field, value); } = 3000;
+        public bool HealingAssistantUseNaturesTouch { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantNaturesTouchMissingHPPercentage { get; set => SetProperty(ref field, value); } = 80;
+        public bool HealingAssistantUseHealSpell { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantHealSpellMissingHPPercentage { get; set => SetProperty(ref field, value); } = 83;
+        public bool HealingAssistantUseGreaterHealSpell { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantGreaterHealSpellMissingHPPercentage { get; set => SetProperty(ref field, value); } = 86;
+        public bool HealingAssistantUseAngelicAura { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantAngelicAuraMissingHPPercentage { get; set => SetProperty(ref field, value); } = 89;
+        public bool HealingAssistantUseSongOfLife { get; set => SetProperty(ref field, value); }
+        public int HealingAssistantSongOfLifeMissingHPPercentage { get; set => SetProperty(ref field, value); } = 92;
 
         // Bandage settings
         public bool EnableBandageAgent { get; set => SetProperty(ref field, value); } = false;

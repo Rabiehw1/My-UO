@@ -22,12 +22,17 @@ internal static class HealingAssistantTabContent
         [
             new(TazLang.Get("healingassistant_bandages", "Bandages"), TazLang.Get("healingassistant_use_bandages", "Use bandages"),
                 value => profile.EnableBandageAgent = value),
-            new(TazLang.Get("healingassistant_greater", "Greater Heal"), TazLang.Get("healingassistant_use_greater", "Use Greater Heal potions"),
+            new(TazLang.Get("healingassistant_greater_potion_name", "Greater Heal potion"), TazLang.Get("healingassistant_use_greater", "Use Greater Heal potions"),
                 value => profile.HealingAssistantUseGreaterHeal = value),
             new(TazLang.Get("healingassistant_tamala", "Tamala Heal"), TazLang.Get("healingassistant_use_tamala", "Use Tamala Heal potions"),
                 value => profile.HealingAssistantUseTamalaHeal = value),
             new(TazLang.Get("healingassistant_fish", "Magic fish"), TazLang.Get("healingassistant_use_fish", "Use magic healing fish"),
-                value => profile.HealingAssistantUseMagicFish = value)
+                value => profile.HealingAssistantUseMagicFish = value),
+            new("Nature's Touch", "Nature's Touch", value => profile.HealingAssistantUseNaturesTouch = value),
+            new("Heal", "Heal", value => profile.HealingAssistantUseHealSpell = value),
+            new("Greater Heal (spell)", "Greater Heal", value => profile.HealingAssistantUseGreaterHealSpell = value),
+            new("Angelic Aura", "Angelic Aura", value => profile.HealingAssistantUseAngelicAura = value),
+            new("Song of Life", "Song of Life", value => profile.HealingAssistantUseSongOfLife = value)
         ];
 
         var root = new VerticalStackPanel { Spacing = 8 };
@@ -75,6 +80,17 @@ internal static class HealingAssistantTabContent
             MyraInputBox.NumberWithLabel(TazLang.Get("healingassistant_fish_cooldown", "Fish cooldown (ms)"),
                 profile.HealingAssistantFishCooldownMs, HealingAssistantManager.MinimumCooldownMs, int.MaxValue,
                 value => profile.HealingAssistantFishCooldownMs = value)));
+
+        root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = "Healing spells" },
+            new MyraLabel("Set your Earth Book, Holy Book, and Book of Songs in the Spell Books tab to use their spells.", MyraLabel.TextStyle.P),
+            BuildThresholdRow(HealingMethod.NaturesTouch),
+            BuildThresholdRow(HealingMethod.HealSpell),
+            BuildThresholdRow(HealingMethod.GreaterHealSpell),
+            BuildThresholdRow(HealingMethod.AngelicAura),
+            BuildThresholdRow(HealingMethod.SongOfLife),
+            MyraInputBox.NumberWithLabel("Shared spell cooldown (ms)",
+                profile.HealingAssistantSpellCooldownMs, HealingAssistantManager.MinimumSpellCooldownMs, int.MaxValue,
+                value => profile.HealingAssistantSpellCooldownMs = value)));
 
         firstMethod.ListView.SelectedIndexChanged += (_, _) =>
         {

@@ -250,6 +250,38 @@ public class HealingAssistantManagerTests
         Assert.False(manager.TryHeal(profile, 25, 100, 0, _ => throw new System.InvalidOperationException()));
     }
 
+    [Theory]
+    [InlineData(20, HealingMethod.NaturesTouch)]
+    [InlineData(17, HealingMethod.HealSpell)]
+    [InlineData(14, HealingMethod.GreaterHealSpell)]
+    [InlineData(11, HealingMethod.AngelicAura)]
+    [InlineData(8, HealingMethod.SongOfLife)]
+    public void SpellRangesPickOnlyTheMatchingSpell(int hits, HealingMethod expected)
+    {
+        var manager = new HealingAssistantManager();
+        var profile = CreateProfile();
+        profile.HealingAssistantUseNaturesTouch = true;
+        profile.HealingAssistantUseHealSpell = true;
+        profile.HealingAssistantUseGreaterHealSpell = true;
+        profile.HealingAssistantUseAngelicAura = true;
+        profile.HealingAssistantUseSongOfLife = true;
+        var casts = new List<HealingMethod>();
+
+        bool TryHeal(int hp, long now) => manager.TryHeal(profile, hp, 100, now,
+            _ => throw new System.InvalidOperationException("The spell range must not use an item."),
+            tryCast: method =>
+            {
+                casts.Add(method);
+                return true;
+            });
+
+        Assert.True(TryHeal(hits, 0));
+        Assert.Equal(expected, Assert.Single(casts));
+        Assert.False(TryHeal(8, profile.HealingAssistantSpellCooldownMs - 1));
+        Assert.True(TryHeal(8, profile.HealingAssistantSpellCooldownMs));
+        Assert.Equal(HealingMethod.SongOfLife, casts[1]);
+    }
+
     private static Profile CreateProfile() => new()
     {
         HealingAssistantUseGreaterHeal = true,
