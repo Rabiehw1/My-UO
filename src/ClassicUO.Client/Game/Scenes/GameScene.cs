@@ -6,6 +6,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.Managers.Support;
 using ClassicUO.Game.Managers.EnhancedMap;
 using ClassicUO.Game.Managers.Hotkeys;
@@ -423,6 +424,7 @@ namespace ClassicUO.Game.Scenes
             LegionScripting.LegionScripting.Unload();
             BandageManager.Instance.Dispose();
             SupportAgentManager.Instance.Dispose();
+            ShardSpellCaster.Instance.Dispose();
             DressAgentManager.Instance.Unload();
 
             ProfileManager.CurrentProfile?.GameWindowPosition = new Point(
@@ -1163,6 +1165,7 @@ namespace ClassicUO.Game.Scenes
             ScavengerManager.Instance.Update();
             BandageManager.Instance.Update();
             SupportAgentManager.Instance.Update();
+            ShardSpellCaster.Instance.Update();
             EnhancedMapManager.Instance.Update();
             GridHighlightData.ProcessQueue(_world);
             Profiler.ExitContext("Actions");

@@ -221,6 +221,7 @@ namespace ClassicUO.Game.UI.Gumps
             moreMenu.ContextMenu = new ContextMenuControl(this);
             moreMenu.MouseUp += (s, e) => { moreMenu.ContextMenu?.Show(); };
             //moreMenu.ContextMenu.Add(new ContextMenuItemEntry("TazUO Chat", () => { MyraWindows.TazUOChatWindow.Show(); }));
+            moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_spellbooks"), MyraWindows.ShardSpellBooksWindow.Show));
             moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_commandsentry"), () =>
             {
                 UIManager.Add(new CommandsGump(world));

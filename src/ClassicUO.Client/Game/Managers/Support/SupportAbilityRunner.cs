@@ -19,9 +19,6 @@ internal sealed class SupportAbilityRunner
 {
     #region Private members
 
-    /// <summary>How long to wait for the gump an item opens before giving up on pressing its button.</summary>
-    private const int GUMP_WAIT_MS = 3000;
-
     /// <summary>Extra time, beyond the cast time, for a spell's target cursor to arrive.</summary>
     private const int TARGET_CURSOR_GRACE_MS = 2000;
 
@@ -29,18 +26,18 @@ internal sealed class SupportAbilityRunner
 
     private readonly World _world;
     private readonly Dictionary<string, long> _lastUsed = new();
-
-    private int _pendingGumpButton = -1;
-    private string _pendingItemName = "";
-    private Gump? _gumpBeforeUse;
-    private long _gumpDeadline;
+    private readonly PendingGumpButton _pendingGump;
 
     #endregion
 
     #region Ctor
 
     /// <param name="world">The game world.</param>
-    public SupportAbilityRunner(World world) => _world = world;
+    public SupportAbilityRunner(World world)
+    {
+        _world = world;
+        _pendingGump = new PendingGumpButton(world);
+    }
 
     #endregion
 
@@ -103,36 +100,13 @@ internal sealed class SupportAbilityRunner
 
     /// <summary>Presses the pending gump button once the item's gump appears. Call every frame.</summary>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
-    public void Update(long now)
-    {
-        if (_pendingGumpButton < 0)
-            return;
-
-        PlayerMobile? player = _world.Player;
-        Gump? gump = player == null ? null : UIManager.GetGumpServer(player.LastGumpID);
-
-        // A different gump instance than before the use is the one the item just opened.
-        if (gump is { IsDisposed: false } && !ReferenceEquals(gump, _gumpBeforeUse))
-        {
-            GameActions.ReplyGump(_world, gump.LocalSerial, gump.ServerSerial, _pendingGumpButton);
-            gump.Dispose();
-            ClearPendingGump();
-            return;
-        }
-
-        if (now > _gumpDeadline)
-        {
-            Log.Warn($"Support agent: no gump opened after using '{_pendingItemName}'; button not pressed.");
-            GameActions.Print(TazLang.Get("supportagent_nogump", [_pendingItemName]), Constants.HUE_WARN);
-            ClearPendingGump();
-        }
-    }
+    public void Update(long now) => _pendingGump.Update(now);
 
     /// <summary>Forgets cooldowns and any pending gump, e.g. when the agent is turned off.</summary>
     public void Reset()
     {
         _lastUsed.Clear();
-        ClearPendingGump();
+        _pendingGump.Clear();
     }
 
     #endregion
@@ -164,10 +138,7 @@ internal sealed class SupportAbilityRunner
         if (player == null || ability.ItemSerial == 0)
             return false;
 
-        _gumpBeforeUse = UIManager.GetGumpServer(player.LastGumpID);
-        _pendingGumpButton = ability.GumpButton;
-        _gumpDeadline = now + GUMP_WAIT_MS;
-        _pendingItemName = ability.Name;
+        _pendingGump.Arm(ability.GumpButton, ability.Name, now);
 
         GameActions.DoubleClick(_world, ability.ItemSerial, ignoreQueue: true);
         return true;
@@ -194,11 +165,6 @@ internal sealed class SupportAbilityRunner
     private static ushort ProfileBandageGraphic() =>
         ProfileManager.CurrentProfile?.BandageAgentGraphic ?? DEFAULT_BANDAGE_GRAPHIC;
 
-    private void ClearPendingGump()
-    {
-        _pendingGumpButton = -1;
-        _gumpBeforeUse = null;
-    }
 
     #endregion
 }

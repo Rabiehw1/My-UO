@@ -1352,6 +1352,11 @@ namespace ClassicUO.Configuration
 
                                     break;
 
+                                case GumpType.ShardSpellButton:
+                                    gump = new ShardSpellButtonGump(world);
+
+                                    break;
+
                                 case GumpType.SkillButton:
                                     gump = new SkillButtonGump(world);
 
@@ -1505,6 +1510,11 @@ namespace ClassicUO.Configuration
                                 {
                                     case GumpType.SpellButton:
                                         gump = new UseSpellButtonGump(world);
+
+                                        break;
+
+                                    case GumpType.ShardSpellButton:
+                                        gump = new ShardSpellButtonGump(world);
 
                                         break;
 
