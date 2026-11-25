@@ -456,6 +456,9 @@ internal sealed class DesktopAgentsWindow
         if (!SDL_GetWindowSize(_window, out int width, out int height) || width <= 0 || height <= 0)
             return;
 
+        if (_content.Content is HealingAssistantTabContent.PlannerView healingPlanner)
+            healingPlanner.RefreshStatus();
+
         if (_content.Content is MyraTabControl scriptsTabs)
         {
             if (scriptsTabs.SelectedContent is ScriptExecutorTab executor)

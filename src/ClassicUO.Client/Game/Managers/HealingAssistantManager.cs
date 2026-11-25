@@ -183,7 +183,19 @@ internal sealed class HealingAssistantManager
         bool IsReady(long? lastUsed, int delay) => lastUsed == null || now - lastUsed.Value >= Math.Max(MinimumCooldownMs, delay);
     }
 
-    private static HealingMethod? GetMethodForHealth(Profile profile, int hits, int maxHits)
+    internal long GetCooldownRemaining(Profile profile, HealingMethod method, long now)
+    {
+        var (lastUsed, delay) = method switch
+        {
+            HealingMethod.Bandages => (null, 0),
+            HealingMethod.MagicFish => (_lastFishUse, Math.Max(MinimumCooldownMs, profile.HealingAssistantFishCooldownMs)),
+            HealingMethod.GreaterHeal or HealingMethod.TamalaHeal => (_lastPotionUse, Math.Max(MinimumCooldownMs, profile.HealingAssistantPotionCooldownMs)),
+            _ => (_lastSpellUse, Math.Max(MinimumSpellCooldownMs, profile.HealingAssistantSpellCooldownMs))
+        };
+        return lastUsed.HasValue ? Math.Max(0, delay - (now - lastUsed.Value)) : 0;
+    }
+
+    internal static HealingMethod? GetMethodForHealth(Profile profile, int hits, int maxHits)
     {
         // The greatest missing-HP cutoff reached owns this interval, even if its item is on cooldown.
         HealingMethod? selected = null;

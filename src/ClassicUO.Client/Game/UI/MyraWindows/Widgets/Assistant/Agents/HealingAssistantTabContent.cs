@@ -9,7 +9,7 @@ using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
-internal static class HealingAssistantTabContent
+internal static partial class HealingAssistantTabContent
 {
     private sealed record MethodSetting(string Name, string ToggleLabel, Action<bool> SetEnabled);
 
@@ -29,12 +29,15 @@ internal static class HealingAssistantTabContent
                 value => profile.HealingAssistantUseTamalaHeal = value),
             new(TazLang.Get("healingassistant_fish", "Magic fish"), TazLang.Get("healingassistant_use_fish", "Use magic healing fish"),
                 value => profile.HealingAssistantUseMagicFish = value),
-            new("Nature's Touch", "Nature's Touch", value => profile.HealingAssistantUseNaturesTouch = value),
-            new("Heal", "Heal", value => profile.HealingAssistantUseHealSpell = value),
-            new("Greater Heal (spell)", "Greater Heal", value => profile.HealingAssistantUseGreaterHealSpell = value),
-            new("Angelic Aura", "Angelic Aura", value => profile.HealingAssistantUseAngelicAura = value),
-            new("Song of Life", "Song of Life", value => profile.HealingAssistantUseSongOfLife = value)
+            new(TazLang.Get("healingassistant_natures_touch"), TazLang.Get("healingassistant_natures_touch"), value => profile.HealingAssistantUseNaturesTouch = value),
+            new(TazLang.Get("healingassistant_heal_spell"), TazLang.Get("healingassistant_heal_spell"), value => profile.HealingAssistantUseHealSpell = value),
+            new(TazLang.Get("healingassistant_greater_spell"), TazLang.Get("healingassistant_greater_spell"), value => profile.HealingAssistantUseGreaterHealSpell = value),
+            new(TazLang.Get("healingassistant_angelic_aura"), TazLang.Get("healingassistant_angelic_aura"), value => profile.HealingAssistantUseAngelicAura = value),
+            new(TazLang.Get("healingassistant_song_of_life"), TazLang.Get("healingassistant_song_of_life"), value => profile.HealingAssistantUseSongOfLife = value)
         ];
+
+        if (interaction.IsDesktop)
+            return BuildPlanner(interaction, profile, methods, AllowedRange);
 
         var root = new VerticalStackPanel { Spacing = 8 };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
@@ -114,9 +117,6 @@ internal static class HealingAssistantTabContent
 
         Widget SerialRows(params DesktopAssistantForm.Field[] fields)
         {
-            if (interaction.IsDesktop)
-                return DesktopAssistantForm.Fields(fields);
-
             var rows = new VerticalStackPanel { Spacing = 4 };
             foreach (var field in fields)
             {
@@ -253,7 +253,7 @@ internal static class HealingAssistantTabContent
         };
         box.LostFocus = () => box.Text = FormatSerial();
 
-        var target = new MyraButton(TazLang.Get("healingassistant_select_serial", "Select item"), () =>
+        void Target()
         {
             GameActions.Print(TazLang.Get("healingassistant_target_stack", "Select the potion or fish stack to use."));
             interaction.SelectTarget(target =>
@@ -264,7 +264,9 @@ internal static class HealingAssistantTabContent
                     box.Text = FormatSerial();
                 }
             });
-        });
+        }
+        string caption = TazLang.Get("healingassistant_select_serial", "Select item");
+        var target = interaction.IsDesktop ? DesktopAssistantForm.Button(caption, Target) : new MyraButton(caption, Target);
         return new DesktopAssistantForm.Field(label, box, target);
 
         string FormatSerial() => serial == 0 ? unset : $"0x{serial:X8}";

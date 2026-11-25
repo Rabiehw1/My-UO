@@ -220,6 +220,9 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         internal bool IsBandaging => Time.Ticks < _bandageInProgressUntil || IsBandagingBuffActive;
 
+        internal long GetHealingCooldownRemaining(Profile profile, HealingMethod method, long now) =>
+            _healing.GetCooldownRemaining(profile, method, now);
+
         public void Update()
         {
             if (Support.SupportAgentManager.Instance.IsUsingAbility)
