@@ -6,6 +6,8 @@ using ClassicUO.Utility;
 using ClassicUO.Utility.Logging;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.IO;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -187,14 +189,25 @@ namespace ClassicUO.Game.Managers
             if (!_loaded)
                 return null;
 
-            if (ProfileManager.CurrentProfile?.ScavengerSharedItemListId is Guid listId)
-                return ItemListLibrary.MatchRule(listId, i, ScavengerEntries,
-                    static rule => (rule.Graphic, rule.Hue), static (rule, item) => rule.Match(item),
-                    static item => new ScavengerEntry { Graphic = item.Graphic, Hue = item.Hue, Name = item.Name });
+            var list = ItemListLibrary.Resolve(ProfileManager.CurrentProfile?.ScavengerSharedItemListId);
+            if (list == null)
+                return null;
 
-            foreach (ScavengerEntry entry in ScavengerEntries)
-                if (entry.Match(i))
-                    return entry;
+            foreach (SharedItem item in list.Items)
+            {
+                if (item == null || (item.Graphic != ushort.MaxValue && item.Graphic != i.Graphic)
+                    || (item.Hue != ushort.MaxValue && item.Hue != i.Hue))
+                    continue;
+
+                var rule = new ScavengerEntry
+                {
+                    Graphic = item.Graphic == ushort.MaxValue ? -1 : item.Graphic, Hue = item.Hue,
+                    Name = item.Name, RegexSearch = item.RegexSearch, MaxAmount = item.MaxAmount,
+                    DestinationContainer = item.DestinationContainer, Priority = (ScavengerPriority)item.Priority
+                };
+                if (rule.Match(i))
+                    return rule;
+            }
 
             return null;
         }
@@ -377,7 +390,7 @@ namespace ClassicUO.Game.Managers
 
             Item moveItem = _world.Items.Get(item);
 
-            if (moveItem == null)
+            if (moveItem == null || !moveItem.OnGround)
                 return;
 
             if (moveItem.Distance > ProfileManager.CurrentProfile.AutoOpenCorpseRange)
@@ -386,14 +399,11 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (ProfileManager.CurrentProfile.ScavengerSharedItemListId != null)
+            entry = IsOnLootList(moveItem);
+            if (entry == null)
             {
-                entry = IsOnLootList(moveItem);
-                if (entry == null)
-                {
-                    _recentlyLooted.Remove(item);
-                    return;
-                }
+                _recentlyLooted.Remove(item);
+                return;
             }
 
             uint destinationSerial = 0;
@@ -428,7 +438,23 @@ namespace ClassicUO.Game.Managers
 
                 ushort amount = GetAmountToMove(moveItem, entry, destinationSerial);
                 if (amount > 0)
-                    ObjectActionQueue.Instance.Enqueue(new MoveRequest(moveItem.Serial, destinationSerial, amount).ToObjectActionQueueItem(), lootPriority);
+                    ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
+                    {
+                        if (_world.Items.Get(item) is not { OnGround: true, IsDestroyed: false } current
+                            || current.Distance > ProfileManager.CurrentProfile.AutoOpenCorpseRange
+                            || IsOnLootList(current) is not { } currentRule)
+                            return;
+                        uint destination = currentRule.DestinationContainer != 0
+                            && _world.Items.Get(currentRule.DestinationContainer) != null
+                            ? currentRule.DestinationContainer : destinationSerial;
+                        ushort currentAmount = GetAmountToMove(current, currentRule, destination);
+                        if (currentAmount > 0)
+                            new MoveRequest(item, destination, currentAmount).Execute();
+                    })
+                    {
+                        Serial = item,
+                        TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+                    }, lootPriority);
             }
             else
                 GameActions.Print("Could not find a container to loot into. Try setting a grab bag.");
@@ -474,6 +500,21 @@ namespace ClassicUO.Game.Managers
                 _currentList = null;
                 EnsureAtLeastOneList();
                 _loaded = true;
+                Profile profile = ProfileManager.CurrentProfile;
+                if (!profile.ScavengerListsMigrated)
+                {
+                    string owner = profile.CharacterName ?? "Character";
+                    foreach (var legacy in Lists)
+                    {
+                        bool active = ReferenceEquals(legacy, CurrentList);
+                        Guid? linked = active ? profile.ScavengerSharedItemListId : null;
+                        Guid? migrated = GatheringListRules.Migrate(linked, $"{owner} Scavenger - {legacy.Name}",
+                            legacy.Entries.Select(GatheringListRules.From));
+                        if (active)
+                            profile.ScavengerSharedItemListId = migrated;
+                    }
+                    profile.ScavengerListsMigrated = true;
+                }
             }
             catch
             {
@@ -535,6 +576,40 @@ namespace ClassicUO.Game.Managers
         }
 
         #nullable enable
+        internal static Dictionary<string, List<ScavengerEntry>> GetOtherCharacterConfigs()
+        {
+            string root = string.IsNullOrWhiteSpace(Settings.GlobalSettings.ProfilesPath)
+                ? Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Profiles") : Settings.GlobalSettings.ProfilesPath;
+            var result = new Dictionary<string, List<ScavengerEntry>>();
+            foreach (var (character, path) in Utility.Extensions.GetAllCharacterPaths(root))
+            {
+                if (path == ProfileManager.ProfilePath)
+                    continue;
+
+                var file = Path.Combine(path, ScavengerData.ScavengerFileName);
+                if (!File.Exists(file))
+                    file = Path.Combine(Path.GetDirectoryName(path) ?? path, ScavengerData.ScavengerFileName);
+                if (!File.Exists(file))
+                    continue;
+
+                try
+                {
+                    string json = File.ReadAllText(file);
+                    var entries = json.TrimStart().StartsWith('[')
+                        ? JsonSerializer.Deserialize(json, ScavengerJsonContext.Default.ListScavengerEntry)
+                        : JsonSerializer.Deserialize(json, ScavengerJsonContext.Default.ScavengerData)?.Lists?
+                            .Where(list => list?.Entries != null).SelectMany(list => list.Entries).ToList();
+                    if (entries is { Count: > 0 })
+                        result[character] = entries;
+                }
+                catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+                {
+                    Log.Warn($"Could not read legacy Scavenger rules: {ex.Message}");
+                }
+            }
+            return result;
+        }
+
         public string? GetJsonExport()
         {
             try

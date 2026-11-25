@@ -14,6 +14,27 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 
 internal static class SharedItemListPicker
 {
+    internal static Widget BuildGathering(AgentPageInteraction interaction, Guid? selectedId, Action<Guid?> select,
+        (Guid? Id, Action<Guid?> Select)? ignore = null)
+    {
+        var library = ItemListLibrary.Instance;
+        var layout = new WrapPanel { Orientation = Orientation.Horizontal, HorizontalSpacing = 8, VerticalSpacing = 4 };
+        AddSelector("Main list", selectedId, select);
+        if (ignore is { } exclusion)
+            AddSelector("Ignore list", exclusion.Id, exclusion.Select);
+
+        layout.Widgets.Add(new MyraButton("Manage Lists", interaction.OpenItemLists));
+        return ItemListsTabContent.Section(interaction, "Lists", layout);
+
+        void AddSelector(string label, Guid? id, Action<Guid?> change)
+        {
+            var row = new HorizontalStackPanel { Spacing = 4 };
+            row.Widgets.Add(new MyraLabel(label, MyraLabel.TextStyle.P));
+            row.Widgets.Add(CreateSelector(library, id, "None", interaction.IsDesktop, change).Picker);
+            layout.Widgets.Add(row);
+        }
+    }
+
     public static Widget Build(AgentPageInteraction interaction, string agentName, Guid? selectedId, Action<Guid?> select,
         Func<IEnumerable<SharedItem>> localItems, Func<SharedItem, bool> createLocalRule, Action refreshLocal, Widget? defaults = null,
         (Guid? SelectedId, Action<Guid?> Select)? ignoreList = null, string? includedAction = null)

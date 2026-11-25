@@ -953,6 +953,8 @@ namespace ClassicUO.Configuration
         public bool CounterBarDisableIconScaling { get; set; }
         public bool CounterBarDisableItemScaling { get; set; }
         public bool CounterBarShowHotkeys { get; set; }
+        public bool AutoLootListsMigrated { get; set; }
+        public bool ScavengerListsMigrated { get; set; }
         public bool QueueManualItemMoves { get; set; }
         public bool AutoOpenDoorsIfHidden { get; set; } = true;
         public bool QueueManualItemUses { get; set; }

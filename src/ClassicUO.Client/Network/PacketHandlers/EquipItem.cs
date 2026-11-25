@@ -33,6 +33,7 @@ internal static class EquipItem
         item.Graphic = (ushort)(p.ReadUInt16BE() + p.ReadInt8());
         item.Layer = (Layer)p.ReadUInt8();
         item.Container = p.ReadUInt32BE();
+        ObjectActionQueue.Instance.ConfirmEquip(serial, item.Container, item.Layer);
         item.FixHue(p.ReadUInt16BE());
         item.Amount = 1;
 

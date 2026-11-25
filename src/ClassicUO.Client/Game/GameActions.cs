@@ -893,10 +893,13 @@ internal static class GameActions
         bool skipQueue = false
     )
     {
-        if (world.Player.IsDead || Client.Game.UO.GameCursor.ItemHold.Enabled)
+        if (world.Player.IsDead || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.GameCursor.ItemHold.Dropped)
         {
             return false;
         }
+
+        if (ObjectActionQueue.Instance.TryGetPendingMove(out var pending) && pending.Serial == serial)
+            return false;
 
         Item item = world.Items.Get(serial);
 
@@ -938,7 +941,9 @@ internal static class GameActions
         Client.Game.UO.GameCursor.ItemHold.Set(item, (ushort)amount, offset);
         Client.Game.UO.GameCursor.ItemHold.IsGumpTexture = isGump;
 
-        if (!ProfileManager.CurrentProfile.QueueManualItemMoves || skipQueue)
+        Client.Game.UO.GameCursor.ItemHold.PickupDeferred = ObjectActionQueue.Instance.HasPendingMove
+            || (ProfileManager.CurrentProfile.QueueManualItemMoves && !skipQueue);
+        if (!Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
         {
             Socket.Send_PickUpRequest(item, (ushort)amount);
 
@@ -950,14 +955,14 @@ internal static class GameActions
         ScriptingInfoGump.AddOrUpdateInfo("Last Picked Up Item", $"0x{item.Serial:X}");
         ScriptingInfoGump.AddOrUpdateInfo("Last Object Graphic", $"0x{item.Graphic:X}");
 
-        if (item.OnGround)
+        if (!Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
         {
-            item.RemoveFromTile();
+            if (item.OnGround)
+                item.RemoveFromTile();
+
+            item.TextContainer?.Clear();
+            world.ObjectToRemove = item.Serial;
         }
-
-        item.TextContainer?.Clear();
-
-        world.ObjectToRemove = item.Serial;
 
         return true;
     }
@@ -980,7 +985,7 @@ internal static class GameActions
                 Client.Game.UO.GameCursor.ItemHold.Dropped = true;
             }
 
-            if (ProfileManager.CurrentProfile.QueueManualItemMoves && !force)
+            if (Client.Game.UO.GameCursor.ItemHold.PickupDeferred && !force)
             {
                 Client.Game.UO.GameCursor.ItemHold.Clear();
                 ObjectActionQueue.Instance.Enqueue(new MoveRequest(serial, container, (ushort)amount, x, y, z).ToObjectActionQueueItem(), ActionPriority.ManualMoveItem);
@@ -1024,11 +1029,19 @@ internal static class GameActions
             // Record action for script recording
             ScriptRecorder.Instance.RecordEquipItem(Client.Game.UO.GameCursor.ItemHold.Serial, (Layer)Client.Game.UO.GameCursor.ItemHold.ItemData.Layer);
 
+            if (Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
+            {
+                var hold = Client.Game.UO.GameCursor.ItemHold;
+                var move = new MoveRequest(hold.Serial, container, hold.Amount, layer: (Layer)hold.ItemData.Layer, moveType: MoveType.Equip);
+                hold.Clear();
+                ObjectActionQueue.Instance.Enqueue(move.ToObjectActionQueueItem(), ActionPriority.ManualMoveItem);
+                return;
+            }
+
             Socket.Send_EquipRequest(Client.Game.UO.GameCursor.ItemHold.Serial, (Layer)Client.Game.UO.GameCursor.ItemHold.ItemData.Layer, container);
 
             Client.Game.UO.GameCursor.ItemHold.Enabled = false;
             Client.Game.UO.GameCursor.ItemHold.Dropped = true;
-            Client.Game.UO.GameCursor.ItemHold.Clear();
 
             // Even when manual queueing is disabled, keep the action queue timer in sync so forced-queue actions remain properly spaced.
             GlobalActionCooldown.BeginCooldown();
@@ -1053,7 +1066,7 @@ internal static class GameActions
         // the queued unequip's pickup fail. Drop it into the backpack to free the cursor; the queued
         // equip then picks it back up. With manual moves on the pickup is deferred to the queue, so
         // there is no server cursor to clear.
-        if (ProfileManager.CurrentProfile.QueueManualItemMoves)
+        if (Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
             Client.Game.UO.GameCursor.ItemHold.Clear();
         else
             DropItem(heldSerial, 0xFFFF, 0xFFFF, 0, backpack.Serial);
@@ -1061,7 +1074,8 @@ internal static class GameActions
         // The KR equip macro equips items the server already holds in a container, so it can only run
         // once the held item has been dropped into the backpack above. It replaces whatever occupies
         // the target layer server-side, so no separate unequip request is needed.
-        if (ProfileManager.ServerSettings?.UseKrEquipSwap == true)
+        if (ProfileManager.ServerSettings?.UseKrEquipSwap == true && !ObjectActionQueue.Instance.HasPendingMove
+            && !Client.Game.UO.GameCursor.ItemHold.Dropped)
         {
             Socket.Send_EquipMacroKR(stackalloc uint[] { heldSerial });
             return;

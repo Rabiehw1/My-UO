@@ -45,9 +45,9 @@ internal static class DenyMoveItem
         Item firstItem = world.Items.Get(Client.Game.UO.GameCursor.ItemHold.Serial);
 
         bool itemHoldDenial =
-            Client.Game.UO.GameCursor.ItemHold.Enabled
+            !Client.Game.UO.GameCursor.ItemHold.PickupDeferred && (Client.Game.UO.GameCursor.ItemHold.Enabled
             || (Client.Game.UO.GameCursor.ItemHold.Dropped
-                && (firstItem == null || !firstItem.AllowedToDraw));
+                && (firstItem == null || !firstItem.AllowedToDraw)));
 
         uint deniedSerial = 0;
         bool hasPendingMove = false;
@@ -161,7 +161,8 @@ internal static class DenyMoveItem
         else if (hasPendingMove)
         {
             pendingMove.Restore(world);
-            Client.Game.UO.GameCursor.ItemHold.Clear();
+            if (!Client.Game.UO.GameCursor.ItemHold.PickupDeferred || Client.Game.UO.GameCursor.ItemHold.Serial == deniedSerial)
+                Client.Game.UO.GameCursor.ItemHold.Clear();
         }
         else
             Log.Warn("There was a problem with ItemHold object. It was cleared before :|");

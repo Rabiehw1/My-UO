@@ -14,6 +14,11 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     public int GetCurrentQueuedCount => _queue.Count;
 
     private ItemMoveSource? _pendingMove;
+    private MoveRequest _pendingRequest;
+    private long _moveStarted;
+    private bool _reportedTimeout;
+
+    public bool HasPendingMove => _pendingMove.HasValue;
 
     private ObjectActionQueue() { }
 
@@ -75,14 +80,38 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
             _pendingMove = null;
     }
 
-    internal void OnMoveStarted(MoveRequest moveRequest)
+    internal bool TryStartMove(MoveRequest moveRequest)
     {
-        Item item = World.Instance.Items.Get(moveRequest.Serial);
-        _pendingMove = item != null ? ItemMoveSource.Capture(item) : null;
+        var hold = Client.Game.UO.GameCursor.ItemHold;
+        if (HasPendingMove || hold.Enabled || hold.Dropped
+            || World.Instance.Items.Get(moveRequest.Serial) is not { IsDestroyed: false } item)
+            return false;
+
+        _pendingMove = ItemMoveSource.Capture(item);
+        _pendingRequest = moveRequest;
+        _moveStarted = Environment.TickCount64;
+        _reportedTimeout = false;
+        return true;
+    }
+
+    internal void ConfirmEquip(uint serial, uint destination, Layer layer)
+    {
+        if (HasPendingMove && _pendingRequest.Layer == layer && _pendingRequest.Destination == destination)
+            ClearPendingMove(serial);
+
+        var hold = Client.Game.UO.GameCursor.ItemHold;
+        if (hold.Dropped && hold.Serial == serial)
+            hold.Clear();
     }
 
     public void Update()
     {
+        if (HasPendingMove && !_reportedTimeout && Environment.TickCount64 - _moveStarted >= 3000)
+        {
+            _reportedTimeout = true;
+            GameActions.Print("Item moves paused while waiting for the shard to confirm the last move.");
+        }
+
         if (IsEmpty || GlobalActionCooldown.IsOnCooldown) return; //Quick bool return if empty to avoid checking the queue when unnecessary
 
         while (TryDequeue(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence))
@@ -93,7 +122,7 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
                 continue;
             }
 
-            if (priority >= ActionPriority.UnequipItem && Client.Game.UO.GameCursor.ItemHold.Enabled)
+            if (priority >= ActionPriority.UnequipItem && (HasPendingMove || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.GameCursor.ItemHold.Dropped))
             {
                 Enqueue(item,  priority, sequence); //Return to queue to retry again when not holding an item
                 return;
@@ -143,15 +172,6 @@ public class ObjectActionQueueItem(Action action, Action<ObjectActionQueueItem> 
 
     public void SetCanceled(bool canceled = true) => Canceled = canceled;
 
-    private static ObjectActionQueueItem FromMoveRequest(MoveRequest moveRequest) =>
-        new(() =>
-        {
-            moveRequest.Execute();
-        })
-        {
-            Serial = moveRequest.Serial
-        };
-
     public static ObjectActionQueueItem QuickLoot(uint serial) => World.Instance.Items.TryGetValue(serial, out Item item) ? QuickLoot(item) : null;
 
     public static ObjectActionQueueItem QuickLoot(Item item)
@@ -160,7 +180,7 @@ public class ObjectActionQueueItem(Action action, Action<ObjectActionQueueItem> 
         MoveRequest? moveRequest = item.ToLootBag();
 
         if(moveRequest.HasValue)
-            return FromMoveRequest(moveRequest.Value);
+            return moveRequest.Value.ToObjectActionQueueItem();
 
         return null;
     }
@@ -170,7 +190,7 @@ public class ObjectActionQueueItem(Action action, Action<ObjectActionQueueItem> 
         MoveRequest? moveRequest = MoveRequest.EquipItem(serial, layer);
 
         if(moveRequest.HasValue)
-            return FromMoveRequest(moveRequest.Value);
+            return moveRequest.Value.ToObjectActionQueueItem();
 
         return null;
     }

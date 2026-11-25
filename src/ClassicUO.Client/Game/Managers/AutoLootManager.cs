@@ -5,6 +5,7 @@ using ClassicUO.Utility;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -135,11 +136,20 @@ namespace ClassicUO.Game.Managers
                 priority = entry.Priority;
 
             uint serial = item.Serial;
+            uint originalContainer = item.Container;
 
             ObjectActionQueue.Instance.Enqueue(
                 new ObjectActionQueueItem(
-                    () => MoveLootItem(serial, entry, automatic),
-                    _ => OnLootActionComplete(serial)),
+                    () =>
+                    {
+                        if (_world.Items.Get(serial) is { IsDestroyed: false } current && current.Container == originalContainer)
+                            MoveLootItem(serial, entry, automatic);
+                    },
+                    _ => OnLootActionComplete(serial))
+                {
+                    Serial = serial,
+                    TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+                },
                 ToActionPriority(priority));
 
             _currentLootTotalCount++;
@@ -193,14 +203,25 @@ namespace ClassicUO.Game.Managers
         {
             if (!_loaded) return null;
 
-            if (ProfileManager.CurrentProfile?.AutoLootSharedItemListId is Guid listId)
-                return ItemListLibrary.MatchRule(listId, i, AutoLootEntries,
-                    static rule => (rule.Graphic, rule.Hue), static (rule, item) => rule.Match(item),
-                    static item => new AutoLootConfigEntry { Graphic = item.Graphic, Hue = item.Hue, Name = item.Name });
+            var list = ItemListLibrary.Resolve(ProfileManager.CurrentProfile?.AutoLootSharedItemListId);
+            if (list == null)
+                return null;
 
-            foreach (AutoLootConfigEntry entry in AutoLootEntries)
-                if (entry.Match(i))
-                    return entry;
+            foreach (SharedItem item in list.Items)
+            {
+                if (item == null || (item.Graphic != ushort.MaxValue && item.Graphic != i.Graphic)
+                    || (item.Hue != ushort.MaxValue && item.Hue != i.Hue))
+                    continue;
+
+                var rule = new AutoLootConfigEntry
+                {
+                    Graphic = item.Graphic == ushort.MaxValue ? -1 : item.Graphic, Hue = item.Hue,
+                    Name = item.Name, RegexSearch = item.RegexSearch, MaxAmount = item.MaxAmount,
+                    DestinationContainer = item.DestinationContainer, Priority = (AutoLootPriority)item.Priority
+                };
+                if (rule.Match(i))
+                    return rule;
+            }
 
             return null;
         }
@@ -218,11 +239,20 @@ namespace ClassicUO.Game.Managers
 
             var item = new AutoLootConfigEntry() { Graphic = graphic, Hue = hue, Name = name };
 
-            foreach (AutoLootConfigEntry entry in AutoLootEntries)
-                if (entry.Equals(item))
-                    return entry;
+            if (graphic == 0)
+                return null;
 
-            AutoLootEntries.Add(item);
+            Profile profile = ProfileManager.CurrentProfile;
+            var library = ItemListLibrary.Instance;
+            var list = ItemListLibrary.Resolve(profile.AutoLootSharedItemListId);
+            if (list == null)
+            {
+                list = library.Create("Auto Loot");
+                profile.AutoLootSharedItemListId = list.Id;
+            }
+
+            if (list.AddItems([GatheringListRules.From(item)], preserveRules: true) > 0)
+                library.SaveChanges();
             InvalidateScannedCorpses();
 
             return item;
@@ -581,7 +611,7 @@ namespace ClassicUO.Game.Managers
                 }
             }
 
-            if (entry != null && ProfileManager.CurrentProfile?.AutoLootSharedItemListId != null)
+            if (automatic && entry != null)
             {
                 entry = IsOnLootList(moveItem);
                 if (entry == null)
@@ -703,6 +733,21 @@ namespace ClassicUO.Game.Managers
                 _currentList = null;
                 EnsureAtLeastOneList();
                 _loaded = true;
+                Profile profile = ProfileManager.CurrentProfile;
+                if (!profile.AutoLootListsMigrated)
+                {
+                    string owner = profile.CharacterName ?? "Character";
+                    foreach (var legacy in Lists)
+                    {
+                        bool active = ReferenceEquals(legacy, CurrentList);
+                        Guid? linked = active ? profile.AutoLootSharedItemListId : null;
+                        Guid? migrated = GatheringListRules.Migrate(linked, $"{owner} Auto Loot - {legacy.Name}",
+                            legacy.Entries.Select(GatheringListRules.From));
+                        if (active)
+                            profile.AutoLootSharedItemListId = migrated;
+                    }
+                    profile.AutoLootListsMigrated = true;
+                }
             }
             catch
             {

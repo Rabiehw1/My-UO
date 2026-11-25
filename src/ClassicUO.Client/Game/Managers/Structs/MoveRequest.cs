@@ -59,7 +59,8 @@ public readonly struct MoveRequest
 
     public void Execute()
     {
-        ObjectActionQueue.Instance.OnMoveStarted(this);
+        if (!ObjectActionQueue.Instance.TryStartMove(this))
+            return;
 
         AsyncNetClient.Socket.Send_PickUpRequest(Serial, Amount);
 
@@ -102,7 +103,8 @@ public static class MoveRequestExtensions
     public static ObjectActionQueueItem ToObjectActionQueueItem(this MoveRequest moveRequest) =>
         new(moveRequest.Execute)
         {
-            Serial = moveRequest.Serial
+            Serial = moveRequest.Serial,
+            TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
         };
 }
 

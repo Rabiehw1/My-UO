@@ -77,6 +77,26 @@ public class ItemListLibraryTests
     }
 
     [Fact]
+    public void GatheringRulesPreserveOrderedRegexVariantsAndSettings()
+    {
+        var list = new SharedItemList();
+        var broad = new SharedItem(0x0EED, ushort.MaxValue, "Gold");
+        var specific = GatheringListRules.From(new AutoLootManager.AutoLootConfigEntry
+        {
+            Graphic = 0x0EED, Hue = 0, Name = "Gold coins", RegexSearch = "reward",
+            Priority = AutoLootManager.AutoLootPriority.High, MaxAmount = 300,
+            DestinationContainer = 0x40001234
+        });
+
+        Assert.Equal(2, list.AddItems([specific, broad], preserveRules: true));
+        Assert.Equal(0, list.AddItems([specific], preserveRules: true));
+
+        var type = ItemListJsonContext.Default.ListSharedItem;
+        var imported = JsonSerializer.Deserialize(JsonSerializer.Serialize(list.Items, type), type);
+        Assert.Equal(new[] { specific, broad }, imported);
+    }
+
+    [Fact]
     public void AgentSettingsKeepMainAndIgnoreListLinksSeparate()
     {
         var main = new SharedItemList { Name = "Supplies" };

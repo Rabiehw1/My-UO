@@ -10,6 +10,9 @@ internal static class EndDraggingItem
         if (!world.InGame)
             return;
 
+        if (Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
+            return;
+
         Client.Game.UO.GameCursor.ItemHold.Enabled = false;
         Client.Game.UO.GameCursor.ItemHold.Dropped = false;
     }

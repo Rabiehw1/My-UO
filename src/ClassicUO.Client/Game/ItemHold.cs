@@ -53,6 +53,7 @@ namespace ClassicUO.Game
             }
         }
 
+        public bool PickupDeferred { get; set; }
         public bool Dropped { get; set; }
         public bool UpdatedInWorld { get; set; }
         public ref StaticTiles ItemData => ref Client.Game.UO.FileManager.TileData.GetStaticTile(Graphic);
@@ -101,6 +102,7 @@ namespace ClassicUO.Game
             Flags = Flags.None;
             MouseOffset = Point.Zero;
 
+            PickupDeferred = false;
             Dropped = false;
             Enabled = false;
             UpdatedInWorld = false;

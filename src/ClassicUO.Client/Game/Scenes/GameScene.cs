@@ -421,6 +421,7 @@ namespace ClassicUO.Game.Scenes
             SelfHealManager.Unload();
             _autoUnequipActionManager?.Dispose();
             ObjectActionQueue.Instance.Clear();
+            ObjectActionQueue.Instance.ClearPendingMove();
 
             GraphicsReplacement.Save();
             BuySellAgent.Unload();

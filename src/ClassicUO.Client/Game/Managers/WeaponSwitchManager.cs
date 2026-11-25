@@ -133,7 +133,8 @@ internal sealed class WeaponSwitchManager
             return;
         }
 
-        if (_waitingForServerEquip || GlobalActionCooldown.IsOnCooldown || Client.Game.UO.GameCursor.ItemHold.Enabled)
+        if (_waitingForServerEquip || GlobalActionCooldown.IsOnCooldown || ObjectActionQueue.Instance.HasPendingMove
+            || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.GameCursor.ItemHold.Dropped)
             return;
 
         uint extra = IsExtra(right, request.Set) ? right : IsExtra(left, request.Set) ? left : 0;

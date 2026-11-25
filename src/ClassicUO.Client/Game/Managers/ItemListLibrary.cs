@@ -96,20 +96,19 @@ internal sealed class SharedItemList
     public string Name { get; set; } = "";
     public List<SharedItem> Items { get; set; } = [];
 
-    internal int AddItems(IEnumerable<SharedItem> items)
+    internal int AddItems(IEnumerable<SharedItem> items, bool preserveRules = false)
     {
         int added = 0;
         Items ??= [];
         foreach (SharedItem item in items)
         {
             if (item == null || item.Graphic == 0 || Items.Any(existing => existing != null && existing.Graphic == item.Graphic
-                && (existing.Hue == item.Hue || existing.Hue == ushort.MaxValue)))
+                && (preserveRules ? existing.Hue == item.Hue && existing.RegexSearch == item.RegexSearch
+                    : existing.Hue == item.Hue || existing.Hue == ushort.MaxValue)))
                 continue;
 
-            // An any-hue entry covers every specific hue of this graphic.
-            if (item.Hue == ushort.MaxValue)
+            if (!preserveRules && item.Hue == ushort.MaxValue)
                 Items.RemoveAll(existing => existing?.Graphic == item.Graphic);
-
             Items.Add(item);
             added++;
         }
@@ -140,7 +139,65 @@ internal sealed class SharedItemList
     }
 }
 
-internal sealed record SharedItem(ushort Graphic, ushort Hue, string Name);
+internal sealed record SharedItem(ushort Graphic, ushort Hue, string Name)
+{
+    public string RegexSearch { get; init; } = "";
+    public int Priority { get; init; } = 1;
+    public int MaxAmount { get; init; }
+    public uint DestinationContainer { get; init; }
+}
 
+internal static class GatheringListRules
+{
+    internal static SharedItem From(AutoLootManager.AutoLootConfigEntry rule) =>
+        new((ushort)rule.Graphic, rule.Hue, rule.Name)
+        {
+            RegexSearch = rule.RegexSearch, Priority = (int)rule.Priority,
+            MaxAmount = rule.MaxAmount, DestinationContainer = rule.DestinationContainer
+        };
+
+    internal static SharedItem From(ScavengerManager.ScavengerEntry rule) =>
+        new((ushort)rule.Graphic, rule.Hue, rule.Name)
+        {
+            RegexSearch = rule.RegexSearch, Priority = (int)rule.Priority,
+            MaxAmount = rule.MaxAmount, DestinationContainer = rule.DestinationContainer
+        };
+
+    internal static Guid? Migrate(Guid? linked, string name, IEnumerable<SharedItem> oldRules)
+    {
+        var rules = oldRules.Where(item => item.Graphic != 0).ToArray();
+        if (rules.Length == 0)
+            return linked;
+
+        var main = ItemListLibrary.Resolve(linked);
+        if (linked.HasValue && main == null)
+            return linked;
+
+        var items = main == null ? rules : main.Items.SelectMany(item =>
+        {
+            if (item == null)
+                return Array.Empty<SharedItem>();
+            var overrides = rules.Where(rule => rule.Graphic == item.Graphic && rule.Hue == item.Hue).ToArray();
+            return overrides.Length == 0 ? new[] { item } : overrides.Select(rule => rule with { Name = item.Name });
+        }).ToArray();
+
+        if (main != null && main.Items.SequenceEqual(items))
+            return linked;
+
+        var library = ItemListLibrary.Instance;
+        var migrated = library.Lists.FirstOrDefault(list => list.Name == name && list.Items.SequenceEqual(items));
+        if (migrated != null)
+            return migrated.Id;
+
+        // Preserve ordered regex variants and legacy any-graphic entries during migration.
+        var created = new SharedItemList { Name = library.AvailableName(name), Items = items.ToList() };
+        library.Lists.Add(created);
+        library.SaveChanges();
+        return created.Id;
+    }
+}
+
+
+[JsonSerializable(typeof(List<SharedItem>))]
 [JsonSerializable(typeof(ItemListLibrary), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal partial class ItemListJsonContext : JsonSerializerContext;

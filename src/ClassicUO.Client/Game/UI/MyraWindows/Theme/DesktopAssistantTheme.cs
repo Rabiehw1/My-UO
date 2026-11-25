@@ -158,6 +158,19 @@ internal sealed class DesktopAssistantTheme
         _stylesheet.ColorPickerDialogStyle = game.ColorPickerDialogStyle;
     }
 
+    internal static MyraButton ActionButton(string text, Action? click = null) => new(text, click)
+    {
+        Background = GroupFill,
+        OverBackground = Hover,
+        PressedBackground = Selected,
+        DisabledBackground = Disabled,
+        Border = ControlBorder,
+        FocusedBorder = Focus,
+        BorderThickness = new Thickness(1),
+        Padding = new Thickness(7, 3),
+        MinHeight = 24
+    };
+
     internal static MyraButton NavigationButton(string text, bool tab = false) => new(text)
     {
         Background = tab ? TabStrip : Sidebar,
