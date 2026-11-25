@@ -48,6 +48,7 @@ internal static class ShardSpellBooksTabContent
     internal static Widget Build(AgentPageInteraction interaction)
     {
         var root = new VerticalStackPanel { Spacing = 5, Padding = new Thickness(0, 0, 0, 6) };
+        root.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_intro"), MyraLabel.TextStyle.P) { Wrap = true });
         var styleRow = new HorizontalStackPanel { Spacing = 6, HorizontalAlignment = HorizontalAlignment.Right };
         var style = new ComboView { Id = "spell-icon-style", MinWidth = 130 };
         Profile profile = ProfileManager.CurrentProfile;
@@ -78,18 +79,11 @@ internal static class ShardSpellBooksTabContent
         mageryDisclosure.Click += (_, _) => Toggle(setMageryExpanded);
         root.Widgets.Add(magery);
 
-        ShardSpellCaster caster = ShardSpellCaster.Instance;
-        ShardSpellBookInfo firstBook = ShardSpellCatalog.Books.FirstOrDefault(book => caster.GetBookSerial(book.Book) != 0)
-            ?? ShardSpellCatalog.Books[0];
+        // Every book starts closed; the player opens the one they want.
         foreach (ShardSpellBookInfo book in ShardSpellCatalog.Books)
         {
             var (section, disclosure, setExpanded) = BuildBook(book, interaction, previews, profile.UseIllustratedShardSpellIcons);
             disclosure.Click += (_, _) => Toggle(setExpanded);
-            if (book.Book == firstBook.Book)
-            {
-                expandOpenBook = setExpanded;
-                setExpanded(true);
-            }
             root.Widgets.Add(section);
         }
 
