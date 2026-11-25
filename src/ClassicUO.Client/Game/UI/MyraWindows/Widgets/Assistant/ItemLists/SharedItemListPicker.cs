@@ -42,20 +42,19 @@ internal static class SharedItemListPicker
         var root = new VerticalStackPanel { Spacing = 4 };
         var settings = new VerticalStackPanel { Spacing = 4 };
         var row = new HorizontalStackPanel { Spacing = 4 };
-        var actions = new HorizontalStackPanel { Spacing = 4 };
-        var help = new MyraLabel("", MyraLabel.TextStyle.P);
-        var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
+        var actions = DesktopAssistantForm.Actions();
+        var help = new MyraLabel("", MyraLabel.TextStyle.P) { Wrap = true };
+        var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false, Wrap = true };
         var library = ItemListLibrary.Instance;
         var preview = interaction.IsDesktop && includedAction != null ? new VerticalStackPanel { Spacing = 3 } : null;
         Guid? ignoredId = ignoreList?.SelectedId;
         Action? refreshIgnoreChoices = null;
 
         row.Widgets.Add(new MyraLabel(interaction.IsDesktop && ignoreList.HasValue
-            ? TazLang.Get("assistant_desktop_main_list", "Main list") : "Item list", MyraLabel.TextStyle.P));
-        var manage = new MyraButton("Manage Item Lists");
-        manage.Click += (_, _) => interaction.OpenItemLists();
+            ? TazLang.Get("assistant_desktop_main_list", "Main list") : TazLang.Get("shopping_item_list"), MyraLabel.TextStyle.P));
+        var manage = Button("autoloot_manage_lists", interaction.OpenItemLists);
 
-        var copy = new MyraButton("Copy to local rules", () =>
+        var copy = Button("shopping_copy_local", () =>
         {
             if (selectedId is not Guid id || library.Find(id) is not { } list)
                 return;
@@ -63,13 +62,13 @@ internal static class SharedItemListPicker
             int count = (list.Items ?? []).Count(item => item != null && createLocalRule(item));
             if (count > 0)
                 refreshLocal();
-            Report(count > 0 ? $"Added {count} local rules. You can now edit their agent settings." :
-                "Local rules already exist for these items.");
+            Report(count > 0 ? TazLang.Get("shopping_copied_local", [count.ToString()]) :
+                TazLang.Get("shopping_existing_local"));
         });
-        copy.Tooltip = "Creates settings for shared items without changing existing local rules.";
+        copy.Tooltip = TazLang.Get("shopping_copy_local_tooltip");
         actions.Widgets.Add(copy);
 
-        var (picker, refreshMainChoices) = CreateSelector(library, selectedId, "Local entries", interaction.IsDesktop, id =>
+        var (picker, refreshMainChoices) = CreateSelector(library, selectedId, TazLang.Get("shopping_local_entries"), interaction.IsDesktop, id =>
         {
             selectedId = id;
             select(id);
@@ -77,12 +76,12 @@ internal static class SharedItemListPicker
             UpdateAppearance();
         });
 
-        actions.Widgets.Add(new MyraButton("Save local items as a list", () =>
+        actions.Widgets.Add(Button("shopping_save_local", () =>
         {
             SharedItem[] items = localItems().Where(item => item.Graphic != 0).ToArray();
             if (items.Length == 0)
             {
-                Report("There are no local items with a graphic ID to save.");
+                Report(TazLang.Get("shopping_no_local_items"));
                 return;
             }
 
@@ -90,7 +89,7 @@ internal static class SharedItemListPicker
             refreshMainChoices();
             refreshIgnoreChoices?.Invoke();
             UpdateAppearance();
-            Report($"Saved {list.Items.Count} item types as {list.Name}.");
+            Report(TazLang.Get("shopping_saved_list", [list.Items.Count.ToString(), list.Name]));
         }));
 
         row.Widgets.Add(picker);
@@ -141,8 +140,8 @@ internal static class SharedItemListPicker
                 defaults.Visible = list != null;
             help.Visible = selectedId.HasValue;
             help.Text = list == null
-                ? "Select an item list to resume using shared entries."
-                : "Local rules with the same graphic ID and hue supply this agent’s item settings.";
+                ? TazLang.Get("shopping_missing_list")
+                : TazLang.Get("shopping_shared_help");
 
             if (preview != null)
             {
@@ -156,6 +155,14 @@ internal static class SharedItemListPicker
         {
             status.Text = text;
             status.Visible = true;
+        }
+
+        MyraButton Button(string key, Action action)
+        {
+            var button = new MyraButton(TazLang.Get(key), action);
+            if (interaction.IsDesktop)
+                DesktopAssistantTheme.ApplyActionButtonStyle(button);
+            return button;
         }
     }
 

@@ -104,9 +104,9 @@ namespace ClassicUO.Game.Managers
                 switch (type)
                 {
                     case AgentType.Buy:
-                        return JsonSerializer.Serialize(Instance.buyItems, BuySellAgentJsonContext.Default.ListBuySellItemConfig);
+                        return JsonSerializer.Serialize(Instance.buyItems ?? [], BuySellAgentJsonContext.Default.ListBuySellItemConfig);
                     case AgentType.Sell:
-                        return JsonSerializer.Serialize(Instance.sellItems, BuySellAgentJsonContext.Default.ListBuySellItemConfig);
+                        return JsonSerializer.Serialize(Instance.sellItems ?? [], BuySellAgentJsonContext.Default.ListBuySellItemConfig);
                 }
             }
             catch (Exception e)
@@ -123,14 +123,16 @@ namespace ClassicUO.Game.Managers
             try
             {
                 List<BuySellItemConfig> res = JsonSerializer.Deserialize(json, BuySellAgentJsonContext.Default.ListBuySellItemConfig);
+                if (res == null || res.Any(static rule => rule == null))
+                    return false;
 
                 switch (type)
                 {
                     case AgentType.Buy:
-                        Instance.buyItems.AddRange(res);
+                        (Instance.buyItems ??= []).AddRange(res);
                         break;
                     case AgentType.Sell:
-                        Instance.sellItems.AddRange(res);
+                        (Instance.sellItems ??= []).AddRange(res);
                         break;
                 }
 
