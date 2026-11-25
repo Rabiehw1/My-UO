@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
@@ -26,8 +27,6 @@ public static class FriendsListTabContent
                 friendsListPanel.Widgets.Add(new MyraLabel("No friends added yet.", MyraLabel.TextStyle.P));
                 return;
             }
-
-            friendsListPanel.Widgets.Add(new MyraLabel("Current Friends:", MyraLabel.TextStyle.H2));
 
             var grid = new MyraGrid();
             grid.SetupWithHeaders(
@@ -67,8 +66,7 @@ public static class FriendsListTabContent
         BuildFriendsList();
 
         var root = new VerticalStackPanel { Spacing = 6 };
-        root.Widgets.Add(new MyraLabel("Manage your friends list.", MyraLabel.TextStyle.H3));
-        root.Widgets.Add(new MyraButton("Add by Target", () =>
+        var add = new MyraButton("Add Friend", () =>
         {
             GameActions.Print(World.Instance, "Target a player to add to friends list");
             interaction.SelectTarget(targeted =>
@@ -90,8 +88,11 @@ public static class FriendsListTabContent
                     GameActions.Print(World.Instance, "Invalid target — must be a player");
                 }
             });
-        }));
-        root.Widgets.Add(interaction.IsDesktop ? friendsListPanel : new ScrollViewer { Height = 300, Content = friendsListPanel });
+        });
+        root.Widgets.Add(ItemListsTabContent.Section(interaction, "Saved friends",
+            new MyraLabel("Add a player by targeting them in game. Agents that use the friends list read these entries.", MyraLabel.TextStyle.P) { Wrap = true },
+            add,
+            interaction.IsDesktop ? friendsListPanel : new ScrollViewer { Height = 300, Content = friendsListPanel }));
 
         return root;
     }

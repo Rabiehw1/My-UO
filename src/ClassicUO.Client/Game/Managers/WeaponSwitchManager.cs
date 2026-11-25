@@ -34,7 +34,7 @@ internal sealed class WeaponSwitchManager
         uint target = world.TargetManager.LastAttack;
         Mobile? mobile = world.Mobiles.Get(target);
         var monster = mobile is { IsDestroyed: false, IsDead: false }
-            ? WeaponSwitchCatalog.Find(mobile.Graphic, mobile.Hue) : null;
+            ? Settings.FindMonster(mobile.Graphic, mobile.Hue) : null;
         var assignment = monster != null ? Settings.GetAssignment(monster) : new(Settings.DefaultLoadout, null);
         bool alternate = assignment.Alternate.HasValue && _lastSwitch == (target, false);
         WeaponLoadout loadout = alternate ? assignment.Alternate.GetValueOrDefault() : assignment.Primary;

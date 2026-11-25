@@ -27,6 +27,25 @@ public class WeaponSwitchCatalogTests
     }
 
     [Fact]
+    public void IncludesCustomMonstersAndPrefersExactHueMatches()
+    {
+        var settings = new WeaponSwitchSettings
+        {
+            CustomMonsters =
+            [
+                new(0x000C, null, "Other Dragon", WeaponLoadout.Lance),
+                new(0x0172, 0x0620, "Special Rat", WeaponLoadout.UndeadBane)
+            ]
+        };
+
+        Assert.Equal("Silver Dragon", settings.FindMonster(0x000C, 0x08FD)!.Name);
+        Assert.Equal("Other Dragon", settings.FindMonster(0x000C, 0x1234)!.Name);
+        Assert.Equal("Special Rat", settings.FindMonster(0x0172, 0x0620)!.Name);
+        Assert.Equal("Horned Rat", settings.FindMonster(0x0172, 0x0621)!.Name);
+        Assert.False(settings.AddMonster(0x000C, 0x08FD, "Duplicate"));
+    }
+
+    [Fact]
     public void UsesScriptAssignmentsUntilACharacterOverridesThem()
     {
         var monster = WeaponSwitchCatalog.Find(0x0310, 0)!;

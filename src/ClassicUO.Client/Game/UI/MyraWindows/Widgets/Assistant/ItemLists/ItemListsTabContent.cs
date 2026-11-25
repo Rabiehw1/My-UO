@@ -14,7 +14,7 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 
 internal static class ItemListsTabContent
 {
-    public static string Title => TazLang.Get("assistantwindow_tab_itemlists", "Lists");
+    public static string Title => TazLang.Get("assistantwindow_tab_lists", "Lists");
 
     public static Widget Build(AgentPageInteraction interaction)
     {
@@ -49,9 +49,9 @@ internal static class ItemListsTabContent
         SharedItem? editing = null;
         var filter = new MyraInputBox { Width = 180, HintText = "Filter this list" };
         var names = new VerticalStackPanel { Spacing = 5 };
-        var grid = new MyraGrid { ColumnSpacing = 12 };
-        grid.AddColumn(new Proportion(ProportionType.Part, 1));
-        grid.AddColumn(new Proportion(ProportionType.Part, 2));
+        var grid = new MyraGrid { ColumnSpacing = 12, MaxWidth = interaction.IsDesktop ? 1040 : 700 };
+        grid.AddColumn(new Proportion(ProportionType.Pixels, interaction.IsDesktop ? 260 : 210));
+        grid.AddColumn(new Proportion(ProportionType.Fill));
         var actions = new HorizontalStackPanel { Spacing = 4 };
         var addActions = new HorizontalStackPanel { Spacing = 4 };
         var manual = new HorizontalStackPanel { Spacing = 4, Visible = false };
@@ -63,7 +63,7 @@ internal static class ItemListsTabContent
         var delete = new MyraButton("Remove");
         var edit = new MyraButton("Edit");
         var remove = new MyraButton("Remove");
-        names.Widgets.Add(new MyraLabel("Saved lists", MyraLabel.TextStyle.H3));
+        names.Widgets.Add(new MyraLabel("Create, copy, or select a list to edit.", MyraLabel.TextStyle.P) { Wrap = true });
         names.Widgets.Add(listPicker);
         names.Widgets.Add(name);
         names.Widgets.Add(actions);
@@ -101,7 +101,7 @@ internal static class ItemListsTabContent
             interaction.Confirm(delete, "Remove list",
                 "Agents linked to this list will stop using its items.", () =>
                 {
-                    if (library.Lists.Remove(list))
+                    if (library.Lists?.Remove(list) == true)
                     {
                         library.SaveChanges();
                         Select(library.Lists.FirstOrDefault());
@@ -202,7 +202,7 @@ internal static class ItemListsTabContent
         itemActions.Widgets.Add(remove);
         entries.SelectedIndexChanged += (_, _) => edit.Enabled = remove.Enabled = SelectedItem() != null;
 
-        details.Widgets.Add(new MyraLabel("List contents", MyraLabel.TextStyle.H3));
+        details.Widgets.Add(new MyraLabel("Add or edit items here. Choose how to use the list in each agent.", MyraLabel.TextStyle.P) { Wrap = true });
         details.Widgets.Add(filter);
         details.Widgets.Add(entries);
         details.Widgets.Add(itemActions);
@@ -210,8 +210,8 @@ internal static class ItemListsTabContent
         details.Widgets.Add(anyHue);
         details.Widgets.Add(manual);
         details.Widgets.Add(search);
-        grid.AddWidget(names, 0, 0);
-        grid.AddWidget(details, 0, 1);
+        grid.AddWidget(Section(interaction, "Saved lists", names), 0, 0);
+        grid.AddWidget(Section(interaction, "List contents", details), 0, 1);
         root.Widgets.Add(grid);
         root.Widgets.Add(status);
 
@@ -323,6 +323,11 @@ internal static class ItemListsTabContent
             status.Visible = true;
         }
     }
+
+    internal static Widget Section(AgentPageInteraction interaction, string title, params Widget[] children) =>
+        interaction.IsDesktop
+            ? ClassicUO.Game.UI.MyraWindows.Theme.DesktopAssistantTheme.Group(title, children)
+            : new VisualContainer(new VisualContainerProps { LabelText = title }, children);
 
     private static Widget ItemRow(SharedItem item, string action, Action onClick)
     {

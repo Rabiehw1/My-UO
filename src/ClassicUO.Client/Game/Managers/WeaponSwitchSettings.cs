@@ -43,13 +43,13 @@ internal static class WeaponSwitchCatalog
         WeaponLoadout.Assassins => "Assassins Weapon",
         WeaponLoadout.EarthElemental => "Earth Elemental Weapon",
         WeaponLoadout.DragonSlayer => "Dragon Slayer Weapon",
-        WeaponLoadout.Lance => "Lance of Lothian",
+        WeaponLoadout.Lance => "Banishing",
         WeaponLoadout.OrcSlayer => "Orc Slayer Weapon",
         WeaponLoadout.FireKatana => "Katana of the Fire Element",
         WeaponLoadout.VoidWeapon => "Void Weapon",
         WeaponLoadout.TrollSlayer => "Troll Slayer Weapon",
         WeaponLoadout.AnimalSlayer => "Animal Slayer Weapon",
-        WeaponLoadout.UndeadBane => "Bane of the Undead",
+        WeaponLoadout.UndeadBane => "Undead Slayer",
         WeaponLoadout.GiantSlayer => "Giant Slayer Weapon",
         _ => loadout.ToString()
     };
@@ -121,7 +121,7 @@ internal static class WeaponSwitchCatalog
         new(0x0169, 0x0000, "Naga Queen", WeaponLoadout.OrcSlayer),
     ];
 
-    public static WeaponSwitchMonster? Find(ushort graphic, ushort hue) =>
+    public static WeaponSwitchMonster? Find(ushort graphic, ushort? hue) =>
         Monsters.FirstOrDefault(monster => monster.Graphic == graphic && monster.Hue == hue)
         ?? Monsters.FirstOrDefault(monster => monster.Graphic == graphic && monster.Hue == null);
 }
@@ -131,11 +131,35 @@ internal sealed class WeaponSwitchSettings : JsonSave<WeaponSwitchSettings>, INo
     public uint WeaponBag { get; set; }
     public WeaponLoadout DefaultLoadout { get; set; } = WeaponLoadout.Sword;
     public Dictionary<WeaponLoadout, WeaponSet> Loadouts { get; set; } = new();
+    public List<WeaponSwitchMonster> CustomMonsters { get; set; } = [];
     public Dictionary<string, MonsterLoadouts> Assignments { get; set; } = new();
 
     protected override SettingsScope Scope => SettingsScope.Char;
     protected override string FileName => "weapon_switch.json";
     protected override JsonTypeInfo<WeaponSwitchSettings> TypeInfo => WeaponSwitchJsonContext.Default.WeaponSwitchSettings;
+
+    public WeaponSwitchMonster? FindMonster(ushort graphic, ushort hue)
+    {
+        var builtIn = WeaponSwitchCatalog.Find(graphic, hue);
+        return CustomMonsters.Find(monster => monster.Graphic == graphic && monster.Hue == hue)
+            ?? (builtIn?.Hue != null ? builtIn : null)
+            ?? CustomMonsters.Find(monster => monster.Graphic == graphic && monster.Hue == null)
+            ?? builtIn;
+    }
+
+    public bool ContainsMonster(ushort graphic, ushort? hue) =>
+        WeaponSwitchCatalog.Monsters.Concat(CustomMonsters).Any(monster => monster.Graphic == graphic && monster.Hue == hue);
+
+    public bool AddMonster(ushort graphic, ushort? hue, string name)
+    {
+        if (graphic == 0 || string.IsNullOrWhiteSpace(name)
+            || ContainsMonster(graphic, hue))
+            return false;
+
+        CustomMonsters.Add(new(graphic, hue, name.Trim(), DefaultLoadout));
+        Save();
+        return true;
+    }
 
     public WeaponSet GetSet(WeaponLoadout loadout) => Loadouts.GetValueOrDefault(loadout) ?? new();
 
