@@ -928,6 +928,8 @@ namespace ClassicUO.Configuration
         public bool BuyAgentEnabled { get; set => SetProperty(ref field, value); }
         public int BuyAgentMaxUniques { get; set => SetProperty(ref field, value); } = 50;
         public int BuyAgentMaxItems { get; set => SetProperty(ref field, value); } = 0;
+        /// <summary>Auto Buy takes the vendor's whole stock of every rule's item, ignoring each rule's max amount.</summary>
+        public bool BuyAgentBuyAll { get; set => SetProperty(ref field, value); }
         public uint SOSGumpID { get; set => SetProperty(ref field, value); } = 1915258020;
         public double StatusGumpScale { get; set => SetProperty(ref field, value); } = 1f;
         public double SkillsGumpScale { get; set => SetProperty(ref field, value); } = 1f;

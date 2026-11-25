@@ -182,12 +182,13 @@ namespace ClassicUO.Game.Managers
             int max_unique_items = ProfileManager.CurrentProfile.BuyAgentMaxUniques;
             bool limit_unique_items = max_unique_items > 0;
 
-            foreach (BuySellItemConfig buyConfigEntry in GetRules(profile.AutoBuySharedItemListId, buyItems, profile.AutoBuySharedItemMaxAmount))
+            // A list item without a buy rule yet takes as many as the vendor has.
+            foreach (BuySellItemConfig buyConfigEntry in GetRules(profile.AutoBuySharedItemListId, buyItems, ushort.MaxValue))
             {
                 if (!buyConfigEntry.Enabled) continue;
 
                 ushort current_count = 0;
-                ushort maxToBuy = buyConfigEntry.MaxAmount;
+                ushort maxToBuy = profile.BuyAgentBuyAll ? ushort.MaxValue : buyConfigEntry.MaxAmount;
 
                 // Check restock functionality
                 if (buyConfigEntry.RestockUpTo > 0)
@@ -197,8 +198,7 @@ namespace ClassicUO.Game.Managers
                     {
                         continue; // Already have enough, skip this item
                     }
-                    maxToBuy = (ushort)(buyConfigEntry.RestockUpTo - currentBackpackAmount);
-                    maxToBuy = Math.Min(maxToBuy, buyConfigEntry.MaxAmount);
+                    maxToBuy = Math.Min((ushort)(buyConfigEntry.RestockUpTo - currentBackpackAmount), maxToBuy);
                 }
 
                 foreach (Item item in items)

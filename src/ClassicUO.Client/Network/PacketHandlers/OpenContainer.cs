@@ -86,6 +86,8 @@ internal static class OpenContainer
                 UIManager.Add(gump = new ShopGump(world, serial, true, 150, 5));
 
 
+            var buyList = new List<Item>();
+
             for (Layer layer = Layer.ShopBuyRestock; layer < Layer.ShopBuy + 1; layer++)
             {
                 Item item = vendor.FindItemByLayer(layer);
@@ -101,8 +103,6 @@ internal static class OpenContainer
                 if (reverse)
                     while (first?.Next != null)
                         first = first.Next;
-
-                var buyList = new List<Item>();
 
                 while (first != null)
                 {
@@ -137,9 +137,10 @@ internal static class OpenContainer
                     else
                         first = first.Next;
                 }
-
-                BuySellAgent.Instance?.HandleBuyPacket(buyList, serial);
             }
+
+            // Both vendor containers in one purchase: a shard may accept only one buy per shop window.
+            BuySellAgent.Instance?.HandleBuyPacket(buyList, serial);
         }
         else
         {
@@ -275,6 +276,8 @@ internal static class OpenContainer
                 UIManager.Add(gump = new ShopGump(world, serial, true, 150, 5));
 
 
+            var buyList = new List<Item>();
+
             for (Layer layer = Layer.ShopBuyRestock; layer < Layer.ShopBuy + 1; layer++)
             {
                 Item item = vendor.FindItemByLayer(layer);
@@ -290,8 +293,6 @@ internal static class OpenContainer
                 if (reverse)
                     while (first?.Next != null)
                         first = first.Next;
-
-                var buyList = new List<Item>();
 
                 while (first != null)
                 {
@@ -326,9 +327,10 @@ internal static class OpenContainer
                     else
                         first = first.Next;
                 }
-
-                BuySellAgent.Instance?.HandleBuyPacket(buyList, serial);
             }
+
+            // Both vendor containers in one purchase: a shard may accept only one buy per shop window.
+            BuySellAgent.Instance?.HandleBuyPacket(buyList, serial);
         }
         else
         {

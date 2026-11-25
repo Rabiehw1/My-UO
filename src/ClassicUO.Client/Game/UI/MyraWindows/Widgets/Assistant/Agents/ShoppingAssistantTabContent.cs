@@ -161,9 +161,12 @@ internal static class ShoppingAssistantTabContent
                 BuySellItemConfig rule = createRule();
                 rule.Graphic = item.Graphic;
                 rule.Hue = item.Hue;
-                rule.MaxAmount = buying ? profile.AutoBuySharedItemMaxAmount : profile.AutoSellSharedItemMaxAmount;
+                // A new buy rule takes as many as the vendor has until the player sets a max amount.
+                rule.MaxAmount = buying ? ushort.MaxValue : profile.AutoSellSharedItemMaxAmount;
                 return true;
-            }, RefreshEntries, DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("shopping_shared_max"), sharedMax)));
+            }, RefreshEntries,
+            buying ? null : DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("shopping_shared_max"), sharedMax)),
+            autoCopy: buying);
 
         var root = new VerticalStackPanel { Spacing = 8 };
         Widget settings = BuildSettings(profile, interaction, buying);
@@ -210,9 +213,13 @@ internal static class ShoppingAssistantTabContent
             List<BuySellItemConfig>? rules = Rules();
             if (clear != null)
                 clear.Enabled = rules is { Count: > 0 };
+
+            // Buy rules mirror the chosen list: rules for items no longer on it stay saved but aren't shown or used.
+            if (buying && ItemListLibrary.Resolve(profile.AutoBuySharedItemListId) is { } buyList)
+                rules = rules?.Where(rule => buyList.Find(rule.Graphic, rule.Hue) != null).ToList();
             if (rules is not { Count: > 0 })
             {
-                entries.Widgets.Add(new MyraLabel(TazLang.Get("shopping_no_rules"), MyraLabel.TextStyle.P));
+                entries.Widgets.Add(new MyraLabel(TazLang.Get(buying ? "shopping_no_buy_rules" : "shopping_no_rules"), MyraLabel.TextStyle.P));
                 return;
             }
 
@@ -317,10 +324,14 @@ internal static class ShoppingAssistantTabContent
         total.Tooltip = uniques.Tooltip = TazLang.Get("shopping_limit_tooltip");
         var subcontainers = MyraCheckButton.CreateWithCallback(profile.BuyAgentSubContainers, value => profile.BuyAgentSubContainers = value,
             TazLang.Get("shopping_subcontainers"), TazLang.Get("shopping_subcontainers_tooltip"));
-        return ItemListsTabContent.Section(interaction, TazLang.Get("shopping_settings"), enabled, help,
-            DesktopAssistantForm.Fields(
-                new(TazLang.Get("shopping_max_items"), total), new(TazLang.Get("shopping_max_types"), uniques)),
-            subcontainers);
+        Widget fields = DesktopAssistantForm.Fields(
+            new(TazLang.Get("shopping_max_items"), total), new(TazLang.Get("shopping_max_types"), uniques));
+        if (!buying)
+            return ItemListsTabContent.Section(interaction, TazLang.Get("shopping_settings"), enabled, help, fields, subcontainers);
+
+        var buyAll = MyraCheckButton.CreateWithCallback(profile.BuyAgentBuyAll, value => profile.BuyAgentBuyAll = value,
+            TazLang.Get("shopping_buy_all"), TazLang.Get("shopping_buy_all_tooltip"));
+        return ItemListsTabContent.Section(interaction, TazLang.Get("shopping_settings"), enabled, help, buyAll, fields, subcontainers);
     }
 
     private static void ShowAddDialog(MyraButton anchor, AgentPageInteraction interaction, bool buying,
