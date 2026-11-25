@@ -71,6 +71,20 @@ public sealed class ShardSpellBooksWindow : MyraControl
     {
         var root = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING, Padding = new Thickness(6) };
         root.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_intro"), MyraLabel.TextStyle.P) { Wrap = true, MaxWidth = 560 });
+        var styleRow = new HorizontalStackPanel { Spacing = 6 };
+        var style = new ComboView { MinWidth = 130 };
+        Profile profile = ProfileManager.CurrentProfile;
+        style.ListView.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_style_symbols", "Pictograms"), MyraLabel.TextStyle.P));
+        style.ListView.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_style_art", "Illustrations"), MyraLabel.TextStyle.P));
+        style.ListView.SelectedIndex = profile.UseIllustratedShardSpellIcons ? 1 : 0;
+        style.ListView.SelectedIndexChanged += (_, _) =>
+        {
+            if (style.ListView.SelectedIndex is int index)
+                profile.UseIllustratedShardSpellIcons = index == 1;
+        };
+        styleRow.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_icon_style", "Icon style"), MyraLabel.TextStyle.P));
+        styleRow.Widgets.Add(style);
+        root.Widgets.Add(styleRow);
 
         foreach (ShardSpellBookInfo book in ShardSpellCatalog.Books)
             root.Widgets.Add(BuildBook(book));

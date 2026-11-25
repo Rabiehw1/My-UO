@@ -2,8 +2,11 @@
 
 using System;
 using System.Linq;
+using ClassicUO.Assets;
 using ClassicUO.Game.Managers.ShardSpells;
 using FluentAssertions;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
 
 namespace ClassicUO.UnitTests.Game.Managers.ShardSpells;
@@ -35,6 +38,35 @@ public sealed class ShardSpellCatalogTests
         int index = songs.Spells.ToList().FindIndex(s => s.Name == "Song of Life");
 
         songs.Spells[index].DefaultButton.Should().Be(7);
+    }
+
+    [Fact]
+    public void NecroButtons_RunFrom101Through115()
+    {
+        ShardSpellCatalog.Get(ShardSpellBook.Necro).Spells.Select(spell => spell.DefaultButton)
+            .Should().Equal(Enumerable.Range(101, 15));
+    }
+
+    [Theory]
+    [InlineData("ShardSpellIcons.png")]
+    [InlineData("ShardSpellIllustrations.png")]
+    public void EmbeddedAtlas_HasArtForEverySpell(string fileName)
+    {
+        const int tileSize = 64;
+        var assembly = typeof(ExternalImageLoader).Assembly;
+        using var stream = assembly.GetManifestResourceStream($"{assembly.GetName().Name}.gumpartassets.{fileName}");
+        Assert.NotNull(stream);
+        using var image = Image.Load<Rgba32>(stream);
+
+        foreach (ShardSpellBookInfo book in ShardSpellCatalog.Books)
+        {
+            for (int i = 0; i < book.Spells.Count; i++)
+            {
+                int x = i * tileSize + tileSize / 2;
+                int y = (int)book.Book * tileSize + tileSize / 2;
+                Assert.True(x < image.Width && y < image.Height && image[x, y].A != 0, book.Spells[i].Name);
+            }
+        }
     }
 
     [Theory]

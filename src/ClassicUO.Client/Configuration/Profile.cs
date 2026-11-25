@@ -678,6 +678,7 @@ namespace ClassicUO.Configuration
         public ushort SpellIcon_HotkeyHue { get; set => SetProperty(ref field, value); } = 1;
 
         public int SpellIconScale { get; set => SetProperty(ref field, value); } = 100;
+        public bool UseIllustratedShardSpellIcons { get; set => SetProperty(ref field, value); }
 
         public bool EnableAlphaScrollingOnGumps { get; set => SetProperty(ref field, value); } = true;
 

@@ -205,7 +205,8 @@ namespace ClassicUO.Game.UI.Gumps
         public override void CloseWithRightClick()
         {
             if (
-                UIManager.AnchorManager[this] == null
+                !RequiresModifierToCloseWhenAnchored
+                || UIManager.AnchorManager[this] == null
                 || HotKeys.IsPressed(HotKeyRegistrar.GumpModifierId)
                 || !ProfileManager.CurrentProfile.HoldDownKeyAltToCloseAnchored
             )
@@ -218,6 +219,8 @@ namespace ClassicUO.Game.UI.Gumps
                 base.CloseWithRightClick();
             }
         }
+
+        protected virtual bool RequiresModifierToCloseWhenAnchored => true;
 
         public override void Dispose()
         {

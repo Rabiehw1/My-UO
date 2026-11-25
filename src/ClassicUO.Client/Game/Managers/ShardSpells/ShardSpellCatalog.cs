@@ -35,7 +35,7 @@ internal static class ShardSpellCatalog
     /// <summary>All books, in menu order.</summary>
     public static IReadOnlyList<ShardSpellBookInfo> Books { get; } =
     [
-        Book(ShardSpellBook.Necro, "Necro Book", new Color(96, 40, 130),
+        Book(ShardSpellBook.Necro, "Necro Book", new Color(154, 32, 42),
             "Control Undead", "Darkness", "Decaying Ray", "Spectre's Touch", "Abyssal Flame", "Animate Dead",
             "Sacrifice", "Wraith's Breath", "Sorcerer's Bane", "Summon Spirit", "Wraithform", "Wyvern Strike", "Kill",
             "Plague", "Spellbind"),
@@ -43,7 +43,7 @@ internal static class ShardSpellCatalog
             "Antidote", "Owl Sight", "Shifting Earth", "Summon Mammals", "Call Lightning", "Earth Blessing",
             "Earth Portal", "Nature's Touch", "Gust of Air", "Rising Fire", "Shapeshift", "Ice Strike", "Earth Spirit",
             "Flame Spirit", "Storm Spirit", "Water Spirit"),
-        Book(ShardSpellBook.Holy, "Holy Book", new Color(196, 160, 40),
+        Book(ShardSpellBook.Holy, "Holy Book", new Color(215, 221, 230),
             "Grand Feast", "Turn Undead", "Light of Day", "Angelic Aura", "Holy Bolt", "Seraphim's Will",
             "Angelic Gate", "Remove Curse", "Wrath of God", "Divine Fury", "Astral Storm", "Enlightenment", "Revive",
             "Sanctuary", "Summon Guardian", "Apocalypse"),
@@ -85,9 +85,10 @@ internal static class ShardSpellCatalog
     private static ShardSpellBookInfo Book(ShardSpellBook book, string name, Color color, params string[] spellNames)
     {
         var spells = new List<ShardSpell>(spellNames.Length);
+        int firstButton = book == ShardSpellBook.Necro ? 101 : 1;
 
         for (int i = 0; i < spellNames.Length; i++)
-            spells.Add(new ShardSpell(spellNames[i], Abbreviate(spellNames[i]), i + 1));
+            spells.Add(new ShardSpell(spellNames[i], Abbreviate(spellNames[i]), firstButton + i));
 
         return new ShardSpellBookInfo(book, name, color, spells);
     }
