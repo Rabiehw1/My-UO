@@ -46,12 +46,8 @@ public static class AutoLootAgentTabContent
             "Hue Corpse After Processing",
             "Hue corpses after processing to make it easier to see if autoloot has processed them.");
 
-        var retryRow = new HorizontalStackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
-        retryRow.Widgets.Add(new MyraLabel(interaction.IsDesktop ? "Corpse retry delay" : "Corpse retry delay (ms):", MyraLabel.TextStyle.P)
-        {
-            Tooltip = "Milliseconds before a failed corpse is retried. Minimum 1000ms.",
-            VerticalAlignment = Myra.Graphics2D.UI.VerticalAlignment.Center
-        });
+        string retryLabel = TazLang.Get("autoloot_retry_delay");
+        string retryHelp = TazLang.Get("autoloot_retry_delay_tooltip");
         var retrySpinner = new SpinButton
         {
             Integer = true,
@@ -59,13 +55,10 @@ public static class AutoLootAgentTabContent
             Minimum = 1000,
             Maximum = 600000,
             MinWidth = interaction.IsDesktop ? 76 : 100,
-            Tooltip = "Milliseconds before a failed corpse is retried. Minimum 1000ms."
+            Tooltip = retryHelp
         };
         retrySpinner.ValueChangedByUser += (_, _) =>
             profile.AutoLootRetryDelay = (int)Math.Clamp(retrySpinner.Value ?? 5000f, 1000f, 600000f);
-        retryRow.Widgets.Add(retrySpinner);
-        if (interaction.IsDesktop)
-            retryRow.Widgets.Add(new MyraLabel("ms", MyraLabel.TextStyle.P));
         var disableRetry = MyraCheckButton.CreateWithCallback(
             profile.DisableAutolootCorpseRetry,
             b => profile.DisableAutolootCorpseRetry = b,
@@ -103,29 +96,22 @@ public static class AutoLootAgentTabContent
             });
         }) { Tooltip = TazLang.Get("autoskinning_targetweapon_tooltip", "Target a weapon to add its graphic to the skinning knife list."), HorizontalAlignment = HorizontalAlignment.Left };
 
-        var skinGraphicsRow = new HorizontalStackPanel { Spacing = 8, VerticalAlignment = Myra.Graphics2D.UI.VerticalAlignment.Center };
-        skinGraphicsRow.Widgets.Add(new MyraLabel(TazLang.Get("autoskinning_graphics", "Knife graphic IDs:"), MyraLabel.TextStyle.P)
-        {
-            Tooltip = TazLang.Get("autoskinning_graphics_tooltip", "Graphic IDs of knives/daggers used to skin corpses. The first one found in your backpack is used. Separate multiple with ';'. Accepts hex (0x0F52) or decimal."),
-            VerticalAlignment = Myra.Graphics2D.UI.VerticalAlignment.Center
-        });
+        string skinGraphicsLabel = TazLang.Get("autoskinning_graphics", "Knife graphic IDs:");
         skinGraphicsBox.TextChangedByUser += (_, _) => profile.AutoSkinningKnifeGraphics = skinGraphicsBox.Text;
-        skinGraphicsRow.Widgets.Add(skinGraphicsBox);
 
         string skinningTitle = TazLang.Get("autoskinning_title", "Auto Skinning");
         if (interaction.IsDesktop)
         {
-            var options = new MyraGrid { ColumnSpacing = 10 };
-            options.AddColumn(new Proportion(ProportionType.Part, 1));
-            options.AddColumn(new Proportion(ProportionType.Part, 1));
-            options.AddWidget(DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_corpse_handling", "Corpse handling"),
-                showProgress, hueCorpse, retryRow, disableRetry), 0, 0);
-            options.AddWidget(DesktopAssistantTheme.Group(skinningTitle,
-                enableSkinning, skinHumans, targetKnife, skinGraphicsRow), 0, 1);
-            root.Widgets.Add(options);
+            var corpseOptions = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_corpse_handling", "Corpse handling"),
+                showProgress, hueCorpse,
+                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(retryLabel, retrySpinner)), disableRetry);
+            var skinning = DesktopAssistantTheme.Group(skinningTitle, enableSkinning, skinHumans, targetKnife,
+                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(skinGraphicsLabel, skinGraphicsBox)));
+            root.Widgets.Add(new DesktopAssistantForm.SectionPair(corpseOptions, skinning));
         }
         else
         {
+            var retryRow = GameFieldRow(retryLabel, retrySpinner);
             var corpseChecks = new HorizontalStackPanel { Spacing = 8 };
             corpseChecks.Widgets.Add(hueCorpse);
             retryRow.Widgets.Add(disableRetry);
@@ -135,7 +121,8 @@ public static class AutoLootAgentTabContent
             skinChecks.Widgets.Add(enableSkinning);
             skinChecks.Widgets.Add(skinHumans);
             skinChecks.Widgets.Add(targetKnife);
-            root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = skinningTitle }, skinChecks, skinGraphicsRow));
+            root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = skinningTitle },
+                skinChecks, GameFieldRow(skinGraphicsLabel, skinGraphicsBox)));
         }
 
         return root;
@@ -189,7 +176,7 @@ public static class AutoLootAgentTabContent
                 0 => "Backpack",
                 uint serial => $"0x{serial:X8}"
             };
-            var bagActions = AgentPresetPanel.Actions();
+            var bagActions = interaction.IsDesktop ? DesktopAssistantForm.Actions() : AgentPresetPanel.Actions();
             bagActions.Widgets.Add(new MyraButton("Set Grab Bag", () =>
             {
                 GameActions.Print("Target the loot bag for this preset.");
@@ -208,8 +195,12 @@ public static class AutoLootAgentTabContent
                 preset.LootHumanCorpses = value;
                 loot.SavePreset(preset);
             }, "Auto Loot Human Corpses");
-            details.Widgets.Add(ItemListsTabContent.Section(interaction, "Loot destination",
-                new MyraLabel(bag, MyraLabel.TextStyle.P), bagActions, lootHumans));
+            var bagValue = new MyraLabel(bag, MyraLabel.TextStyle.P);
+            Widget bagField = interaction.IsDesktop
+                ? DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("autoloot_grab_bag"), bagValue))
+                : bagValue;
+            details.Widgets.Add(ItemListsTabContent.Section(interaction, TazLang.Get("autoloot_loot_destination"),
+                bagField, bagActions, lootHumans));
             return details;
 
             void SetBag(uint? serial)
@@ -219,6 +210,18 @@ public static class AutoLootAgentTabContent
                 refresh(preset);
             }
         }
+    }
+
+    private static HorizontalStackPanel GameFieldRow(string text, Widget control)
+    {
+        var row = new HorizontalStackPanel { Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
+        row.Widgets.Add(new MyraLabel(text, MyraLabel.TextStyle.P)
+        {
+            Tooltip = control.Tooltip,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        row.Widgets.Add(control);
+        return row;
     }
 
     private static string AppendSkinningGraphic(string current, ushort graphic)

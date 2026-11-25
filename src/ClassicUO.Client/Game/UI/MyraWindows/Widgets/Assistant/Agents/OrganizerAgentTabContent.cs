@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Theme;
@@ -76,32 +77,44 @@ public static class OrganizerAgentTabContent
                 organizer.Save();
             })));
 
-            details.Widgets.Add(ItemListsTabContent.Section(interaction, "Containers",
-                ContainerRow("Source", preset.SourceContSerial, serial => preset.SourceContSerial = serial),
-                ContainerRow("Destination", preset.DestContSerial, serial => preset.DestContSerial = serial)));
+            var source = ContainerField(
+                TazLang.Get("organizer_source"), TazLang.Get("organizer_target_source"),
+                preset.SourceContSerial, serial => preset.SourceContSerial = serial);
+            var destination = ContainerField(
+                TazLang.Get("organizer_destination"), TazLang.Get("organizer_target_destination"),
+                preset.DestContSerial, serial => preset.DestContSerial = serial);
+            details.Widgets.Add(interaction.IsDesktop
+                ? DesktopAssistantTheme.Group(TazLang.Get("mog_buttoncontainers"), DesktopAssistantForm.Fields(source, destination))
+                : ItemListsTabContent.Section(interaction, TazLang.Get("mog_buttoncontainers"), source.Actions!, destination.Actions!));
             return details;
 
-            Widget ContainerRow(string label, uint serial, Action<uint> set)
+            DesktopAssistantForm.Field ContainerField(string label, string prompt, uint serial, Action<uint> set)
             {
-                var row = AgentPresetPanel.Actions();
-                string location = serial == 0 ? "Backpack" : $"0x{serial:X8}";
-                row.Widgets.Add(new MyraLabel($"{label}  {location}", MyraLabel.TextStyle.P)
+                string location = serial == 0 ? TazLang.Get("backpack") : $"0x{serial:X8}";
+                var value = new MyraLabel(location, MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center };
+                string targetText = interaction.IsDesktop ? TazLang.Get("organizer_target")
+                    : TazLang.Get("organizer_set_container", [label]);
+                var targetButton = new MyraButton(targetText, () =>
                 {
-                    VerticalAlignment = VerticalAlignment.Center
-                });
-                row.Widgets.Add(new MyraButton($"Set {label}", () =>
-                {
-                    GameActions.Print($"Target the organizer's {label.ToLowerInvariant()} container.");
+                    GameActions.Print(prompt);
                     interaction.SelectTarget(target =>
                     {
                         if (target is Item { ItemData.IsContainer: true } container)
                             SaveContainer(container.Serial);
                         else
-                            GameActions.Print("Select a container in the game.", Constants.HUE_ERROR);
+                            GameActions.Print(TazLang.Get("organizer_pick_valid_container"), Constants.HUE_ERROR);
                     });
-                }));
-                row.Widgets.Add(new MyraButton("Use Backpack", () => SaveContainer(0)) { Enabled = serial != 0 });
-                return row;
+                }) { Tooltip = prompt };
+                var useBackpack = new MyraButton(TazLang.Get("organizer_use_backpack"), () => SaveContainer(0)) { Enabled = serial != 0 };
+                if (interaction.IsDesktop)
+                    return new DesktopAssistantForm.Field(label, value, DesktopAssistantForm.Actions(targetButton, useBackpack));
+
+                var gameRow = AgentPresetPanel.Actions();
+                value.Text = $"{label}  {location}";
+                gameRow.Widgets.Add(value);
+                gameRow.Widgets.Add(targetButton);
+                gameRow.Widgets.Add(useBackpack);
+                return new DesktopAssistantForm.Field(label, value, gameRow);
 
                 void SaveContainer(uint selected)
                 {
@@ -110,6 +123,7 @@ public static class OrganizerAgentTabContent
                     refresh(preset);
                 }
             }
+
         }
     }
 }

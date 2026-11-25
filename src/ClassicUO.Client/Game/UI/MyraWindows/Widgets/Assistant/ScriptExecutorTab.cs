@@ -19,11 +19,11 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
     public ScriptExecutorTab()
     {
         Spacing = 8;
-        _run = new MyraButton("Run sequence", () =>
+        _run = DesktopAssistantTheme.ActionButton("Run sequence", () =>
         {
             ScriptSequence.Start(Legion.GetSequence());
             Refresh();
-        });
+        }, primary: true);
         _stop = new MyraButton("Stop sequence", () =>
         {
             ScriptSequence.Stop();
@@ -73,6 +73,7 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
         var earlier = new MyraButton("Move up");
         var later = new MyraButton("Move down");
         var remove = new MyraButton("Remove step");
+        MyraStyle.ApplyButtonDangerStyle(remove);
         var runControls = new HorizontalStackPanel { Spacing = 6 };
         var add = new MyraButton("Add step", () =>
         {

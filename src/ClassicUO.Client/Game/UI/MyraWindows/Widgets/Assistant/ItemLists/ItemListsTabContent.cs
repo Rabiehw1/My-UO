@@ -30,31 +30,13 @@ internal static class ItemListsTabContent
         tabs.AddTab(TazLang.Get("assistant_general_tab_friends", "Friends"), () => FriendsListTabContent.Build(interaction), rebuildOnSelect: true);
         tabs.AddTab("Weapon Switch", () => WeaponSwitchListContent.Build(interaction), rebuildOnSelect: true);
         tabs.SelectFirst();
-        UpdateTabColors();
         tabs.SelectedIndexChanged += (_, _) =>
         {
             interaction.CancelDialog();
             interaction.CancelTarget();
-            UpdateTabColors();
         };
         return interaction.IsDesktop ? tabs
             : new ScrollViewer { Content = tabs, MaxHeight = Math.Max(180, ScaleHelper.LogicalWindowHeight - 140) };
-
-        void UpdateTabColors()
-        {
-            if (!interaction.IsDesktop)
-                return;
-
-            foreach (var item in tabs.Items)
-            {
-                bool selected = ReferenceEquals(item, tabs.SelectedItem);
-                if (tabs.FindChild<Widget>(widget => ReferenceEquals(widget.Tag, item))?.FindChild<Label>() is { } caption)
-                {
-                    caption.TextColor = selected ? DesktopAssistantTheme.Accent : DesktopAssistantTheme.Text;
-                    caption.Font = DesktopAssistantTheme.Font(bold: selected);
-                }
-            }
-        }
     }
 
     private static Widget BuildItems(AgentPageInteraction interaction)
@@ -63,6 +45,9 @@ internal static class ItemListsTabContent
         SharedItemList? selected = library.Lists?.FirstOrDefault();
         SharedItemList[] choices = [];
         bool refreshing = false;
+        MyraGrid? desktopHeader = null;
+        GridColumnInfo[] desktopColumns = [];
+        bool showAllColumns = false;
 
         var root = new VerticalStackPanel { Spacing = 8 };
         var listPicker = new ListView { Height = 285, HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -76,7 +61,9 @@ internal static class ItemListsTabContent
         rowStyle.ListItemStyle.Padding = new Thickness(0);
         rowStyle.ListItemStyle.BorderThickness = new Thickness(0);
         entries.ApplyListBoxStyle(rowStyle);
-        entries.Height = 285;
+        entries.MaxHeight = interaction.IsDesktop ? CompactRowHeight * CompactVisibleRows : 285;
+        if (!interaction.IsDesktop)
+            entries.Height = entries.MaxHeight;
         entries.HorizontalAlignment = HorizontalAlignment.Stretch;
         entries.ScrollViewer.ShowHorizontalScrollBar = false;
         SharedItem[] visibleItems = [];
@@ -111,7 +98,7 @@ internal static class ItemListsTabContent
         {
             Select(library.Create(name.Text ?? ""));
             Report($"Created {selected!.Name}.");
-        }));
+        }, primary: true));
         rename.OnClick = () =>
         {
             if (selected == null || string.IsNullOrWhiteSpace(name.Text))
@@ -151,7 +138,7 @@ internal static class ItemListsTabContent
                         library.SaveChanges();
                         Select(library.Lists.FirstOrDefault());
                     }
-                });
+                }, confirmText: TazLang.Get("remove"), destructive: true);
         };
 
         addActions.Widgets.Add(Button("Add from Target", () => interaction.SelectTarget(target =>
@@ -236,33 +223,84 @@ internal static class ItemListsTabContent
             }
         };
         addActions.Widgets.Insert(0, addManual);
-        itemActions.Widgets.Add(edit);
+        if (!interaction.IsDesktop)
+            itemActions.Widgets.Add(edit);
         itemActions.Widgets.Add(earlier);
         itemActions.Widgets.Add(later);
         itemActions.Widgets.Add(remove);
         entries.SelectedIndexChanged += (_, _) => UpdateItemActions();
 
-        var headers = BuildColumns("Art", "Graphic ID", "Hue", "Item name", "Regex", "Priority", "Max", "Destination");
-        headers.Id = "item-table-header";
-        headers.Height = 26;
+        details.Widgets.Add(addActions);
+        var searchActions = Toolbar(filter, matchHue);
+        details.Widgets.Add(searchActions);
         if (interaction.IsDesktop)
         {
-            headers.Background = DesktopAssistantTheme.TabStrip;
-            foreach (Label heading in headers.Widgets.OfType<Label>())
-                heading.Font = DesktopAssistantTheme.Font(-1, bold: true);
+            var table = new VerticalStackPanel
+            {
+                Border = DesktopAssistantTheme.Divider, BorderThickness = new Thickness(1)
+            };
+            var viewport = new ItemTableViewport
+            {
+                Content = table, ShowVerticalScrollBar = false, HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+            table.Widgets.Add(entries);
+            details.Widgets.Add(viewport);
+            SetColumns(false);
+            searchActions.Widgets.Add(MyraCheckButton.CreateWithCallback(false, value =>
+            {
+                SharedItem? keepSelected = SelectedItem();
+                SetColumns(value);
+                RefreshEntries(keepSelected);
+            }, TazLang.Get("assistant_items_show_columns")));
+
+            void SetColumns(bool expanded)
+            {
+                showAllColumns = expanded;
+                var artColumn = GridColumnInfo.Pixels(TazLang.Get("agent_col_art"), 42);
+                var nameColumn = GridColumnInfo.Fill(TazLang.Get("gridhighlight_itemname"));
+                var hueColumn = GridColumnInfo.Pixels(TazLang.Get("agent_col_hue"), 75);
+                var actionsColumn = GridColumnInfo.Pixels(TazLang.Get("agent_col_actions"), 94);
+                desktopColumns = expanded
+                    ?
+                    [
+                        artColumn, nameColumn, hueColumn,
+                        GridColumnInfo.Pixels(TazLang.Get("assistant_items_graphic"), 78),
+                        GridColumnInfo.Pixels(TazLang.Get("assistant_items_regex"), 102),
+                        GridColumnInfo.Pixels(TazLang.Get("assistant_items_priority"), 72),
+                        GridColumnInfo.Pixels(TazLang.Get("assistant_items_max"), 54),
+                        GridColumnInfo.Pixels(TazLang.Get("assistant_items_destination"), 112),
+                        actionsColumn
+                    ]
+                    : [artColumn, nameColumn, hueColumn, actionsColumn];
+                if (desktopHeader != null)
+                    table.Widgets.Remove(desktopHeader);
+
+                desktopHeader = new MyraGrid { Id = "item-table-header" };
+                desktopHeader.SetupWithHeaders(desktopColumns);
+                desktopHeader.BorderThickness = new Thickness(0);
+                desktopHeader.ColumnSpacing = 0;
+                table.Widgets.Insert(0, desktopHeader);
+                table.Width = expanded ? ExpandedTableWidth : null;
+                viewport.ShowHorizontalScrollBar = expanded;
+                viewport.ResetScroll();
+            }
         }
-        // Both header and rows pan together. The extra width leaves room for the vertical scrollbar.
-        var table = new VerticalStackPanel { Width = ItemColumns.Sum() + 24 };
-        table.Widgets.Add(headers);
-        table.Widgets.Add(entries);
-        details.Widgets.Add(addActions);
-        details.Widgets.Add(Toolbar(filter, matchHue));
-        details.Widgets.Add(new ItemTableViewport
+        else
         {
-            Content = table,
-            ShowVerticalScrollBar = false,
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        });
+            var headers = BuildColumns("Art", "Graphic ID", "Hue", "Item name", "Regex", "Priority", "Max", "Destination");
+            headers.Id = "item-table-header";
+            headers.Height = 26;
+            // The same fixed-width surface keeps the legacy headers and rows aligned while panning.
+            var table = new VerticalStackPanel { Width = ItemColumns.Sum() + 24 };
+            table.Widgets.Add(headers);
+            table.Widgets.Add(entries);
+            details.Widgets.Add(new ItemTableViewport
+            {
+                Content = table,
+                ShowVerticalScrollBar = false,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            });
+        }
         var footer = Toolbar(itemActions, transferActions);
         footer.HorizontalSpacing = 14;
         details.Widgets.Add(footer);
@@ -329,9 +367,10 @@ internal static class ItemListsTabContent
             if (editing == null)
                 body.Widgets.Add(BuildCatalogSearch(graphic, itemName));
             body.Widgets.Add(fields);
-            editor = DialogBody(anchor, body, 345);
+            if (!interaction.IsDesktop)
+                editor = DialogBody(anchor, body, 345);
             SharedItem? updated = null;
-            interaction.ShowDialog(anchor, editing == null ? "Add item" : "Edit item", editor, confirmed =>
+            interaction.ShowDialog(anchor, editing == null ? "Add item" : "Edit item", editor ?? (Widget)body, confirmed =>
                 {
                     interaction.CancelTarget();
                     if (!confirmed || updated == null)
@@ -349,7 +388,7 @@ internal static class ItemListsTabContent
                     library.SaveChanges();
                     RefreshEntries(updated);
                     Report(editing == null ? "Item added." : "Item updated.");
-                }, Validate);
+                }, Validate, confirmText: TazLang.Get(editing == null ? "add" : "mog_kw_save"), preferredWidth: 365);
 
             void AddField(int row, string label, Widget input)
             {
@@ -426,14 +465,59 @@ internal static class ItemListsTabContent
                 (item.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true
                 || $"0x{item.Graphic:X4}".Contains(text, StringComparison.OrdinalIgnoreCase)
                 || $"0x{item.Hue:X4}".Contains(text, StringComparison.OrdinalIgnoreCase))).ToArray();
-            foreach (SharedItem item in visibleItems)
+            if (desktopHeader != null)
             {
-                var row = BuildColumns("", item.Graphic == ushort.MaxValue ? "Any" : $"0x{item.Graphic:X4}",
-                    item.Hue == ushort.MaxValue ? "Any" : $"0x{item.Hue:X4}",
-                    Display(item.Name), Display(item.RegexSearch),
-                    item.Priority switch { 0 => "Low", 2 => "High", _ => "Normal" },
-                    item.MaxAmount == 0 ? "Any" : item.MaxAmount.ToString(),
-                    item.DestinationContainer == 0 ? "Default" : $"0x{item.DestinationContainer:X8}");
+                // Match the width of the rows when Myra reserves a gutter for the vertical scrollbar.
+                int gutter = visibleItems.Length > CompactVisibleRows ? entries.ScrollViewer.VerticalScrollKnob.Size.X : 0;
+                desktopHeader.Margin = new Thickness(0, 0, gutter, 0);
+            }
+
+            for (int rowIndex = 0; rowIndex < visibleItems.Length; rowIndex++)
+            {
+                SharedItem item = visibleItems[rowIndex];
+                string graphic = item.Graphic == ushort.MaxValue ? TazLang.Get("assistant_items_any") : $"0x{item.Graphic:X4}";
+                string hue = item.Hue == ushort.MaxValue ? TazLang.Get("assistant_items_any") : $"0x{item.Hue:X4}";
+                MyraGrid row;
+                if (interaction.IsDesktop)
+                {
+                    row = new MyraGrid { Height = CompactRowHeight, ColumnSpacing = 0 };
+                    row.AddTableColumns(desktopColumns);
+                    string itemName = string.IsNullOrWhiteSpace(item.Name) ? graphic : item.Name;
+                    row.AddWidget(MyraGrid.TableText(itemName), 0, 1);
+                    row.AddWidget(MyraGrid.TableText(hue), 0, 2);
+                    var editRow = Button(TazLang.Get("macrostab_col_edit"));
+                    int itemIndex = rowIndex;
+                    editRow.Click += (_, _) =>
+                    {
+                        entries.SelectedIndex = itemIndex;
+                        ShowEditor(editRow, item);
+                    };
+                    if (showAllColumns)
+                    {
+                        row.AddWidget(MyraGrid.TableText(graphic), 0, 3);
+                        row.AddWidget(MyraGrid.TableText(Display(item.RegexSearch)), 0, 4);
+                        row.AddWidget(MyraGrid.TableText(item.Priority switch
+                        {
+                            0 => TazLang.Get("assistant_items_low"),
+                            2 => TazLang.Get("assistant_items_high"),
+                            _ => TazLang.Get("assistant_items_normal")
+                        }), 0, 5);
+                        row.AddWidget(MyraGrid.TableText(item.MaxAmount == 0
+                            ? TazLang.Get("assistant_items_any") : item.MaxAmount.ToString()), 0, 6);
+                        row.AddWidget(MyraGrid.TableText(item.DestinationContainer == 0
+                            ? TazLang.Get("assistant_items_default") : $"0x{item.DestinationContainer:X8}"), 0, 7);
+                    }
+                    row.AddWidget(editRow, 0, desktopColumns.Length - 1);
+                }
+                else
+                {
+                    row = BuildColumns("", graphic, hue,
+                        Display(item.Name), Display(item.RegexSearch),
+                        item.Priority switch { 0 => "Low", 2 => "High", _ => "Normal" },
+                        item.MaxAmount == 0 ? "Any" : item.MaxAmount.ToString(),
+                        item.DestinationContainer == 0 ? "Default" : $"0x{item.DestinationContainer:X8}");
+                }
+
                 if (Client.Game.UO.Arts != null && item.Graphic != ushort.MaxValue)
                     row.AddWidget(new MyraArtTexture(item.Graphic, item.Hue == ushort.MaxValue ? (ushort)0 : item.Hue, 24)
                     {
@@ -481,11 +565,12 @@ internal static class ItemListsTabContent
             else
                 choices.Widgets.Add(new Label { Text = "No legacy item rules found for other characters.", Wrap = true });
 
-            interaction.ShowDialog(importCharacter, "Import from Character", DialogBody(importCharacter, choices, 340), confirmed =>
+            Widget body = interaction.IsDesktop ? choices : DialogBody(importCharacter, choices, 340);
+            interaction.ShowDialog(importCharacter, "Import from Character", body, confirmed =>
             {
                 if (confirmed && picker.SelectedIndex is int index)
                     Add(rulesByChoice[index]);
-            }, () => picker.SelectedIndex.HasValue);
+            }, () => picker.SelectedIndex.HasValue, confirmText: TazLang.Get("mog_kw_import"), preferredWidth: 365);
 
             void AddChoice(string label, IEnumerable<SharedItem> rules)
             {
@@ -601,6 +686,9 @@ internal static class ItemListsTabContent
     }
 
     private static readonly int[] ItemColumns = [34, 66, 58, 132, 125, 65, 49, 100];
+    private const int CompactRowHeight = 34;
+    private const int CompactVisibleRows = 8;
+    private const int ExpandedTableWidth = 790;
 
     private static MyraGrid BuildColumns(params string[] values)
     {

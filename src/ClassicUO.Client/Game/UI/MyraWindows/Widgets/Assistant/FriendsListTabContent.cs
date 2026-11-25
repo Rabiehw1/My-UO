@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -30,10 +31,10 @@ public static class FriendsListTabContent
 
             var grid = new MyraGrid();
             grid.SetupWithHeaders(
-                GridColumnInfo.Numeric("Serial"),
-                GridColumnInfo.Fill("Name", 2),
-                GridColumnInfo.Auto("Date Added"),
-                GridColumnInfo.Auto("")
+                GridColumnInfo.Fill(TazLang.Get("mog_kw_name")),
+                GridColumnInfo.Numeric(TazLang.Get("assistant_friends_serial")),
+                GridColumnInfo.Auto(TazLang.Get("assistant_friends_date_added")),
+                GridColumnInfo.Auto(TazLang.Get("agent_col_actions"))
             );
 
             int row = 1;
@@ -41,10 +42,10 @@ public static class FriendsListTabContent
             {
                 FriendEntry f = friends[i];
 
-                grid.AddWidget(new MyraLabel(f.Serial != 0 ? f.Serial.ToString() : "N/A", MyraLabel.TextStyle.P, MyraLabel.AlignMode.Right), row, 0);
-                grid.AddWidget(new MyraLabel(f.Name ?? "Unknown", MyraLabel.TextStyle.P), row, 1);
-                grid.AddWidget(new MyraLabel(f.DateAdded.ToString("yyyy-MM-dd"), MyraLabel.TextStyle.P), row, 2);
-                grid.AddWidget(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Remove", () =>
+                grid.AddWidget(MyraGrid.TableText(f.Name ?? TazLang.Get("assistant_friends_unknown")), row, 0);
+                grid.AddWidget(MyraGrid.TableText(f.Serial != 0 ? f.Serial.ToString() : "—", alignRight: true), row, 1);
+                grid.AddWidget(MyraGrid.TableText(f.DateAdded.ToString("yyyy-MM-dd")), row, 2);
+                grid.AddWidget(MyraStyle.ApplyButtonDangerStyle(new MyraButton(TazLang.Get("remove"), () =>
                 {
                     bool removed = f.Serial != 0
                         ? FriendsListManager.Instance.RemoveFriend(f.Serial)

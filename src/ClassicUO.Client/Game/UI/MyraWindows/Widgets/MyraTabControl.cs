@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets;
@@ -9,6 +10,7 @@ public class MyraTabControl : TabControl
 {
     private readonly List<Func<Widget>> _builders = new();
     private readonly List<bool> _rebuildOnSelect = new();
+    private readonly bool _desktop = DesktopAssistantTheme.Current != null;
 
     public MyraTabControl()
     {
@@ -28,19 +30,18 @@ public class MyraTabControl : TabControl
 
         var item = new TabItem(name) { Tag = index };
         Items.Add(item);
+        if (_desktop && FindHeader(item) is { } header)
+            header.AcceptsKeyboardFocus = true;
 
-        if (!string.IsNullOrEmpty(tooltip))
-            SetHeaderTooltip(item, tooltip!);
+        if (!string.IsNullOrEmpty(tooltip) && FindHeader(item) is { } tooltipHeader)
+            tooltipHeader.Tooltip = tooltip;
     }
 
     /// <summary>
-    /// Applies a hover tooltip to a tab's header button. Myra's <see cref="TabItem"/> does not
-    /// expose its header button, so this reaches it through the control's own visual tree: the
-    /// header buttons live in the first <see cref="Grid"/> under <c>InternalChild</c>, each tagged
-    /// with its owning <see cref="TabItem"/>. If Myra's internals ever change, this degrades to
-    /// simply not showing a tooltip rather than throwing.
+    /// Finds the header in Myra's visual tree because <see cref="TabItem"/> doesn't expose it.
+    /// The first grid under <c>InternalChild</c> tags each header with its owning tab.
     /// </summary>
-    private void SetHeaderTooltip(TabItem item, string tooltip)
+    private ButtonBase2? FindHeader(TabItem item)
     {
         Grid? buttonsGrid = null;
         foreach (Widget w in InternalChild.Widgets)
@@ -53,16 +54,15 @@ public class MyraTabControl : TabControl
         }
 
         if (buttonsGrid == null)
-            return;
+            return null;
 
         foreach (Widget button in buttonsGrid.Widgets)
         {
             if (ReferenceEquals(button.Tag, item))
-            {
-                button.Tooltip = tooltip;
-                return;
-            }
+                return button as ButtonBase2 ?? button.FindChild<ButtonBase2>();
         }
+
+        return null;
     }
 
     /// <summary>
@@ -110,18 +110,32 @@ public class MyraTabControl : TabControl
         else if (SelectedItem?.Tag is int index && index >= 0 && index < _builders.Count)
         {
             SelectedItem.Content = _builders[index]();
+            UpdateDesktopCaptions();
         }
     }
 
     private void OnTabSelected(object? sender, EventArgs e)
     {
-        if (SelectedItem == null) return;
-
-        if (SelectedItem.Tag is int idx && idx < _builders.Count)
-        {
-            if (SelectedItem.Content != null && !_rebuildOnSelect[idx]) return;
-
+        if (SelectedItem?.Tag is int idx && idx < _builders.Count &&
+            (SelectedItem.Content == null || _rebuildOnSelect[idx]))
             SelectedItem.Content = _builders[idx]();
+
+        UpdateDesktopCaptions();
+    }
+
+    private void UpdateDesktopCaptions()
+    {
+        if (!_desktop)
+            return;
+
+        foreach (TabItem item in Items)
+        {
+            if (FindHeader(item)?.FindChild<Label>() is not { } caption)
+                continue;
+
+            bool selected = ReferenceEquals(item, SelectedItem);
+            caption.TextColor = selected ? DesktopAssistantTheme.Accent : DesktopAssistantTheme.Text;
+            caption.Font = DesktopAssistantTheme.Font(bold: selected);
         }
     }
 }

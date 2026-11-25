@@ -1,4 +1,5 @@
 #nullable enable
+using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using Myra.Graphics2D.UI;
@@ -46,18 +47,19 @@ public static class SeasonFilterTabContent
         {
             SeasonFilter.Instance.Clear();
             foreach (System.Action rebuild in rebuildActions) rebuild();
-        });
+        }, confirmText: TazLang.Get("remove"), destructive: true);
         root.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(clear));
 
         var grid = new MyraGrid();
-        grid.SetupWithHeaders(GridColumnInfo.Auto("When Server Sends"), GridColumnInfo.Auto("Show As"), GridColumnInfo.Auto("Enabled"));
+        grid.SetupWithHeaders(GridColumnInfo.Auto("When Server Sends"), GridColumnInfo.Fill("Show As"),
+            GridColumnInfo.Auto(TazLang.Get("agent_col_enabled")));
 
         for (int i = 0; i < AllSeasons.Length; i++)
         {
             Season incoming = AllSeasons[i];
             string incomingName = SeasonNames[i];
 
-            grid.AddWidget(new MyraLabel(incomingName, MyraLabel.TextStyle.P), i + 1, 0);
+            grid.AddWidget(MyraGrid.TableText(incomingName), i + 1, 0);
 
             var cycleWrapper = new HorizontalStackPanel();
             var enableWrapper = new HorizontalStackPanel();

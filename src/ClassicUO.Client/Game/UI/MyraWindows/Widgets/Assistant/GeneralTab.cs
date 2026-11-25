@@ -43,18 +43,19 @@ public static class GeneralTab
             (TazLang.Get("mog_misctab_label", "Miscellaneous"), () => MiscTab.GetContent().Render())
         ];
 
-        var root = new MyraGrid { ColumnSpacing = 12 };
+        int sidebarWidth = DesktopAssistantTheme.SidebarWidth - 14;
+        var content = new Panel();
+        var root = new DesktopAssistantForm.FixedSidebarLayout(content, sidebarWidth) { ColumnSpacing = 12 };
         root.AddColumn();
         root.AddColumn(new Proportion(ProportionType.Fill));
         var navigation = new VerticalStackPanel
         {
-            Width = DesktopAssistantTheme.SidebarWidth - 14,
+            Width = sidebarWidth,
             Background = DesktopAssistantTheme.Sidebar,
             VerticalAlignment = VerticalAlignment.Top,
             Padding = new Thickness(3),
             Spacing = 2
         };
-        var content = new Panel();
         var buttons = new MyraButton[sections.Length];
         for (int i = 0; i < sections.Length; i++)
         {
@@ -74,6 +75,7 @@ public static class GeneralTab
             for (int i = 0; i < buttons.Length; i++)
                 DesktopAssistantTheme.SelectNavigation(buttons[i], i == index);
 
+            root.FitContent = index == 0;
             content.Widgets.Clear();
             content.Widgets.Add(sections[index].Build());
         }

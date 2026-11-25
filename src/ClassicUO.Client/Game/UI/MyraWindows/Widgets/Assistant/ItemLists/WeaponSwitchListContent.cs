@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
@@ -46,7 +47,7 @@ internal static class WeaponSwitchListContent
         var bagSummary = Help(DescribeBag());
         var addMonster = ActionButton("Add Monster", emphasized: true);
         var addLoadout = ActionButton("Add Loadout", emphasized: true);
-        var setBag = ActionButton("Set Weapon Bag", emphasized: true);
+        var setBag = ActionButton("Set Weapon Bag");
         bool refreshing = false;
 
         var names = new MyraGrid { RowSpacing = 6, Padding = new Thickness(10) };
@@ -145,9 +146,9 @@ internal static class WeaponSwitchListContent
 
         void ShowAddLoadout()
         {
-            var name = new MyraInputBox { Width = 245, HintText = "Loadout name" };
+            var name = new MyraInputBox { MinWidth = 245, HintText = "Loadout name" };
             var message = Help("");
-            var body = new VerticalStackPanel { Spacing = 6, Width = 285 };
+            var body = new VerticalStackPanel { Spacing = 6 };
             body.Widgets.Add(name);
             body.Widgets.Add(message);
             interaction.ShowDialog(addLoadout, "Add Loadout", body, confirmed =>
@@ -174,7 +175,7 @@ internal static class WeaponSwitchListContent
                     return true;
                 message.Text = "Enter a unique loadout name.";
                 return false;
-            });
+            }, confirmText: TazLang.Get("add"));
         }
 
         void ShowAddMonster()
@@ -183,7 +184,7 @@ internal static class WeaponSwitchListContent
             var graphic = new MyraInputBox { Width = 120 };
             var hue = new MyraInputBox { Width = 120, Text = "*" };
             var message = Help("");
-            var body = new VerticalStackPanel { Spacing = 6, Width = 385 };
+            var body = new VerticalStackPanel { Spacing = 6 };
             body.Widgets.Add(Help("Target a monster to fill its name, body graphic, and hue, or enter them manually. Use * for any hue."));
             body.Widgets.Add(Row("Name", name));
             body.Widgets.Add(Row("Body graphic", graphic));
@@ -241,17 +242,19 @@ internal static class WeaponSwitchListContent
                 }
 
                 return true;
-            });
+            }, confirmText: TazLang.Get("add"));
         }
 
         void ShowWeaponBag()
         {
             var bag = new MyraInputBox { Width = 125, Text = SerialText(settings.WeaponBag) };
             var message = Help("");
-            var body = new VerticalStackPanel { Spacing = 6, Width = 385 };
+            var body = new VerticalStackPanel { Spacing = 6 };
             body.Widgets.Add(Help("Target a container in your backpack or enter its serial. Clear the bag to use your backpack."));
             var row = SerialRow("Bag serial", bag, item => item.ItemData.IsContainer, message);
-            row.Widgets.Add(ActionButton("Clear", () => bag.Text = "0"));
+            var clear = new MyraButton(TazLang.Get("mog_kw_clear"), () => bag.Text = "0");
+            if (!interaction.IsDesktop)
+                row.Widgets.Add(clear);
             body.Widgets.Add(row);
             body.Widgets.Add(message);
             uint serial = 0;
@@ -264,7 +267,8 @@ internal static class WeaponSwitchListContent
                 settings.WeaponBag = serial;
                 settings.Save();
                 bagSummary.Text = DescribeBag();
-            }, () => ReadSerial(bag, out serial, message));
+            }, () => ReadSerial(bag, out serial, message), confirmText: TazLang.Get("mog_kw_save"),
+                secondaryActions: [clear]);
         }
 
         string DescribeBag() => settings.WeaponBag == 0 ? "Using your backpack." : $"Bag serial {SerialText(settings.WeaponBag)}";

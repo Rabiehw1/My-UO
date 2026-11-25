@@ -145,11 +145,7 @@ public sealed class ShardSpellButtonGump : AnchorableGump
         ShardSpellBookInfo info = ShardSpellCatalog.Get(_book);
         ShardSpell spell = ShardSpellCatalog.GetSpell(_book, _index)!;
 
-        // Rows follow ShardSpellBook and columns follow the saved spell index.
-        // Empty cells at the ends of shorter books are transparent.
-        _artBounds = new Rectangle(_index * ART_SIZE, (int)_book * ART_SIZE, ART_SIZE, ART_SIZE);
-        _art = LoadArt("ShardSpellIcons.png");
-        _illustratedArt = LoadArt("ShardSpellIllustrations.png");
+        (_art, _illustratedArt, _artBounds) = LoadIconArt(_book, _index);
         if (_art == null && _illustratedArt == null)
             AddLetterFallback(info, spell);
 
@@ -160,9 +156,16 @@ public sealed class ShardSpellButtonGump : AnchorableGump
         AnchorType = ANCHOR_TYPE.SPELL;
     }
 
-    private Texture2D? LoadArt(string name) =>
+    internal static (Texture2D? Pictogram, Texture2D? Illustration, Rectangle Bounds) LoadIconArt(ShardSpellBook book, int index)
+    {
+        // Atlas rows follow ShardSpellBook and columns follow the saved spell index.
+        var bounds = new Rectangle(index * ART_SIZE, (int)book * ART_SIZE, ART_SIZE, ART_SIZE);
+        return (LoadArt("ShardSpellIcons.png", bounds), LoadArt("ShardSpellIllustrations.png", bounds), bounds);
+    }
+
+    private static Texture2D? LoadArt(string name, Rectangle bounds) =>
         ExternalImageLoader.Instance.TryGetEmbeddedTexture(name, out Texture2D texture)
-        && texture is { IsDisposed: false } && texture.Bounds.Contains(_artBounds) ? texture : null;
+        && texture is { IsDisposed: false } && texture.Bounds.Contains(bounds) ? texture : null;
 
     private void AddLetterFallback(ShardSpellBookInfo info, ShardSpell spell)
     {

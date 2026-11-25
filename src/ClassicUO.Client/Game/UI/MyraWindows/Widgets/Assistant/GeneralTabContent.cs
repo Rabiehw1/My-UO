@@ -5,9 +5,8 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Processes;
-using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Theme;
-using System.Linq;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
@@ -21,124 +20,123 @@ public static class GeneralTabContent
         Profile profile = ProfileManager.CurrentProfile;
         float gameScale = Client.Game.RenderScale;
 
-        StackPanel mainContent = interaction.IsDesktop
-            ? new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING }
-            : new HorizontalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
-        var leftSide = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
-        var rightSide = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
+        Widget[] visualToggles =
+        [
+            MyraCheckButton.CreateWithCallback(profile.HighlightGameObjects,
+                b => profile.HighlightGameObjects = b, TazLang.Get("assistant_highlightgameobjects")),
+            MyraCheckButton.CreateWithCallback(profile.NameOverheadToggled,
+                b => profile.NameOverheadToggled = b, TazLang.Get("assistant_shownameplates")),
+            MyraCheckButton.CreateWithCallback(profile.EnablePetScaling, b =>
+            {
+                profile.EnablePetScaling = b;
+                Dictionary<uint, Mobile>.ValueCollection mobs = World.Instance.Mobiles.Values;
+                foreach (Mobile mob in mobs)
+                    if (mob != null && mob.IsRenamable)
+                        mob.Scale = b ? 0.6f : 1f;
+            }, TazLang.Get("assistant_petscaling"), TazLang.Get("assistant_petscaling_tooltip")),
+            MyraCheckButton.CreateWithCallback(profile.OutlineMobilesNotoriety,
+                b => profile.OutlineMobilesNotoriety = b, TazLang.Get("assistant_outlinemobiles"))
+        ];
+        var dragDistance = LabeledHorizontalSlider.CreateSliderWithCallback(0, 20, profile.MinGumpMoveDistance,
+            v => profile.MinGumpMoveDistance = (int)v);
+        var scale = LabeledHorizontalSlider.CreateSliderWithCallback(Constants.MIN_GAME_SCALE * 100, Constants.MAX_GAME_SCALE * 100,
+            gameScale * 100, v => gameScale = Math.Clamp(v / 100, Constants.MIN_GAME_SCALE, Constants.MAX_GAME_SCALE), valueSuffix: "%");
+        scale.Tooltip = TazLang.Get("assistant_gamescale_tooltip");
+        var applyScale = interaction.IsDesktop
+            ? DesktopAssistantTheme.ActionButton(TazLang.Get("assistant_apply_scale"), ApplyScale, primary: true)
+            : new MyraButton(TazLang.Get("assistant_apply_scale"), ApplyScale);
 
-        mainContent.Widgets.Add(leftSide);
-        mainContent.Widgets.Add(rightSide);
+        var objectDelay = LabeledHorizontalSlider.CreateSliderWithCallback(0, 3000, profile.MoveMultiObjectDelay,
+            v => profile.MoveMultiObjectDelay = (int)v, valueSuffix: " ms");
+        var checkDelay = new MyraButton(TazLang.Get("assistant_autodelaychecker"),
+            () => interaction.RunInGame(() => AutomatedObjectDelay.Begin(() => objectDelay.Value = profile.MoveMultiObjectDelay)))
+        { Tooltip = TazLang.Get("assistant_autodelaychecker_tooltip") };
 
+        Widget[] gameplayToggles =
+        [
+            MyraCheckButton.CreateWithCallback(profile.QueueManualItemMoves, b => profile.QueueManualItemMoves = b,
+                TazLang.Get("assistant_queueitemmoves"), TazLang.Get("assistant_queueitemmoves_tooltip")),
+            MyraCheckButton.CreateWithCallback(profile.QueueManualItemUses, b => profile.QueueManualItemUses = b,
+                TazLang.Get("assistant_queueobjectuses"), TazLang.Get("assistant_queueobjectuses_tooltip")),
+            MyraCheckButton.CreateWithCallback(profile.AutoOpenOwnCorpse, b => profile.AutoOpenOwnCorpse = b,
+                TazLang.Get("assistant_autoopenowncorpse"), TazLang.Get("assistant_autoopenowncorpse_tooltip")),
+            MyraCheckButton.CreateWithCallback(profile.AutoUnequipForSpellCasting, b => profile.AutoUnequipForSpellCasting = b,
+                TazLang.Get("assistant_autounequipforspellcasting"), TazLang.Get("assistant_autounequipforspellcasting_tooltip")),
+            MyraCheckButton.CreateWithCallback(profile.AutoUnequipForPotions, b => profile.AutoUnequipForPotions = b,
+                TazLang.Get("assistant_autounequipforpotions"), TazLang.Get("assistant_autounequipforpotions_tooltip")),
+            MyraCheckButton.CreateWithCallback(profile.DisableWeather, b =>
+            {
+                profile.DisableWeather = b;
+                if (b)
+                    World.Instance?.Weather.Reset();
+            }, TazLang.Get("assistant_disableweather"), TazLang.Get("assistant_disableweather_tooltip"))
+        ];
+        var quickHeal = BuildQuickActionCombo(profile.QuickHealAction, a => profile.QuickHealAction = a);
+        var quickCure = BuildQuickActionCombo(profile.QuickCureAction, a => profile.QuickCureAction = a);
+        var setLastTarget = MyraCheckButton.CreateWithCallback(profile.SingleClickMobileSetsLastTarget,
+            b => profile.SingleClickMobileSetsLastTarget = b, TazLang.Get("assistant_singleclicklasttarg"));
 
-        leftSide.Widgets.Add(new MyraLabel(TazLang.Get("assistant_visualconfig"), MyraLabel.TextStyle.H2));
-        rightSide.Widgets.Add(new MyraLabel(TazLang.Get("assistant_delayconfig"), MyraLabel.TextStyle.H2));
+        string dragDistanceLabel = TazLang.Get("assistant_mingumpdragdist");
+        string scaleLabel = TazLang.Get("assistant_gamescale");
+        string delayLabel = TazLang.Get("assistant_objectdelay");
+        string healLabel = TazLang.Get("assistant_quickhealspell");
+        string cureLabel = TazLang.Get("assistant_quickcurespell");
 
-        leftSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.HighlightGameObjects, (b) => profile.HighlightGameObjects = b, TazLang.Get("assistant_highlightgameobjects")));
-
-        leftSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.NameOverheadToggled, (b) => profile.NameOverheadToggled = b, TazLang.Get("assistant_shownameplates")));
-
-        leftSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.EnablePetScaling, b =>
+        if (interaction.IsDesktop)
         {
-            profile.EnablePetScaling = b;
+            var desktop = new VerticalStackPanel { Spacing = 8, VerticalAlignment = VerticalAlignment.Top };
+            var map = DesktopAssistantTheme.Group(TazLang.Get("world_map"),
+                DesktopAssistantTheme.ActionButton(TazLang.Get("assistant_open_detached_map"), DetachedWorldMapWindow.Show, primary: true));
+            desktop.Widgets.Add(new DesktopAssistantForm.SectionPair(ScriptExecutorTab.BuildAutorun(), map));
+            var visuals = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_visuals"),
+                [.. visualToggles, DesktopAssistantForm.Fields(new(dragDistanceLabel, dragDistance), new(scaleLabel, scale)), applyScale]);
+            var timing = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_object_timing"),
+                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(delayLabel, objectDelay)), checkDelay);
+            desktop.Widgets.Add(new DesktopAssistantForm.SectionPair(visuals, timing));
+            desktop.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_game_interaction"),
+                [.. gameplayToggles, DesktopAssistantForm.Fields(new(healLabel, quickHeal), new(cureLabel, quickCure)), setLastTarget]));
+            return desktop;
+        }
 
-            Dictionary<uint, Mobile>.ValueCollection mobs = World.Instance.Mobiles.Values;
-            foreach (Mobile mob in mobs)
-                if (mob != null && mob.IsRenamable)
-                    mob.Scale = b ? 0.6f : 1f;
-        }, TazLang.Get("assistant_petscaling"), TazLang.Get("assistant_petscaling_tooltip")));
-
-        leftSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.OutlineMobilesNotoriety, (b) => profile.OutlineMobilesNotoriety = b, TazLang.Get("assistant_outlinemobiles")));
-
-        leftSide.Widgets.Add(LabeledHorizontalSlider.SliderWithLabel(TazLang.Get("assistant_mingumpdragdist"), out _, v => profile.MinGumpMoveDistance = (int)v, 0, 20, profile.MinGumpMoveDistance));
-
-        leftSide.Widgets.Add(LabeledHorizontalSlider.SliderWithLabel(TazLang.Get("assistant_gamescale"), out LabeledHorizontalSlider gsSlider, v =>
-        {
-            gameScale = Math.Clamp(v / 100, Constants.MIN_GAME_SCALE, Constants.MAX_GAME_SCALE);
-        }, Constants.MIN_GAME_SCALE * 100, Constants.MAX_GAME_SCALE * 100, Client.Game.RenderScale * 100, valueSuffix: "%"));
-        gsSlider.Tooltip = TazLang.Get("assistant_gamescale_tooltip");
+        var game = new HorizontalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
+        var left = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
+        var right = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
+        game.Widgets.Add(left);
+        game.Widgets.Add(right);
+        left.Widgets.Add(new MyraLabel(TazLang.Get("assistant_visualconfig"), MyraLabel.TextStyle.H2));
+        foreach (Widget toggle in visualToggles)
+            left.Widgets.Add(toggle);
+        left.Widgets.Add(GameSliderRow(dragDistanceLabel, dragDistance));
+        left.Widgets.Add(GameSliderRow(scaleLabel, scale));
+        left.Widgets.Add(applyScale);
+        right.Widgets.Add(new MyraLabel(TazLang.Get("assistant_delayconfig"), MyraLabel.TextStyle.H2));
+        right.Widgets.Add(GameSliderRow(delayLabel, objectDelay));
+        right.Widgets.Add(checkDelay);
+        right.Widgets.Add(new MyraSpacer(20, 15));
+        right.Widgets.Add(new MyraLabel(TazLang.Get("assistant_misc"), MyraLabel.TextStyle.H2));
+        foreach (Widget toggle in gameplayToggles)
+            right.Widgets.Add(toggle);
+        right.Widgets.Add(new MyraLabel(healLabel, MyraLabel.TextStyle.P).PlaceBefore(quickHeal));
+        right.Widgets.Add(new MyraLabel(cureLabel, MyraLabel.TextStyle.P).PlaceBefore(quickCure));
+        right.Widgets.Add(setLastTarget);
+        return game;
 
         void ApplyScale()
         {
             Client.Game.SetScale(gameScale);
             ProfileManager.GlobalSettings.GlobalScale = gameScale;
         }
-
-        leftSide.Widgets.Add(interaction.IsDesktop
-            ? DesktopAssistantTheme.ActionButton("Apply scale", ApplyScale, primary: true)
-            : new MyraButton("Apply scale", ApplyScale));
-
-
-        //Right side
-        rightSide.Widgets.Add(LabeledHorizontalSlider.SliderWithLabel(TazLang.Get("assistant_objectdelay"), out LabeledHorizontalSlider obDelaySlider,
-            v => profile.MoveMultiObjectDelay = (int)v, 0, 3000, profile.MoveMultiObjectDelay, valueSuffix: " ms"));
-
-        rightSide.Widgets.Add(new MyraButton(TazLang.Get("assistant_autodelaychecker"), () => interaction.RunInGame(() => AutomatedObjectDelay.Begin(() =>
-        {
-            obDelaySlider?.Value = profile.MoveMultiObjectDelay;
-        }))) { Tooltip = TazLang.Get("assistant_autodelaychecker_tooltip") });
-
-        // Right side: Misc
-        rightSide.Widgets.Add(new MyraSpacer(20, 15));
-
-        rightSide.Widgets.Add(new MyraLabel(TazLang.Get("assistant_misc"), MyraLabel.TextStyle.H2));
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.QueueManualItemMoves,
-            b => profile.QueueManualItemMoves = b, TazLang.Get("assistant_queueitemmoves"), TazLang.Get("assistant_queueitemmoves_tooltip")));
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.QueueManualItemUses,
-            b => profile.QueueManualItemUses = b, TazLang.Get("assistant_queueobjectuses"), TazLang.Get("assistant_queueobjectuses_tooltip")));
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.AutoOpenOwnCorpse,
-            b => profile.AutoOpenOwnCorpse = b, TazLang.Get("assistant_autoopenowncorpse"), TazLang.Get("assistant_autoopenowncorpse_tooltip")));
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.AutoUnequipForSpellCasting,
-            b => profile.AutoUnequipForSpellCasting = b,
-            TazLang.Get("assistant_autounequipforspellcasting"),
-            TazLang.Get("assistant_autounequipforspellcasting_tooltip"))
-        );
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.AutoUnequipForPotions,
-            b => profile.AutoUnequipForPotions = b,
-            TazLang.Get("assistant_autounequipforpotions"),
-            TazLang.Get("assistant_autounequipforpotions_tooltip"))
-        );
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.DisableWeather,
-            b => {
-                profile.DisableWeather = b;
-                if (b) World.Instance?.Weather.Reset();
-            }, TazLang.Get("assistant_disableweather"), TazLang.Get("assistant_disableweather_tooltip")));
-
-        rightSide.Widgets.Add(BuildQuickActionCombo(TazLang.Get("assistant_quickhealspell", "Quick heal"), profile.QuickHealAction, a => profile.QuickHealAction = a));
-        rightSide.Widgets.Add(BuildQuickActionCombo(TazLang.Get("assistant_quickcurespell", "Quick cure"), profile.QuickCureAction, a => profile.QuickCureAction = a));
-
-        rightSide.Widgets.Add(MyraCheckButton.CreateWithCallback(profile.SingleClickMobileSetsLastTarget,
-            b => {
-                profile.SingleClickMobileSetsLastTarget = b;
-            }, TazLang.Get("assistant_singleclicklasttarg")));
-
-        if (!interaction.IsDesktop)
-            return mainContent;
-
-        var grid = new MyraGrid { ColumnSpacing = 10, RowSpacing = 8, MaxWidth = 900 };
-        grid.AddColumn(new Proportion(ProportionType.Part, 1), count: 2);
-        grid.AddRow(count: 3);
-        Widget[] visuals = leftSide.Widgets.Skip(1).ToArray();
-        Widget[] actions = rightSide.Widgets.Skip(1).Take(2).ToArray();
-        Widget[] gameplay = rightSide.Widgets.Skip(5).ToArray();
-        leftSide.Widgets.Clear();
-        rightSide.Widgets.Clear();
-        grid.AddWidget(ScriptExecutorTab.BuildAutorun(), 0, 0);
-        grid.AddWidget(DesktopAssistantTheme.Group("World Map",
-            DesktopAssistantTheme.ActionButton("Open detached map", DetachedWorldMapWindow.Show, primary: true)), 0, 1);
-        grid.AddWidget(DesktopAssistantTheme.Group("Visuals", visuals), 1, 0);
-        grid.AddWidget(DesktopAssistantTheme.Group("Object timing", actions), 1, 1);
-        grid.AddWidget(DesktopAssistantTheme.Group("Game interaction", gameplay), 2, 0, colspan: 2);
-        return grid;
     }
 
-    private static Widget BuildQuickActionCombo(string label, HealthBarQuickAction current, Action<HealthBarQuickAction> onChanged)
+    private static Widget GameSliderRow(string label, LabeledHorizontalSlider slider)
+    {
+        var row = new HorizontalStackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = MyraStyle.STANDARD_SPACING };
+        row.Widgets.Add(slider);
+        row.Widgets.Add(new MyraLabel(label, MyraLabel.TextStyle.P));
+        return row;
+    }
+
+    private static ComboView BuildQuickActionCombo(HealthBarQuickAction current, Action<HealthBarQuickAction> onChanged)
     {
         var combo = new ComboView
         {
@@ -148,21 +146,18 @@ public static class GeneralTabContent
         };
 
         HealthBarQuickAction[] actions = Enum.GetValues<HealthBarQuickAction>();
+        foreach (HealthBarQuickAction action in actions)
+            combo.ListView.Widgets.Add(new Label { Text = action.GetDisplayName() });
 
-        for (int i = 0; i < actions.Length; i++)
-        {
-            combo.ListView.Widgets.Add(new Label { Text = actions[i].GetDisplayName() });
-
-            if (actions[i] == current)
-                combo.ListView.SelectedIndex = i;
-        }
+        int selected = Array.IndexOf(actions, current);
+        if (selected >= 0)
+            combo.ListView.SelectedIndex = selected;
 
         combo.ListView.SelectedIndexChanged += (_, _) =>
         {
             if (combo.ListView.SelectedIndex is int index)
                 onChanged(actions[index]);
         };
-
-        return new MyraLabel(label, MyraLabel.TextStyle.P).PlaceBefore(combo);
+        return combo;
     }
 }

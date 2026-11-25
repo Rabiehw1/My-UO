@@ -28,7 +28,9 @@ internal sealed class DesktopAssistantTheme
     private static readonly SolidBrush Focus = new(Accent);
     private static readonly SolidBrush GroupFill = new(new Color(249, 250, 252));
     private static readonly SolidBrush Disabled = new(new Color(240, 242, 245));
-    private static readonly SolidBrush ControlBorder = new(new Color(174, 185, 198));
+    internal static readonly SolidBrush ControlBorder = new(new Color(113, 129, 147));
+    private static readonly IBrush SelectedTab = new SelectionSurface(Canvas, underline: true);
+    private static readonly IBrush SelectedNavigation = new SelectionSurface(Selected, underline: false);
     private static readonly Color DisabledText = new(107, 117, 129);
     private readonly Stylesheet _stylesheet;
     private static Stylesheet? _gameStylesheet;
@@ -54,7 +56,7 @@ internal sealed class DesktopAssistantTheme
         {
             LabelStyle = label, Background = GroupFill, OverBackground = Hover, PressedBackground = Selected,
             DisabledBackground = Disabled, Border = ControlBorder, FocusedBorder = Focus, BorderThickness = new Thickness(1),
-            Padding = new Thickness(7, 3), MinHeight = 24
+            Padding = new Thickness(7, 3), MinHeight = 30
         };
         _stylesheet.ButtonStyle = button;
         _stylesheet.ButtonStyles["blue"] = new ButtonStyle(button) { Background = Selected };
@@ -133,8 +135,9 @@ internal sealed class DesktopAssistantTheme
         tabs.CloseButtonStyle = game.TabControlStyle.CloseButtonStyle;
         tabs.TabItemStyle = new ImageTextButtonStyle(button)
         {
-            Background = TabStrip, LabelStyle = new LabelStyle(label) { PressedTextColor = Accent },
-            Padding = new Thickness(9, 4), BorderThickness = new Thickness(1, 1, 1, 0), Margin = new Thickness(1, 0)
+            Background = TabStrip, PressedBackground = SelectedTab,
+            LabelStyle = new LabelStyle(label) { PressedTextColor = Accent },
+            Padding = new Thickness(9, 4), BorderThickness = new Thickness(1), Margin = new Thickness(1, 0)
         };
         tabs.ContentStyle = new WidgetStyle { Background = Canvas, Border = Divider, BorderThickness = new Thickness(1), Padding = new Thickness(8) };
 
@@ -178,7 +181,6 @@ internal sealed class DesktopAssistantTheme
     private static readonly SolidBrush PrimaryActionHover = new(new Color(27, 83, 127));
     private static readonly SolidBrush SecondaryAction = new(new Color(237, 243, 249));
     private static readonly SolidBrush SecondaryActionHover = new(new Color(222, 234, 246));
-    private static readonly SolidBrush SecondaryActionBorder = new(new Color(170, 186, 204));
 
     internal static void ApplyActionButtonStyle(MyraButton button, bool primary = false)
     {
@@ -186,12 +188,13 @@ internal sealed class DesktopAssistantTheme
         button.OverBackground = primary ? PrimaryActionHover : SecondaryActionHover;
         button.PressedBackground = button.OverBackground;
         button.DisabledBackground = Disabled;
-        button.Border = primary ? PrimaryAction : SecondaryActionBorder;
+        button.Border = primary ? PrimaryAction : ControlBorder;
         button.FocusedBorder = Focus;
         button.BorderThickness = new Thickness(1);
         button.Padding = new Thickness(9, 5);
         button.Margin = new Thickness(0);
         button.MinHeight = 30;
+        button.AcceptsKeyboardFocus = true;
         if (button.Content is Label caption)
         {
             caption.Font = Font(bold: true);
@@ -205,11 +208,11 @@ internal sealed class DesktopAssistantTheme
         Background = tab ? TabStrip : Sidebar,
         OverBackground = Hover,
         PressedBackground = Selected,
-        DisabledBackground = tab ? Canvas : Selected,
+        DisabledBackground = tab ? SelectedTab : SelectedNavigation,
         Border = tab ? Divider : null,
         OverBorder = Divider,
-        DisabledBorder = tab ? Divider : Focus,
-        BorderThickness = tab ? new Thickness(1, 1, 1, 0) : new Thickness(2, 0, 0, 0),
+        DisabledBorder = tab ? Divider : null,
+        BorderThickness = new Thickness(1),
         Padding = tab ? new Thickness(9, 4) : new Thickness(5, 1),
         Margin = new Thickness(0),
         HorizontalAlignment = tab ? HorizontalAlignment.Left : HorizontalAlignment.Stretch
@@ -217,8 +220,12 @@ internal sealed class DesktopAssistantTheme
 
     internal static void SelectNavigation(MyraButton button, bool selected)
     {
-        button.LabelFont = Font(bold: selected);
-        ((Label)button.Content).DisabledTextColor = Accent;
+        if (button.Content is Label caption)
+        {
+            caption.Font = Font(bold: selected);
+            caption.TextColor = selected ? Accent : Text;
+            caption.DisabledTextColor = Accent;
+        }
         button.Enabled = !selected;
     }
 
@@ -243,9 +250,9 @@ internal sealed class DesktopAssistantTheme
 
     private static ImageTextButtonStyle ChoiceStyle(LabelStyle label, IImage uncheckedImage, IImage checkedImage) => new()
     {
-        LabelStyle = label, ImageTextSpacing = 4,
+        LabelStyle = label, ImageTextSpacing = 5,
         ImageStyle = new PressableImageStyle { Image = uncheckedImage, PressedImage = checkedImage },
-        FocusedBorder = Focus
+        FocusedBorder = Focus, BorderThickness = new Thickness(1), MinHeight = 26
     };
 
     internal Scope Use() => new(this);
@@ -286,7 +293,7 @@ internal sealed class DesktopAssistantTheme
 
     private sealed class CheckMark(bool selected, bool round = false) : IImage
     {
-        public Point Size => new(13, 13);
+        public Point Size => round ? new(13, 13) : new(16, 16);
 
         public void Draw(RenderContext context, Rectangle dest, Color color)
         {
@@ -303,14 +310,26 @@ internal sealed class DesktopAssistantTheme
             }
 
             outline.Draw(context, dest, color);
-            fill.Draw(context, new Rectangle(dest.X + 1, dest.Y + 1, 11, 11), color);
+            fill.Draw(context, new Rectangle(dest.X + 1, dest.Y + 1, dest.Width - 2, dest.Height - 2), color);
             if (!selected)
                 return;
 
             for (int i = 0; i < 3; i++)
-                Canvas.Draw(context, new Rectangle(dest.X + 2 + i, dest.Y + 6 + i, 2, 2), color);
+                Canvas.Draw(context, new Rectangle(dest.X + 3 + i, dest.Y + 7 + i, 2, 2), color);
             for (int i = 0; i < 6; i++)
-                Canvas.Draw(context, new Rectangle(dest.X + 4 + i, dest.Y + 8 - i, 2, 2), color);
+                Canvas.Draw(context, new Rectangle(dest.X + 5 + i, dest.Y + 9 - i, 2, 2), color);
+        }
+    }
+
+    private sealed class SelectionSurface(IBrush background, bool underline) : IBrush
+    {
+        public void Draw(RenderContext context, Rectangle dest, Color color)
+        {
+            background.Draw(context, dest, color);
+            Rectangle marker = underline
+                ? new Rectangle(dest.X, dest.Bottom - 2, dest.Width, 2)
+                : new Rectangle(dest.X, dest.Y, 2, dest.Height);
+            Focus.Draw(context, marker, color);
         }
     }
 

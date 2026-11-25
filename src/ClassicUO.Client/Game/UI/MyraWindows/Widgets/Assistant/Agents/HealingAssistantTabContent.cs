@@ -3,6 +3,7 @@ using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
 
@@ -57,31 +58,32 @@ internal static class HealingAssistantTabContent
         root.Widgets.Add(new MyraLabel(TazLang.Get("healingassistant_first_range", "First HP range"), MyraLabel.TextStyle.P).PlaceBefore(firstMethod));
         root.Widgets.Add(status);
 
-        root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_bandages", "Bandages") },
+        root.Widgets.Add(Section(TazLang.Get("healingassistant_bandages", "Bandages"),
             BuildThresholdRow(HealingMethod.Bandages), BandageAgentTabContent.BuildOptions(profile)));
 
-        root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_potions", "Healing potions") },
+        root.Widgets.Add(Section(TazLang.Get("healingassistant_potions", "Healing potions"),
             BuildThresholdRow(HealingMethod.GreaterHeal),
-            BuildSerialRow(interaction, TazLang.Get("healingassistant_greater_serial", "Greater Heal stack serial"),
-                profile.HealingAssistantGreaterHealSerial, value => profile.HealingAssistantGreaterHealSerial = value),
+            SerialRows(BuildSerialField(interaction, TazLang.Get("healingassistant_greater_serial", "Greater Heal stack serial"),
+                profile.HealingAssistantGreaterHealSerial, value => profile.HealingAssistantGreaterHealSerial = value)),
             BuildThresholdRow(HealingMethod.TamalaHeal),
-            BuildSerialRow(interaction, TazLang.Get("healingassistant_full_tamala_serial", "Full Tamala serial"),
-                profile.HealingAssistantFullTamalaSerial, value => profile.HealingAssistantFullTamalaSerial = value),
-            BuildSerialRow(interaction, TazLang.Get("healingassistant_half_tamala_serial", "Half-full Tamala serial"),
-                profile.HealingAssistantHalfTamalaSerial, value => profile.HealingAssistantHalfTamalaSerial = value),
+            SerialRows(
+                BuildSerialField(interaction, TazLang.Get("healingassistant_full_tamala_serial", "Full Tamala serial"),
+                    profile.HealingAssistantFullTamalaSerial, value => profile.HealingAssistantFullTamalaSerial = value),
+                BuildSerialField(interaction, TazLang.Get("healingassistant_half_tamala_serial", "Half-full Tamala serial"),
+                    profile.HealingAssistantHalfTamalaSerial, value => profile.HealingAssistantHalfTamalaSerial = value)),
             MyraInputBox.NumberWithLabel(TazLang.Get("healingassistant_potion_cooldown", "Shared potion cooldown (ms)"),
                 profile.HealingAssistantPotionCooldownMs, HealingAssistantManager.MinimumCooldownMs, int.MaxValue,
                 value => profile.HealingAssistantPotionCooldownMs = value)));
 
-        root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("healingassistant_fish", "Magic fish") },
+        root.Widgets.Add(Section(TazLang.Get("healingassistant_fish", "Magic fish"),
             BuildThresholdRow(HealingMethod.MagicFish),
-            BuildSerialRow(interaction, TazLang.Get("healingassistant_fish_serial", "Magic fish stack serial"),
-                profile.HealingAssistantMagicFishSerial, value => profile.HealingAssistantMagicFishSerial = value),
+            SerialRows(BuildSerialField(interaction, TazLang.Get("healingassistant_fish_serial", "Magic fish stack serial"),
+                profile.HealingAssistantMagicFishSerial, value => profile.HealingAssistantMagicFishSerial = value)),
             MyraInputBox.NumberWithLabel(TazLang.Get("healingassistant_fish_cooldown", "Fish cooldown (ms)"),
                 profile.HealingAssistantFishCooldownMs, HealingAssistantManager.MinimumCooldownMs, int.MaxValue,
                 value => profile.HealingAssistantFishCooldownMs = value)));
 
-        root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = "Healing spells" },
+        root.Widgets.Add(Section("Healing spells",
             new MyraLabel("Set your Earth Book, Holy Book, and Book of Songs in the Spell Books tab to use their spells.", MyraLabel.TextStyle.P),
             BuildThresholdRow(HealingMethod.NaturesTouch),
             BuildThresholdRow(HealingMethod.HealSpell),
@@ -108,6 +110,25 @@ internal static class HealingAssistantTabContent
             ? new ScrollViewer { Content = root, MaxHeight = Math.Max(180, ScaleHelper.LogicalWindowHeight - 140) }
             : root;
 
+        Widget Section(string title, params Widget[] children) => ItemListsTabContent.Section(interaction, title, children);
+
+        Widget SerialRows(params DesktopAssistantForm.Field[] fields)
+        {
+            if (interaction.IsDesktop)
+                return DesktopAssistantForm.Fields(fields);
+
+            var rows = new VerticalStackPanel { Spacing = 4 };
+            foreach (var field in fields)
+            {
+                var row = new HorizontalStackPanel { Spacing = 5 };
+                row.Widgets.Add(new MyraLabel(field.Label, MyraLabel.TextStyle.P));
+                row.Widgets.Add(field.Control);
+                row.Widgets.Add(field.Actions!);
+                rows.Widgets.Add(row);
+            }
+            return rows;
+        }
+
         Widget BuildThresholdRow(HealingMethod kind)
         {
             MethodSetting method = methods[(int)kind];
@@ -129,7 +150,8 @@ internal static class HealingAssistantTabContent
 
             var row = LabeledHorizontalSlider.SliderWithLabel(
                 TazLang.Get("healingassistant_start_hp", "Start at HP (%)"),
-                out LabeledHorizontalSlider slider, min: 1, max: 99, value: 100 - HealingAssistantManager.GetThreshold(profile, kind));
+                out LabeledHorizontalSlider slider, min: 1, max: 99, value: 100 - HealingAssistantManager.GetThreshold(profile, kind),
+                valueSuffix: "%");
             sliders[(int)kind] = slider;
             slider.ValueChangedByUser += (_, _) =>
             {
@@ -211,15 +233,18 @@ internal static class HealingAssistantTabContent
         }
     }
 
-    private static Widget BuildSerialRow(AgentPageInteraction interaction, string label, uint serial, Action<uint> setSerial)
+    private static DesktopAssistantForm.Field BuildSerialField(AgentPageInteraction interaction, string label, uint serial, Action<uint> setSerial)
     {
         const string unset = "0";
         var box = new MyraInputBox
         {
             Text = FormatSerial(),
-            Width = 112,
             Tooltip = TazLang.Get("healingassistant_serial_tooltip", "Enter a decimal or 0x hexadecimal item serial. Set to 0 to clear it.")
         };
+        if (interaction.IsDesktop)
+            box.MinWidth = 112;
+        else
+            box.Width = 112;
 
         box.TextChangedByUser += (_, _) =>
         {
@@ -228,10 +253,7 @@ internal static class HealingAssistantTabContent
         };
         box.LostFocus = () => box.Text = FormatSerial();
 
-        var row = new HorizontalStackPanel { Spacing = 5 };
-        row.Widgets.Add(new MyraLabel(label, MyraLabel.TextStyle.P));
-        row.Widgets.Add(box);
-        row.Widgets.Add(new MyraButton(TazLang.Get("healingassistant_select_serial", "Select item"), () =>
+        var target = new MyraButton(TazLang.Get("healingassistant_select_serial", "Select item"), () =>
         {
             GameActions.Print(TazLang.Get("healingassistant_target_stack", "Select the potion or fish stack to use."));
             interaction.SelectTarget(target =>
@@ -242,8 +264,8 @@ internal static class HealingAssistantTabContent
                     box.Text = FormatSerial();
                 }
             });
-        }));
-        return row;
+        });
+        return new DesktopAssistantForm.Field(label, box, target);
 
         string FormatSerial() => serial == 0 ? unset : $"0x{serial:X8}";
 

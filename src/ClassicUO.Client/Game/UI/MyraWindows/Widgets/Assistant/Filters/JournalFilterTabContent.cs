@@ -1,7 +1,9 @@
 #nullable enable
 using System.Collections.Generic;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
@@ -38,7 +40,8 @@ public static class JournalFilterTabContent
             }
 
             var grid = new MyraGrid();
-            grid.SetupWithHeaders(GridColumnInfo.Auto("Enabled"), GridColumnInfo.Fill("Filter Text"), GridColumnInfo.Auto("Actions"));
+            grid.SetupWithHeaders(GridColumnInfo.Auto(TazLang.Get("agent_col_enabled")),
+                GridColumnInfo.Fill(TazLang.Get("assistant_filters_text")), GridColumnInfo.Auto(TazLang.Get("agent_col_actions")));
 
             int dataRow = 1;
             for (int i = filters.Count - 1; i >= 0; i--)
@@ -104,7 +107,10 @@ public static class JournalFilterTabContent
         addFilterPanel.Widgets.Add(addConfirmRow);
 
         var actionRow = new HorizontalStackPanel { Spacing = 4 };
-        actionRow.Widgets.Add(new MyraButton("Add Filter Entry", () => addFilterPanel.Visible = !addFilterPanel.Visible));
+        var addEntry = new MyraButton(TazLang.Get("assistant_filters_add_entry"), () => addFilterPanel.Visible = !addFilterPanel.Visible);
+        if (interaction.IsDesktop)
+            DesktopAssistantTheme.ApplyActionButtonStyle(addEntry, primary: true);
+        actionRow.Widgets.Add(addEntry);
         actionRow.Widgets.Add(new MyraButton("Import", () =>
         {
             string? json = Clipboard.GetClipboardText();

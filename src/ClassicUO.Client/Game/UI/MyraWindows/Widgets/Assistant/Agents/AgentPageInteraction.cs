@@ -6,9 +6,13 @@ using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Input;
+using Microsoft.Xna.Framework;
+using Myra.Events;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
+using Myra.Graphics2D.UI.WrapPanel;
 using SDL3;
+using Keys = Microsoft.Xna.Framework.Input.Keys;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
@@ -97,16 +101,18 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
             SDL.SDL_RaiseWindow(Client.Game.Window.Handle);
     }
 
-    public void Confirm(Widget anchor, string title, string message, Action confirmed)
+    public void Confirm(Widget anchor, string title, string message, Action confirmed,
+        string? confirmText = null, bool destructive = false)
     {
         ShowDialog(anchor, title, new MyraLabel(message, MyraLabel.TextStyle.P), ok =>
         {
             if (ok)
                 confirmed();
-        });
+        }, confirmText: confirmText, destructive: destructive);
     }
 
-    public void ShowDialog(Widget anchor, string title, Widget body, Action<bool> onClose, Func<bool>? canClose = null)
+    public void ShowDialog(Widget anchor, string title, Widget body, Action<bool> onClose, Func<bool>? canClose = null,
+        string? confirmText = null, bool destructive = false, int preferredWidth = 480, MyraButton[]? secondaryActions = null)
     {
         if (!IsDesktop)
         {
@@ -114,28 +120,67 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
             return;
         }
 
-        var dialog = new Window { Title = title };
-        var content = new VerticalStackPanel { Spacing = 8, Padding = new Thickness(8) };
-        var buttons = new HorizontalStackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
-        buttons.Widgets.Add(new MyraButton(TazLang.Get("mog_kw_ok", "OK"), () =>
+        var confirm = new MyraButton(confirmText ?? TazLang.Get("uicommons_ok"));
+        var dialog = CreateDesktopDialog(title, body, [confirm], secondaryActions, preferredWidth);
+        if (destructive)
+            MyraStyle.ApplyButtonDangerStyle(confirm);
+
+        confirm.OnClick = () =>
         {
             if (canClose?.Invoke() == false)
                 return;
 
+            dialog.Result = true;
             dialog.Close();
-            onClose(true);
-        }));
-        buttons.Widgets.Add(new MyraButton(TazLang.Get("hotkeycapture_cancel", "Cancel"), () =>
-        {
-            dialog.Close();
-            onClose(false);
-        }));
-        content.Widgets.Add(body);
-        content.Widgets.Add(buttons);
-        dialog.Content = content;
+        };
         ShowDesktopDialog(anchor, dialog);
-        if (body is TextBox && body.Desktop is Desktop desktop)
-            desktop.FocusedKeyboardWidget = body;
+        dialog.Closed += (_, _) => onClose(dialog.Result);
+        if ((body as TextBox ?? body.FindChild<TextBox>()) is { Desktop: { } desktop } input)
+            desktop.FocusedKeyboardWidget = input;
+    }
+
+    internal static Window CreateDesktopDialog(string title, Widget body, MyraButton[] confirmActions,
+        MyraButton[]? secondaryActions = null, int preferredWidth = 480)
+    {
+        var dialog = new AssistantModalWindow(preferredWidth) { Title = title };
+        var footer = new MyraGrid
+        {
+            ColumnSpacing = 8, Padding = new Thickness(0, 8, 0, 0),
+            Border = DesktopAssistantTheme.Divider, BorderThickness = new Thickness(0, 1, 0, 0)
+        };
+        footer.AddColumn(new Proportion(ProportionType.Fill));
+        footer.AddColumn();
+        if (secondaryActions is { Length: > 0 })
+        {
+            var secondary = Actions();
+            foreach (MyraButton action in secondaryActions)
+                secondary.Widgets.Add(action);
+            footer.AddWidget(secondary, 0, 0);
+        }
+
+        var primary = Actions();
+        primary.HorizontalAlignment = HorizontalAlignment.Right;
+        primary.Widgets.Add(new MyraButton(TazLang.Get("uicommons_cancel"), dialog.Close));
+        foreach (MyraButton action in confirmActions)
+        {
+            DesktopAssistantTheme.ApplyActionButtonStyle(action, primary: true);
+            primary.Widgets.Add(action);
+        }
+        footer.AddWidget(primary, 0, 1);
+
+        var content = new MyraGrid { RowSpacing = 8, Padding = new Thickness(8) };
+        content.AddColumn(new Proportion(ProportionType.Fill));
+        content.AddRow(new Proportion(ProportionType.Fill));
+        content.AddRow();
+        content.AddWidget(new ScrollViewer { Content = body }, 0, 0);
+        content.AddWidget(footer, 1, 0);
+        dialog.Content = content;
+        return dialog;
+
+        static WrapPanel Actions() => new()
+        {
+            Orientation = Orientation.Horizontal, HorizontalSpacing = 6, VerticalSpacing = 4, UniformSizing = false
+        };
     }
 
     public void ShowDesktopDialog(Widget anchor, Window dialog, Action<HotkeyBinding>? capture = null)
@@ -145,8 +190,11 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
 
         CancelDialog();
         desktop.HideContextMenu();
+        dialog.CloseKey = null;
+        desktop.KeyDown += CloseOnEscape;
         dialog.Closed += (_, _) =>
         {
+            desktop.KeyDown -= CloseOnEscape;
             _hotkeyCapture?.Stop();
             _hotkeyCapture = null;
             _dialog = null;
@@ -158,9 +206,36 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
             _hotkeyCapture = new HotkeyCapture { AutoStop = false };
             _hotkeyCapture.StartForDesktop(capture);
         }
+
+        void CloseOnEscape(object? sender, GenericEventArgs<Keys> args)
+        {
+            if (args.Data == Keys.Escape && desktop.ContextMenu == null)
+                dialog.Close();
+        }
     }
 
     public void CancelDialog() => _dialog?.Close();
+
+    private sealed class AssistantModalWindow(int preferredWidth) : Window
+    {
+        private const int ViewportInset = 12;
+
+        protected override Point InternalMeasure(Point availableSize)
+        {
+            availableSize.X = Math.Max(1, Math.Min(preferredWidth, availableSize.X - 2 * ViewportInset));
+            availableSize.Y = Math.Max(1, availableSize.Y - 2 * ViewportInset);
+            Point measured = base.InternalMeasure(availableSize);
+            return new Point(Math.Min(measured.X, availableSize.X), Math.Min(measured.Y, availableSize.Y));
+        }
+
+        protected override void InternalArrange()
+        {
+            base.InternalArrange();
+            // A modal can grow after displaying validation or be open when the viewport shrinks.
+            Left = Math.Clamp(Left, 0, Math.Max(0, ContainerBounds.Width - Bounds.Width));
+            Top = Math.Clamp(Top, 0, Math.Max(0, ContainerBounds.Height - Bounds.Height));
+        }
+    }
 
     public void CancelDesktopHotkeyCapture()
     {

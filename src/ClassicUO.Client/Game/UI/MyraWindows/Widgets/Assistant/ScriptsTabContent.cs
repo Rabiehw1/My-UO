@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.LegionScripting;
@@ -61,7 +62,7 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
         var sidebar = new VerticalStackPanel { Spacing = 8 };
         sidebar.Widgets.Add(DesktopAssistantTheme.Group("Running Scripts", _active));
         var tools = new HorizontalStackPanel { Spacing = 3 };
-        var create = new MyraButton("New Script");
+        var create = DesktopAssistantTheme.ActionButton(TazLang.Get("scriptmanager_newscript"), primary: true);
         create.OnClick = () => ShowCreate(create, group: false);
         var addGroup = new MyraButton("New Group");
         addGroup.OnClick = () => ShowCreate(addGroup, group: true);
@@ -152,14 +153,14 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
         }
 
         var actions = new HorizontalStackPanel { Spacing = 4 };
-        actions.Widgets.Add(new MyraButton(script.IsPlaying ? "Stop script" : "Run script", () =>
+        actions.Widgets.Add(DesktopAssistantTheme.ActionButton(script.IsPlaying ? "Stop script" : "Run script", () =>
         {
             if (script.IsPlaying)
                 Legion.StopScript(script);
             else
                 Legion.PlayScript(script);
             RefreshRunning();
-        }));
+        }, primary: !script.IsPlaying));
 
         bool autorun = Legion.AutoRunPath == script.RelativePath;
         actions.Widgets.Add(new MyraButton(autorun ? "Clear Autorun" : "Set as Autorun", () =>
@@ -192,7 +193,7 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
                 script.OverrideFileContents(source.Text ?? "");
                 script.ReadFromFile();
                 ShowDetails();
-            });
+            }, confirmText: TazLang.Get("mog_kw_save"), preferredWidth: 600);
         };
         _details.Widgets.Add(DesktopAssistantTheme.Group("Source preview", edit, preview));
     }
@@ -272,6 +273,6 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
                 error.Text = ex.Message;
                 return false;
             }
-        });
+        }, confirmText: TazLang.Get("create"));
     }
 }

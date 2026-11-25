@@ -82,15 +82,31 @@ public static class HotkeysTabContent
                 rows.Select(r => (Row: r, Binding: r.GetBinding())).ToList();
 
             var grid = new MyraGrid { MaxWidth = interaction.IsDesktop ? null : 800 };
-            grid.SetupWithHeaders(
-                GridColumnInfo.Auto("Category"),
-                GridColumnInfo.Auto("Name"),
-                GridColumnInfo.Auto("Binding"),
-                GridColumnInfo.Auto("Conflicts"),
-                GridColumnInfo.Auto(""),
-                GridColumnInfo.Auto(""),
-                GridColumnInfo.Auto("On")
-            );
+            string categoryTitle = TazLang.Get("assistant_hotkeys_category");
+            string nameTitle = TazLang.Get("mog_kw_name");
+            string bindingTitle = TazLang.Get("assistant_hotkeys_binding");
+            string conflictTitle = TazLang.Get("assistant_hotkeys_conflicts");
+            if (interaction.IsDesktop)
+            {
+                grid.SetupWithHeaders(
+                    GridColumnInfo.Fill(categoryTitle),
+                    GridColumnInfo.Fill(nameTitle, 2),
+                    GridColumnInfo.Fill(bindingTitle),
+                    GridColumnInfo.Auto(conflictTitle),
+                    GridColumnInfo.Auto(TazLang.Get("agent_col_enabled")),
+                    GridColumnInfo.Auto(TazLang.Get("agent_col_actions")));
+            }
+            else
+            {
+                grid.SetupWithHeaders(
+                    GridColumnInfo.Auto(categoryTitle),
+                    GridColumnInfo.Auto(nameTitle),
+                    GridColumnInfo.Auto(bindingTitle),
+                    GridColumnInfo.Auto(conflictTitle),
+                    GridColumnInfo.Auto(""),
+                    GridColumnInfo.Auto(""),
+                    GridColumnInfo.Auto("On"));
+            }
 
             int row = 1;
             string query = filter.Text?.Trim() ?? "";
@@ -111,10 +127,9 @@ public static class HotkeysTabContent
                         .Select(s => s.Row.Name)
                         .ToList();
 
-                grid.AddWidget(new MyraLabel(r.Category ?? string.Empty, MyraLabel.TextStyle.P), row, 0);
-                grid.AddWidget(new MyraLabel(r.Name, MyraLabel.TextStyle.P), row, 1);
-
-                grid.AddWidget(new MyraLabel(description, MyraLabel.TextStyle.P), row, 2);
+                grid.AddWidget(MyraGrid.TableText(r.Category ?? string.Empty), row, 0);
+                grid.AddWidget(MyraGrid.TableText(r.Name), row, 1);
+                grid.AddWidget(MyraGrid.TableText(description), row, 2);
 
                 var conflictLabel = new MyraLabel(conflicts.Count > 0 ? "Yes" : string.Empty, MyraLabel.TextStyle.P);
                 if (conflicts.Count > 0)
@@ -123,7 +138,6 @@ public static class HotkeysTabContent
 
                 var setButton = new MyraButton(TazLang.Get("mog_kw_set", "Set"));
                 setButton.Click += (_, _) => StartCapture(setButton, localRow);
-                grid.AddWidget(setButton, row, 4);
 
                 MyraButton menuButton = null!;
                 menuButton = new MyraButton("...", () =>
@@ -138,12 +152,23 @@ public static class HotkeysTabContent
                         items.Add((TazLang.Get("hotkeycapture_reset", "Reset"), () => { reset(); SaveAndRefresh(); }));
                     }
                     ShowRowMenu(menuButton, items.ToArray());
-                });
-                grid.AddWidget(menuButton, row, 5);
+                }) { Tooltip = TazLang.Get("assistant_hotkeys_actions_tooltip") };
+                if (interaction.IsDesktop)
+                {
+                    var actions = new HorizontalStackPanel { Spacing = 4 };
+                    actions.Widgets.Add(setButton);
+                    actions.Widgets.Add(menuButton);
+                    grid.AddWidget(actions, row, 5);
+                }
+                else
+                {
+                    grid.AddWidget(setButton, row, 4);
+                    grid.AddWidget(menuButton, row, 5);
+                }
 
                 if (localRow.SupportsEnable)
                 {
-                    grid.AddWidget(MyraCheckButton.CreateWithCallback(
+                    var enabled = MyraCheckButton.CreateWithCallback(
                         localRow.GetEnabled(),
                         b =>
                         {
@@ -152,11 +177,14 @@ public static class HotkeysTabContent
                                 HotKeys.Save();
                         },
                         null,
-                        "Enable or disable this hotkey"), row, 6);
+                        "Enable or disable this hotkey");
+                    if (interaction.IsDesktop)
+                        enabled.HorizontalAlignment = HorizontalAlignment.Center;
+                    grid.AddWidget(enabled, row, interaction.IsDesktop ? 4 : 6);
                 }
                 else
                 {
-                    grid.AddWidget(new MyraLabel(string.Empty, MyraLabel.TextStyle.P), row, 6);
+                    grid.AddWidget(new MyraLabel(string.Empty, MyraLabel.TextStyle.P), row, interaction.IsDesktop ? 4 : 6);
                 }
 
                 row++;
@@ -208,7 +236,8 @@ public static class HotkeysTabContent
         {
             if (interaction.IsDesktop)
                 interaction.Confirm(resetAll, resetAll.Text,
-                    TazLang.Get("hotkeys_reset_confirm", "Restore all registered hotkeys to their defaults?"), ResetAll);
+                    TazLang.Get("hotkeys_reset_confirm", "Restore all registered hotkeys to their defaults?"), ResetAll,
+                    confirmText: TazLang.Get("hotkeycapture_reset"));
             else
                 ResetAll();
         };
@@ -325,26 +354,24 @@ public static class HotkeysTabContent
         HotkeyBinding original = row.GetBinding().Clone();
         HotkeyBinding pending = original;
         HotkeyRow[] conflicts = [];
-        var dialog = new Window { Title = TazLang.Get("hotkeycapture_title", "Set Hotkey") };
-        var content = new VerticalStackPanel { Spacing = 8, Padding = new Thickness(8), Width = 400 };
+        var content = new VerticalStackPanel { Spacing = 8 };
         var bindingLabel = new MyraLabel("", MyraLabel.TextStyle.H3);
         var conflictLabel = new MyraLabel("", MyraLabel.TextStyle.P) { Wrap = true };
-        var buttons = new HorizontalStackPanel { Spacing = 4 };
-        var save = new MyraButton(TazLang.Get("hotkeycapture_save", "Save"), Commit);
-        var replace = new MyraButton(TazLang.Get("hotkeys_replace", "Replace binding"), Commit);
-        buttons.Widgets.Add(save);
-        buttons.Widgets.Add(replace);
-        buttons.Widgets.Add(new MyraButton(TazLang.Get("hotkeycapture_clear", "Clear"), () => UpdateBinding(new HotkeyBinding())));
-        buttons.Widgets.Add(new MyraButton(TazLang.Get("hotkeycapture_reset", "Reset"), () => UpdateBinding(original)));
-        buttons.Widgets.Add(new MyraButton(TazLang.Get("hotkeycapture_cancel", "Cancel"), dialog.Close));
+        var save = new MyraButton(TazLang.Get("hotkeycapture_save"));
+        var replace = new MyraButton(TazLang.Get("hotkeys_replace", "Replace binding"));
+        var clear = new MyraButton(TazLang.Get("hotkeycapture_clear"), () => UpdateBinding(new HotkeyBinding()));
+        var reset = new MyraButton(TazLang.Get("hotkeycapture_reset"), () => UpdateBinding(original));
 
         content.Widgets.Add(new MyraLabel(row.Name, MyraLabel.TextStyle.P) { Wrap = true });
         content.Widgets.Add(new MyraLabel(TazLang.Get("hotkeycapture_instructions",
             "Press a key, side mouse button, wheel or controller button."), MyraLabel.TextStyle.P) { Wrap = true });
         content.Widgets.Add(bindingLabel);
         content.Widgets.Add(conflictLabel);
-        content.Widgets.Add(buttons);
-        dialog.Content = content;
+        var dialog = AgentPageInteraction.CreateDesktopDialog(TazLang.Get("hotkeycapture_title"), content,
+            [save, replace], [clear, reset]);
+        save.OnClick = Commit;
+        replace.OnClick = Commit;
+        MyraStyle.ApplyButtonDangerStyle(replace);
         UpdateBinding(original);
         interaction.ShowDesktopDialog(anchor, dialog, UpdateBinding);
 

@@ -3,6 +3,7 @@
 using System;
 using ClassicUO.Common;
 using ClassicUO.Game.UI.MyraWindows.Theme;
+using Microsoft.Xna.Framework;
 using Myra.Events;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
@@ -26,7 +27,7 @@ public class MyraCheckButton : CheckButton, IHighlightTarget
     public MyraCheckButton(string text, bool isChecked = false)
     {
         IsChecked = isChecked;
-        Content = new MyraLabel(text, MyraLabel.TextStyle.P);
+        Content = DesktopAssistantTheme.Current != null ? new CheckCaption(text) : new MyraLabel(text, MyraLabel.TextStyle.P);
         Build();
     }
 
@@ -38,8 +39,15 @@ public class MyraCheckButton : CheckButton, IHighlightTarget
 
     private void Build()
     {
-        CheckContentSpacing = DesktopAssistantTheme.Current != null ? 2 : 0;
-        Padding = new Thickness(2);
+        bool desktop = DesktopAssistantTheme.Current != null;
+        CheckContentSpacing = desktop ? 5 : 0;
+        Padding = desktop ? new Thickness(4, 2) : new Thickness(2);
+        if (desktop)
+        {
+            AcceptsKeyboardFocus = true;
+            if (Content != null)
+                HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
         VerticalAlignment = VerticalAlignment.Center;
     }
 
@@ -87,5 +95,10 @@ public class MyraCheckButton : CheckButton, IHighlightTarget
 
         cb.IsCheckedChanged += (_, _) => backingProperty.Set(cb.IsChecked);
         return cb;
+    }
+
+    private sealed class CheckCaption(string text) : MyraLabel(text, TextStyle.P)
+    {
+        public override bool InputFallsThrough(Point localPos) => true;
     }
 }

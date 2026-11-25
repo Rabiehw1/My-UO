@@ -6,6 +6,7 @@ using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.UI.Controls;
 using ClassicUO.Game.UI.Gumps;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Search;
 using ClassicUO.Utility;
@@ -104,7 +105,7 @@ public static class MacrosTabContent
             grid.SetupWithHeaders(
                 GridColumnInfo.Fill(TazLang.Get("macrostab_col_name")),
                 GridColumnInfo.Auto(TazLang.Get("macrostab_col_hotkey")),
-                GridColumnInfo.Auto(TazLang.Get("macrostab_col_edit"))
+                GridColumnInfo.Auto(TazLang.Get(interaction.IsDesktop ? "agent_col_actions" : "macrostab_col_edit"))
             );
 
             int dataRow = 1;
@@ -112,8 +113,8 @@ public static class MacrosTabContent
             {
                 Macro captured = macro;
 
-                grid.AddWidget(new MyraLabel(macro.Name, MyraLabel.TextStyle.P), dataRow, 0);
-                grid.AddWidget(new MyraLabel(macro.GetBinding().Describe(), MyraLabel.TextStyle.P), dataRow, 1);
+                grid.AddWidget(MyraGrid.TableText(macro.Name), dataRow, 0);
+                grid.AddWidget(MyraGrid.TableText(macro.GetBinding().Describe()), dataRow, 1);
                 grid.AddWidget(new MyraButton(TazLang.Get("macrostab_col_edit"), () =>
                 {
                     selectedMacro = captured;
@@ -262,7 +263,7 @@ public static class MacrosTabContent
                         MarkDirty();
                         BuildMacroList();
                         BuildEditor();
-                    });
+                    }, confirmText: TazLang.Get("delete"), destructive: true);
             };
             bottomRow.Widgets.Add(delete);
 
@@ -697,7 +698,7 @@ public static class MacrosTabContent
             ? new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 4 }
             : new HorizontalStackPanel { Spacing = 2 };
 
-        toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_add"), () =>
+        var addMacroButton = new MyraButton(TazLang.Get("macrostab_add"), () =>
         {
             string baseName = TazLang.Get("macrostab_newmacro");
             string macroName = baseName;
@@ -712,7 +713,10 @@ public static class MacrosTabContent
             MarkDirty();
             BuildMacroList();
             BuildEditor();
-        }));
+        });
+        if (interaction.IsDesktop)
+            DesktopAssistantTheme.ApplyActionButtonStyle(addMacroButton, primary: true);
+        toolbar.Widgets.Add(addMacroButton);
 
         toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_moveup"), () =>
         {

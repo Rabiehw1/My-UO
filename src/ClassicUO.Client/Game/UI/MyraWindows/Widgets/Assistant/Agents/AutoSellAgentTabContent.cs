@@ -4,6 +4,7 @@ using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Utility;
@@ -90,7 +91,11 @@ public static class AutoSellAgentTabContent
                 BuySellItemConfig entry = entries[i];
 
                 if (entry.Graphic > 0)
-                    grid.AddWidget(new MyraArtTexture((uint)entry.Graphic), dataRow, 0);
+                    grid.AddWidget(new MyraArtTexture(entry.Graphic, maxSize: interaction.IsDesktop ? 24 : 36)
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    }, dataRow, 0);
 
                 var graphicBox = new MyraInputBox { Text = entry.Graphic.ToString() };
                 graphicBox.TextChangedByUser += (_, _) =>
@@ -214,7 +219,10 @@ public static class AutoSellAgentTabContent
 
         // Action buttons
         var actionRow = new HorizontalStackPanel { Spacing = 6 };
-        actionRow.Widgets.Add(new MyraButton(TazLang.Get("agent_addmanualentry"), () => addEntryPanel.Visible = !addEntryPanel.Visible));
+        var addManual = new MyraButton(TazLang.Get("agent_addmanualentry"), () => addEntryPanel.Visible = !addEntryPanel.Visible);
+        if (interaction.IsDesktop)
+            DesktopAssistantTheme.ApplyActionButtonStyle(addManual, primary: true);
+        actionRow.Widgets.Add(addManual);
         actionRow.Widgets.Add(new MyraButton(TazLang.Get("agent_addfromtarget"), () =>
         {
             GameActions.Print(Client.Game.UO.World, TazLang.Get("autosell_targetprompt"));

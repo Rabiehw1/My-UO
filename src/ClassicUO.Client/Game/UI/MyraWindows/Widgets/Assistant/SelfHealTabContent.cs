@@ -142,7 +142,7 @@ public static class SelfHealTabContent
             "ms pad after a heal before recasting (auto from FCR; lower = faster)",
             out recastSlider,
             v => profile.SelfHeal_RecastDelayMs = (int)v,
-            min: 0, max: 2000, value: profile.SelfHeal_RecastDelayMs));
+            min: 0, max: 2000, value: profile.SelfHeal_RecastDelayMs, valueSuffix: " ms"));
 
         // Cast start grace: how long a cast may take to register before treating it as failed. Auto from FC.
         root.Widgets.Add(new MyraLabel("Cast start grace (ms):", MyraLabel.TextStyle.P));
@@ -150,7 +150,7 @@ public static class SelfHealTabContent
             "ms to wait for a cast to register before retrying (auto from FC; bounds the post-interrupt stall)",
             out graceSlider,
             v => profile.SelfHeal_CastStartGraceMs = (int)v,
-            min: 200, max: 3000, value: profile.SelfHeal_CastStartGraceMs));
+            min: 200, max: 3000, value: profile.SelfHeal_CastStartGraceMs, valueSuffix: " ms"));
 
         // Cure recheck delay: how long to wait for poison to clear before recasting Cure.
         root.Widgets.Add(new MyraLabel("Cure recheck delay (ms):", MyraLabel.TextStyle.P));
@@ -158,7 +158,7 @@ public static class SelfHealTabContent
             "ms before recasting Cure if still poisoned",
             out _,
             v => profile.SelfHeal_CureVerifyMs = (int)v,
-            min: 100, max: 2000, value: profile.SelfHeal_CureVerifyMs));
+            min: 100, max: 2000, value: profile.SelfHeal_CureVerifyMs, valueSuffix: " ms"));
 
         // Interrupt retry delay: how fast to recast after a cast is disrupted (e.g. by damage).
         root.Widgets.Add(new MyraLabel("Interrupt retry delay (ms):", MyraLabel.TextStyle.P));
@@ -166,7 +166,7 @@ public static class SelfHealTabContent
             "ms before recasting after a cast is interrupted",
             out _,
             v => profile.SelfHeal_InterruptRetryMs = (int)v,
-            min: 0, max: 1000, value: profile.SelfHeal_InterruptRetryMs));
+            min: 0, max: 1000, value: profile.SelfHeal_InterruptRetryMs, valueSuffix: " ms"));
 
         return root;
     }

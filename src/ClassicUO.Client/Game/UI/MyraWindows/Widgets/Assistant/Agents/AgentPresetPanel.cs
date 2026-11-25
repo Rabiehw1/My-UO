@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using Myra.Graphics2D;
@@ -26,7 +27,7 @@ internal static class AgentPresetPanel
         var edit = new MyraButton("Rename");
         var duplicate = new MyraButton("Copy");
         var delete = new MyraButton("Remove");
-        var add = new MyraButton("New", () => Prompt(toolbar, "New preset", "", value =>
+        var add = new MyraButton("New", () => Prompt(toolbar, "New preset", "", TazLang.Get("add"), value =>
         {
             if (create(value) is { } preset)
                 Refresh(preset);
@@ -39,7 +40,7 @@ internal static class AgentPresetPanel
             if (selected is not { } preset)
                 return;
 
-            Prompt(toolbar, "Rename preset", name(preset), value =>
+            Prompt(toolbar, "Rename preset", name(preset), TazLang.Get("assistant_dialog_rename"), value =>
             {
                 rename(preset, value);
                 Refresh(preset);
@@ -59,7 +60,7 @@ internal static class AgentPresetPanel
             {
                 if (remove(preset))
                     Refresh(null);
-            });
+            }, confirmText: TazLang.Get("remove"), destructive: true);
         };
         MyraStyle.ApplyButtonDangerStyle(delete);
         toolbar.Widgets.Add(add);
@@ -67,8 +68,10 @@ internal static class AgentPresetPanel
         toolbar.Widgets.Add(duplicate);
         toolbar.Widgets.Add(delete);
 
-        var layout = new MyraGrid { ColumnSpacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
-        layout.AddColumn(new Proportion(ProportionType.Pixels, interaction.IsDesktop ? 210 : 175));
+        int sidebarWidth = interaction.IsDesktop ? 210 : 175;
+        MyraGrid layout = interaction.IsDesktop ? new DesktopAssistantForm.FixedSidebarLayout(details, sidebarWidth) : new MyraGrid();
+        layout.ColumnSpacing = 10;
+        layout.AddColumn(new Proportion(ProportionType.Pixels, sidebarWidth));
         layout.AddColumn(new Proportion(ProportionType.Fill));
         layout.AddWidget(ItemListsTabContent.Section(interaction, title, picker, toolbar), 0, 0);
         layout.AddWidget(details, 0, 1);
@@ -109,17 +112,26 @@ internal static class AgentPresetPanel
             details.Widgets.Add(buildDetails(preset, Refresh));
         }
 
-        void Prompt(Widget anchor, string caption, string value, Action<string> apply)
+        void Prompt(Widget anchor, string caption, string value, string action, Action<string> apply)
         {
-            var input = new MyraInputBox { Text = value, HintText = "Preset name", Width = 240 };
-            interaction.ShowDialog(anchor, caption, input, confirmed =>
+            var input = new MyraInputBox { Text = value, HintText = "Preset name", MinWidth = 220 };
+            var body = new VerticalStackPanel { Spacing = 4 };
+            var error = new MyraLabel(TazLang.Get("assistant_dialog_preset_name_required"), MyraLabel.TextStyle.P) { Visible = false };
+            input.TextChangedByUser += (_, _) => error.Visible = false;
+            body.Widgets.Add(input);
+            body.Widgets.Add(error);
+            interaction.ShowDialog(anchor, caption, body, confirmed =>
             {
                 if (confirmed && input.Text is { } entered)
                 {
                     interaction.CancelTarget();
                     apply(entered.Trim());
                 }
-            }, () => !string.IsNullOrWhiteSpace(input.Text));
+            }, () =>
+            {
+                error.Visible = string.IsNullOrWhiteSpace(input.Text);
+                return !error.Visible;
+            }, confirmText: action);
         }
     }
 

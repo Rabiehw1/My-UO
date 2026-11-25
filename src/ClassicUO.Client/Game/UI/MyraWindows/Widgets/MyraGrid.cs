@@ -1,5 +1,7 @@
 #nullable enable
 using System;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using FontStashSharp.RichText;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 
@@ -74,12 +76,13 @@ public class MyraGrid : Grid
     internal Widget[] SetupWithHeaders(Action<int>? onHeaderClick, params GridColumnInfo[] columns)
     {
         MyraStyle.ApplyStandardGridStyling(this);
+        AddTableColumns(columns);
 
-        foreach (GridColumnInfo col in columns)
+        bool desktop = DesktopAssistantTheme.Current != null;
+        if (desktop)
         {
-            AddColumn(col.Type == ColumnType.Fill
-                ? new Proportion(ProportionType.Part, col.Weight)
-                : new Proportion(ProportionType.Auto));
+            HorizontalAlignment = HorizontalAlignment.Stretch;
+            AddWidget(new Panel { Background = DesktopAssistantTheme.TabStrip }, 0, 0, colspan: columns.Length);
         }
 
         var headers = new Widget[columns.Length];
@@ -102,11 +105,48 @@ public class MyraGrid : Grid
                     col.AlignRight ? MyraLabel.AlignMode.Right : MyraLabel.AlignMode.Left);
             }
 
+            if (desktop && header is Label label)
+            {
+                label.Font = DesktopAssistantTheme.Font(bold: true);
+                label.MinHeight = 28;
+                label.Padding = new Thickness(6, 0);
+                label.Margin = new Thickness(0);
+            }
+
             headers[i] = header;
             AddWidget(header, 0, i);
         }
 
         return headers;
+    }
+
+    /// <summary>Adds the same column proportions to a header or a separately rendered row.</summary>
+    internal void AddTableColumns(params GridColumnInfo[] columns)
+    {
+        foreach (GridColumnInfo column in columns)
+            AddColumn(column.Type switch
+            {
+                ColumnType.Fill => new Proportion(ProportionType.Part, column.Weight),
+                ColumnType.Pixels => new Proportion(ProportionType.Pixels, column.Weight),
+                _ => new Proportion(ProportionType.Auto)
+            });
+    }
+
+    /// <summary>Creates a table label that keeps the full value available when desktop space is limited.</summary>
+    internal static MyraLabel TableText(string text, bool alignRight = false)
+    {
+        var label = new MyraLabel(text, MyraLabel.TextStyle.P,
+            alignRight ? MyraLabel.AlignMode.Right : MyraLabel.AlignMode.Left);
+        if (DesktopAssistantTheme.Current != null)
+        {
+            label.SingleLine = true;
+            label.Wrap = false;
+            label.AutoEllipsisMethod = AutoEllipsisMethod.Character;
+            label.ClipToBounds = true;
+            label.Tooltip = text;
+        }
+
+        return label;
     }
 }
 
@@ -134,6 +174,8 @@ internal readonly struct GridColumnInfo
     public static GridColumnInfo Numeric(string label)
         => new(label, ColumnType.Auto, 1, true);
 
+    public static GridColumnInfo Pixels(string label, uint width)
+        => new(label, ColumnType.Pixels, width);
 
 }
 
@@ -141,5 +183,6 @@ internal enum ColumnType
 {
     Auto,
     Fill,
+    Pixels,
 }
 

@@ -1,9 +1,11 @@
 #nullable enable
 using System.Collections.Generic;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Map;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
@@ -45,13 +47,13 @@ public static class GraphicReplacementTabContent
 
             var grid = new MyraGrid();
             grid.SetupWithHeaders(
-                GridColumnInfo.Auto("Enabled"),
-                GridColumnInfo.Auto("Original"),
+                GridColumnInfo.Auto(TazLang.Get("agent_col_enabled")),
+                GridColumnInfo.Numeric("Original"),
                 GridColumnInfo.Auto("Type"),
                 GridColumnInfo.Fill("Replacement"),
                 GridColumnInfo.Fill("Preview"),
                 GridColumnInfo.Fill("New Hue"),
-                GridColumnInfo.Auto("Actions")
+                GridColumnInfo.Auto(TazLang.Get("agent_col_actions"))
             );
 
             var filterList = filters.Values.ToList();
@@ -74,7 +76,7 @@ public static class GraphicReplacementTabContent
                 ), dataRow, 0);
 
                 // Original — show as label (changing original = key change, use delete+re-add)
-                grid.AddWidget(new MyraLabel($"0x{filter.OriginalGraphic:X4}", MyraLabel.TextStyle.P, MyraLabel.AlignMode.Right), dataRow, 1);
+                grid.AddWidget(MyraGrid.TableText($"0x{filter.OriginalGraphic:X4}", alignRight: true), dataRow, 1);
 
                 // Type — cycle button using wrapper panel (key change requires rebuild)
                 var typeWrapper = new HorizontalStackPanel();
@@ -263,7 +265,10 @@ public static class GraphicReplacementTabContent
         addEntryPanel.Widgets.Add(addConfirmRow);
 
         var actionRow = new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 4 };
-        actionRow.Widgets.Add(new MyraButton("Add Entry", () => addEntryPanel.Visible = !addEntryPanel.Visible));
+        var addEntry = new MyraButton(TazLang.Get("assistant_filters_add_entry"), () => addEntryPanel.Visible = !addEntryPanel.Visible);
+        if (interaction.IsDesktop)
+            DesktopAssistantTheme.ApplyActionButtonStyle(addEntry, primary: true);
+        actionRow.Widgets.Add(addEntry);
         actionRow.Widgets.Add(new MyraButton("Target Entity", () =>
         {
             if (World.Instance == null) return;

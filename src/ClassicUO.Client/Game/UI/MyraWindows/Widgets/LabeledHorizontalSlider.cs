@@ -91,7 +91,7 @@ public class LabeledHorizontalSlider : Grid
             _valueLabel.MinWidth = 44;
             _valueLabel.Padding = new Thickness(5, 3);
             _valueLabel.Background = DesktopAssistantTheme.Canvas;
-            _valueLabel.Border = DesktopAssistantTheme.Divider;
+            _valueLabel.Border = DesktopAssistantTheme.ControlBorder;
             _valueLabel.BorderThickness = new Thickness(1);
             _valueLabel.TextColor = DesktopAssistantTheme.Text;
         }
@@ -122,11 +122,13 @@ public class LabeledHorizontalSlider : Grid
         float max,
         float value,
         Action<float>? onChanged,
-        int decimalPlaces = 0
+        int decimalPlaces = 0,
+        string valueSuffix = ""
     )
     {
         var slider = new LabeledHorizontalSlider
         {
+            _valueSuffix = valueSuffix,
             Minimum = min,
             Maximum = max,
             DecimalPlaces = decimalPlaces,
@@ -156,12 +158,7 @@ public class LabeledHorizontalSlider : Grid
     )
     {
         HorizontalStackPanel stack = new() { VerticalAlignment = VerticalAlignment.Center, Spacing = MyraStyle.STANDARD_SPACING };
-        LabeledHorizontalSlider s = slider = CreateSliderWithCallback(min, max, value, onChanged, decimalPlaces);
-        if (s._desktop)
-        {
-            s._valueSuffix = valueSuffix;
-            s._valueLabel.Text = s.FormatValue(s.Value);
-        }
+        LabeledHorizontalSlider s = slider = CreateSliderWithCallback(min, max, value, onChanged, decimalPlaces, valueSuffix);
 
         if (labelOnLeft)
         {
@@ -178,7 +175,7 @@ public class LabeledHorizontalSlider : Grid
     }
 
     private string FormatValue(float v) =>
-        (v == (int)v ? ((int)v).ToString() : v.ToString($"F{Math.Max(DecimalPlaces, 1)}")) + _valueSuffix;
+        (v == (int)v ? ((int)v).ToString() : v.ToString($"F{Math.Max(DecimalPlaces, 1)}")) + (_desktop ? _valueSuffix : "");
 
     private sealed class OverlayLabel : Label
     {

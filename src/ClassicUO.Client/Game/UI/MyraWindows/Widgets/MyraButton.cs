@@ -19,7 +19,17 @@ public class MyraButton : Button
     public string Text
     {
         get => _text;
-        set => SetField(ref _text, value);
+        set
+        {
+            if (_text == value)
+                return;
+
+            _text = value;
+            if (Content is MyraLabel caption)
+                caption.Text = value;
+            else
+                Build();
+        }
     }
 
     private SpriteFontBase? _labelFont;
