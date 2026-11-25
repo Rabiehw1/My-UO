@@ -60,8 +60,6 @@ namespace ClassicUO.Game.UI.Gumps
                 new[] { 1, (int) Buttons.Inventory },
                 new[] { 1, (int) Buttons.Journal },
                 new[] { 0, (int) Buttons.Chat },
-                new[] { 1, (int) Buttons.WorldMap },
-                new[] { 1, (int) Buttons.UOStore },
             };
 
             ClilocLoader cliloc = Client.Game.UO.FileManager.Clilocs;
@@ -72,11 +70,7 @@ namespace ClassicUO.Game.UI.Gumps
                 cliloc.GetString(3000431, TazLang.Get("inventory")),
                 cliloc.GetString(3000129, TazLang.Get("journal")),
                 cliloc.GetString(3000131, TazLang.Get("chat")),
-                StringHelper.CapitalizeAllWords(cliloc.GetString(1015233, TazLang.Get("world_map"))),
-                cliloc.GetString(1158008, TazLang.Get("uostore")),
             };
-
-            bool hasUOStore = Client.Game.UO.Version >= ClientVersion.CV_706400;
 
             ResizePic background;
 
@@ -98,11 +92,6 @@ namespace ClassicUO.Game.UI.Gumps
 
             for (int i = 0; i < textTable.Length; i++)
             {
-                if (!hasUOStore && i >= (int)Buttons.UOStore)
-                {
-                    break;
-                }
-
                 ushort graphic = (ushort)(textTable[i][0] != 0 ? 0x098D : 0x098B);
 
                 RighClickableButton button = new RighClickableButton(
@@ -173,28 +162,6 @@ namespace ClassicUO.Game.UI.Gumps
             };
             startX += largeWidth + 1;
 
-            RighClickableButton lscript;
-            Add(lscript = new(998877,
-                0x098D,
-                0x098D,
-                0x098D,
-                TazLang.Get("topbargump_legionscript", "Legion Script"),
-                1,
-                true,
-                0,
-                0x0036
-            )
-            {
-                ButtonAction = ButtonAction.Activate,
-                X = startX,
-                Y = 1,
-                FontCenter = true
-            }, 1);
-            lscript.MouseUp += (s, e) => {
-                MyraWindows.ScriptManagerWindow.Show();
-            };
-            startX += largeWidth + 1;
-
             RighClickableButton moreMenu;
             Add
             (moreMenu =
@@ -221,12 +188,6 @@ namespace ClassicUO.Game.UI.Gumps
             moreMenu.ContextMenu = new ContextMenuControl(this);
             moreMenu.MouseUp += (s, e) => { moreMenu.ContextMenu?.Show(); };
             //moreMenu.ContextMenu.Add(new ContextMenuItemEntry("TazUO Chat", () => { MyraWindows.TazUOChatWindow.Show(); }));
-            moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_spellbooks"),
-                () => MyraWindows.DesktopAgentsWindow.Show(MyraWindows.ShardSpellBooksTabContent.Title)));
-            moreMenu.ContextMenu.Add(new ContextMenuItemEntry(TazLang.Get("topbargump_commandsentry"), () =>
-            {
-                UIManager.Add(new CommandsGump(world));
-            }));
             moreMenu.ContextMenu.Add(new ContextMenuItemEntry(cliloc.GetString(1079449, TazLang.Get("info")), () =>
             {
                 if (World.TargetManager.IsTargeting)
@@ -487,18 +448,6 @@ namespace ClassicUO.Game.UI.Gumps
 
                     break;
 
-                case Buttons.UOStore:
-                    if (Client.Game.UO.Version >= ClientVersion.CV_706400)
-                    {
-                        AsyncNetClient.Socket.Send_OpenUOStore();
-                    }
-
-                    break;
-
-                case Buttons.WorldMap:
-                    GameActions.OpenWorldMap(World);
-
-                    break;
             }
         }
 
