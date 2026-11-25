@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using System.Timers;
@@ -38,6 +39,12 @@ namespace ClassicUO.Game.Managers
         {
             Instance = new OrganizerAgent();
             Instance._save = OrganizerConfigSave.LoadForCurrentProfile();
+            bool migrated = false;
+            foreach (OrganizerConfig config in Instance.OrganizerConfigs)
+                migrated |= config != null && MigrateLegacyItems(config);
+
+            if (migrated)
+                Instance.Save();
         }
 
         public void OrganizerCommand(string[] args)
@@ -79,7 +86,7 @@ namespace ClassicUO.Game.Managers
                 return null;
             }
 
-            return OrganizerConfigs.FirstOrDefault(c => c.Name.Equals(nameOrIndex, StringComparison.OrdinalIgnoreCase));
+            return FindByNameOrId(nameOrIndex);
         }
 
         public void SetSourceContainerViaTarget(string nameOrIndex)
@@ -113,19 +120,27 @@ namespace ClassicUO.Game.Managers
             Instance = null;
         }
 
-        public OrganizerConfig NewOrganizerConfig()
+        public OrganizerConfig NewOrganizerConfig(string name)
         {
-            var config = new OrganizerConfig();
+            var config = new OrganizerConfig { Name = GetUniqueName(name) };
             OrganizerConfigs.Add(config);
+            Save();
             return config;
         }
 
-        public void DeleteConfig(OrganizerConfig config)
+        public void RenameConfig(OrganizerConfig config, string name)
         {
-            if (config != null)
-            {
-                OrganizerConfigs?.Remove(config);
-            }
+            config.Name = GetUniqueName(name, config);
+            Save();
+        }
+
+        public bool DeleteConfig(OrganizerConfig config)
+        {
+            if (!OrganizerConfigs.Remove(config))
+                return false;
+
+            Save();
+            return true;
         }
 
         public OrganizerConfig DupeConfig(OrganizerConfig config)
@@ -139,39 +154,41 @@ namespace ClassicUO.Game.Managers
                 DestContSerial = config.DestContSerial,
                 SharedItemListId = config.SharedItemListId,
                 IgnoreItemListId = config.IgnoreItemListId,
-                Enabled = false,
-                ItemConfigs = config.ItemConfigs.Select(c => new OrganizerItemConfig
-                {
-                    Graphic = c.Graphic,
-                    Hue = c.Hue,
-                    Amount = c.Amount,
-                    Enabled = c.Enabled,
-                    DestContSerial = c.DestContSerial
-                }).ToList()
+                Enabled = false
             };
             OrganizerConfigs.Add(dupedConfig);
+            Save();
             return dupedConfig;
         }
 
-        private string GetUniqueName(string baseName)
+        private string GetUniqueName(string baseName, OrganizerConfig except = null)
         {
             string name = baseName;
             int i = 2;
-            while (OrganizerConfigs.Any(c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
+            while (OrganizerConfigs.Any(c => c != except && string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)))
                 name = $"{baseName} ({i++})";
             return name;
         }
 
-        public void CreateOrganizerMacroButton(string name)
+        private OrganizerConfig FindByNameOrId(string nameOrId)
+        {
+            if (Guid.TryParse(nameOrId, out Guid id) && OrganizerConfigs.Find(config => config.Id == id) is { } preset)
+                return preset;
+
+            return OrganizerConfigs.Find(config => string.Equals(config.Name, nameOrId, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public void CreateOrganizerMacroButton(OrganizerConfig config)
         {
             var macroManager = MacroManager.TryGetMacroManager(World.Instance);
 
             if (macroManager == null) return;
 
-            OrganizerConfig config = OrganizerConfigs.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (config == null) return;
-            int index = OrganizerConfigs.IndexOf(config);
-            var macro = new Macro($"Organizer: {config.Name}", SDL3.SDL.SDL_Keycode.SDLK_UNKNOWN, false, false, false) { Items = new MacroObjectString(MacroType.ClientCommand, MacroSubType.MSC_NONE, $"organize {index}") };
+            Save();
+            var macro = new Macro($"Organizer: {config.Name}", SDL3.SDL.SDL_Keycode.SDLK_UNKNOWN, false, false, false)
+            {
+                Items = new MacroObjectString(MacroType.ClientCommand, MacroSubType.MSC_NONE, $"organize {config.Id}")
+            };
 
             macroManager.PushToBack(macro);
             UIManager.Add(new MacroButtonGump(World.Instance, macro, Mouse.Position.X, Mouse.Position.Y));
@@ -189,8 +206,9 @@ namespace ClassicUO.Game.Managers
             {
                 OrganizerConfig config = OrganizerConfigs[i];
                 string status = config.Enabled ? "enabled" : "disabled";
-                int itemCount = config.EffectiveItemConfigs.Count(ic => ic.Enabled);
-                GameActions.Print(World.Instance, $"  {i}: '{config.Name}' ({status}, {itemCount} item types, destination: {config.DestContSerial:X})");
+                SharedItemList main = ItemListLibrary.Resolve(config.SharedItemListId);
+                string listStatus = main == null ? "no main list" : $"{main.Name}, {main.Items?.Count ?? 0} list entries";
+                GameActions.Print(World.Instance, $"  {i}: '{config.Name}' ({status}, {listStatus}, destination: {config.DestContSerial:X})");
             }
         }
 
@@ -239,7 +257,7 @@ namespace ClassicUO.Game.Managers
 
         public void RunOrganizer(string name, uint source = 0, uint dest = 0)
         {
-            OrganizerConfig config = OrganizerConfigs.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            OrganizerConfig config = FindByNameOrId(name);
             if (config == null)
             {
                 GameActions.Print(World.Instance, $"Organizer '{name}' not found.", 33);
@@ -248,6 +266,8 @@ namespace ClassicUO.Game.Managers
 
             RunSingleOrganizer(config, source, dest);
         }
+
+        internal void RunSelected(OrganizerConfig config) => RunSingleOrganizer(config);
 
         public void RunOrganizer(int index)
         {
@@ -263,13 +283,16 @@ namespace ClassicUO.Game.Managers
 
         private int OrganizeItems(Item sourceCont, Item destCont, OrganizerConfig config)
         {
+            SharedItemList mainList = ItemListLibrary.Resolve(config.SharedItemListId);
+            if (mainList == null)
+                return 0;
+
             Item backpack = World.Instance.Player?.Backpack;
 
             // Group items by destination (either per-item destination or config destination)
-            var itemsToMoveByDestination = new Dictionary<uint, List<(Item Item, ushort Amount, OrganizerItemConfig Config)>>();
+            var itemsToMoveByDestination = new Dictionary<uint, List<(Item Item, SharedItem Rule)>>();
 
             var sourceItems = (Item)sourceCont.Items;
-            OrganizerItemConfig[] itemConfigs = config.EffectiveItemConfigs.ToArray();
             SharedItemList ignoreList = ItemListLibrary.Resolve(config.IgnoreItemListId);
 
             // First pass: identify items to move and group by destination
@@ -278,30 +301,22 @@ namespace ClassicUO.Game.Managers
                 if (ignoreList?.Find(item.Graphic, item.Hue) != null)
                     continue;
 
-                foreach (OrganizerItemConfig itemConfig in itemConfigs)
-                {
-                    if (itemConfig.Enabled && itemConfig.IsMatch(item.Graphic, item.Hue))
-                    {
-                        // Determine the destination for this item
-                        uint itemDestSerial = itemConfig.DestContSerial != 0 ? itemConfig.DestContSerial : destCont.Serial;
+                SharedItem rule = mainList.Find(item);
+                if (rule == null)
+                    continue;
 
-                        if (!itemsToMoveByDestination.ContainsKey(itemDestSerial))
-                            itemsToMoveByDestination[itemDestSerial] = new List<(Item, ushort, OrganizerItemConfig)>();
+                uint itemDestSerial = rule.DestinationContainer != 0 ? rule.DestinationContainer : destCont.Serial;
+                if (!itemsToMoveByDestination.TryGetValue(itemDestSerial, out var moves))
+                    itemsToMoveByDestination[itemDestSerial] = moves = [];
 
-                        itemsToMoveByDestination[itemDestSerial].Add((item, 0, itemConfig)); // Amount will be calculated in second pass
-                        break; // Avoid processing the same item multiple times
-                    }
-                }
+                moves.Add((item, rule));
             }
 
             int totalItemsMoved = 0;
 
             // Second pass: process each destination group
-            foreach (KeyValuePair<uint, List<(Item Item, ushort Amount, OrganizerItemConfig Config)>> kvp in itemsToMoveByDestination)
+            foreach (var (destinationSerial, itemsForThisDest) in itemsToMoveByDestination)
             {
-                uint destinationSerial = kvp.Key;
-                List<(Item Item, ushort Amount, OrganizerItemConfig Config)> itemsForThisDest = kvp.Value;
-
                 Item thisDestCont = World.Instance.Items.Get(destinationSerial);
                 if (thisDestCont == null)
                 {
@@ -316,11 +331,11 @@ namespace ClassicUO.Game.Managers
                 if (sameContainer)
                 {
                     // Same container logic
-                    foreach ((Item item, ushort _, OrganizerItemConfig itemConfig) in itemsForThisDest)
+                    foreach (var (item, rule) in itemsForThisDest)
                     {
                         if (!item.ItemData.IsStackable) continue; // non-stackable items can't be organized in the same container
 
-                        ushort amountToMove = itemConfig.Amount > 0 ? itemConfig.Amount : ushort.MaxValue;
+                        ushort amountToMove = rule.MaxAmount > 0 ? (ushort)Math.Min(rule.MaxAmount, ushort.MaxValue) : ushort.MaxValue;
                         ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, thisDestCont.Serial, amountToMove).ToObjectActionQueueItem(), ActionPriority.MoveItem);
                         totalItemsMoved++;
                     }
@@ -339,9 +354,9 @@ namespace ClassicUO.Game.Managers
                     }
 
                     // Determine which items to move based on config and existing counts in destination
-                    foreach ((Item item, ushort _, OrganizerItemConfig itemConfig) in itemsForThisDest)
+                    foreach (var (item, rule) in itemsForThisDest)
                     {
-                        if (itemConfig.Amount == 0)
+                        if (rule.MaxAmount <= 0)
                         {
                             // Move all items of this type
                             ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, thisDestCont.Serial, ushort.MaxValue).ToObjectActionQueueItem(), ActionPriority.MoveItem);
@@ -351,7 +366,7 @@ namespace ClassicUO.Game.Managers
                         {
                             // Move up to the configured amount, considering existing items in destination
                             destItemCounts.TryGetValue((item.Graphic, item.Hue), out int existingCount);
-                            int toMove = itemConfig.Amount - existingCount;
+                            int toMove = rule.MaxAmount - existingCount;
                             if (toMove > 0)
                             {
                                 ushort actualAmount = (ushort)Math.Min(toMove, item.Amount);
@@ -378,6 +393,12 @@ namespace ClassicUO.Game.Managers
             if (!config.Enabled)
             {
                 GameActions.Print(World.Instance, $"Organizer '{config.Name}' is disabled.", Constants.HUE_ERROR);
+                return;
+            }
+
+            if (ItemListLibrary.Resolve(config.SharedItemListId) == null)
+            {
+                GameActions.Print(World.Instance, $"Select a main list for organizer '{config.Name}'.", Constants.HUE_ERROR);
                 return;
             }
 
@@ -423,7 +444,13 @@ namespace ClassicUO.Game.Managers
         {
             try
             {
-                return System.Text.Json.JsonSerializer.Serialize(config, OrganizerAgentContext.Default.OrganizerConfig);
+                var export = JsonSerializer.SerializeToNode(config, OrganizerAgentContext.Default.OrganizerConfig)!.AsObject();
+                var listType = ItemListJsonContext.Default.SharedItemList;
+                if (ItemListLibrary.Resolve(config.SharedItemListId) is { } main)
+                    export["MainList"] = JsonSerializer.SerializeToNode(main, listType);
+                if (ItemListLibrary.Resolve(config.IgnoreItemListId) is { } ignore)
+                    export["IgnoreList"] = JsonSerializer.SerializeToNode(ignore, listType);
+                return export.ToJsonString();
             }
             catch (Exception e)
             {
@@ -438,15 +465,39 @@ namespace ClassicUO.Game.Managers
         {
             try
             {
-                OrganizerConfig importedConfig = System.Text.Json.JsonSerializer.Deserialize(json, OrganizerAgentContext.Default.OrganizerConfig);
+                var export = JsonNode.Parse(json)?.AsObject();
+                OrganizerConfig importedConfig = export?.Deserialize(OrganizerAgentContext.Default.OrganizerConfig);
+                if (importedConfig == null)
+                    return false;
 
-                if (importedConfig != null)
+                var library = ItemListLibrary.Instance;
+                var lists = new[]
                 {
-                    importedConfig.Name = GetUniqueName(importedConfig.Name);
-                    importedConfig.Enabled = false;
-                    OrganizerConfigs.Add(importedConfig);
-                    GameActions.Print($"Imported organizer '{importedConfig.Name}' with {importedConfig.ItemConfigs.Count} items!", Constants.HUE_SUCCESS);
-                    return true;
+                    ReadMissingList("MainList", importedConfig.SharedItemListId),
+                    ReadMissingList("IgnoreList", importedConfig.IgnoreItemListId)
+                }.OfType<SharedItemList>().DistinctBy(list => list.Id).ToArray();
+                if (lists.Length > 0 && !TryAddLists(library, lists))
+                    return false;
+
+                importedConfig.Name = GetUniqueName(importedConfig.Name);
+                importedConfig.Id = Guid.NewGuid();
+                importedConfig.Enabled = false;
+                MigrateLegacyItems(importedConfig);
+                OrganizerConfigs.Add(importedConfig);
+                Save();
+                GameActions.Print($"Imported organizer '{importedConfig.Name}'.", Constants.HUE_SUCCESS);
+                return true;
+
+                SharedItemList ReadMissingList(string key, Guid? id)
+                {
+                    if (id is not Guid listId || library.Find(listId) != null || export[key] is not { } node)
+                        return null;
+
+                    var list = node.Deserialize(ItemListJsonContext.Default.SharedItemList);
+                    if (list == null || list.Id != listId || list.Items == null)
+                        throw new JsonException($"Invalid organizer {key}.");
+
+                    return list;
                 }
             }
             catch (Exception e)
@@ -457,6 +508,60 @@ namespace ClassicUO.Game.Managers
             return false;
         }
 
+        private static bool MigrateLegacyItems(OrganizerConfig config)
+        {
+            if (config.LegacyItemConfigs is not { Count: > 0 })
+                return false;
+
+            var library = ItemListLibrary.Instance;
+            SharedItemList main = ItemListLibrary.Resolve(config.SharedItemListId);
+            if (config.SharedItemListId.HasValue && main == null)
+                return false;
+
+            SharedItem[] items = config.BuildMigratedItems(main);
+            if (main == null ? items.Length > 0 : !items.SequenceEqual(main.Items ?? []))
+            {
+                string owner = ProfileManager.CurrentProfile?.CharacterName ?? "Character";
+                string name = $"{owner} Organizer - {config.Name}";
+                var migrated = library.Lists.Find(list => list != null &&
+                    (list.Name == name || list.Name?.StartsWith(name + " (", StringComparison.Ordinal) == true) &&
+                    list.Items?.SequenceEqual(items) == true);
+                if (migrated == null)
+                {
+                    migrated = new SharedItemList { Name = name, Items = items.ToList() };
+                    if (!TryAddLists(library, migrated))
+                        return false;
+                }
+
+                config.SharedItemListId = migrated.Id;
+            }
+
+            config.LegacyItemConfigs = null;
+            return true;
+        }
+
+        private static bool TryAddLists(ItemListLibrary library, params SharedItemList[] lists)
+        {
+            foreach (var list in lists)
+            {
+                list.Name = library.AvailableName(list.Name);
+                library.Lists.Add(list);
+            }
+
+            // Organizer configs reference a separate file. Keep the old rules until the lists are written.
+            library.SaveChanges();
+            var saved = ItemListLibrary.Load();
+            bool success = true;
+            foreach (var list in lists)
+            {
+                if (saved.Find(list.Id)?.Items?.SequenceEqual(list.Items) == true)
+                    continue;
+
+                library.Lists.Remove(list);
+                success = false;
+            }
+            return success;
+        }
     }
 
     [JsonSerializable(typeof(List<OrganizerConfig>))]
@@ -488,6 +593,51 @@ namespace ClassicUO.Game.Managers
             return Load();
         }
 
+        internal static IEnumerable<(string Name, SharedItem[] Items)> GetOtherCharacterLists()
+        {
+            string root = string.IsNullOrWhiteSpace(Settings.GlobalSettings.ProfilesPath)
+                ? Path.Combine(JsonSaveLocationHelper.DataDirectory, "Profiles")
+                : Settings.GlobalSettings.ProfilesPath;
+
+            foreach (var (character, path) in Utility.Extensions.GetAllCharacterPaths(root).OrderBy(entry => entry.Key))
+            {
+                if (path == ProfileManager.ProfilePath)
+                    continue;
+
+                string file = Path.Combine(path, OrganizerConfigFileName);
+                if (!File.Exists(file))
+                    continue;
+
+                List<OrganizerConfig> configs;
+                try
+                {
+                    string json = File.ReadAllText(file);
+                    configs = json.TrimStart().StartsWith('[')
+                        ? JsonSerializer.Deserialize(json, OrganizerAgentContext.Default.ListOrganizerConfig)
+                        : JsonSerializer.Deserialize(json, OrganizerAgentContext.Default.OrganizerConfigSave)?.Configs;
+                }
+                catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+                {
+                    Utility.Logging.Log.Warn($"Could not read legacy Organizer rules: {ex.Message}");
+                    continue;
+                }
+
+                foreach (var config in configs ?? [])
+                {
+                    if (config?.LegacyItemConfigs is not { Count: > 0 })
+                        continue;
+
+                    var main = ItemListLibrary.Resolve(config.SharedItemListId);
+                    if (config.SharedItemListId.HasValue && main == null)
+                        continue;
+
+                    var items = config.BuildMigratedItems(main);
+                    if (items.Length > 0)
+                        yield return ($"{character} · Organizer - {config.Name}", items);
+                }
+            }
+        }
+
         // Older versions stored a bare JSON array; rewrite it once into the wrapped format JsonSave expects.
         private static void MigrateLegacyFormatIfNeeded()
         {
@@ -515,32 +665,45 @@ namespace ClassicUO.Game.Managers
 
     internal class OrganizerConfig
     {
+        public Guid Id { get; set; } = Guid.NewGuid();
         public string Name { get; set; } = "Organizer";
         public uint SourceContSerial { get; set; }
         public uint DestContSerial { get; set; }
         public bool Enabled { get; set; } = true;
-        public List<OrganizerItemConfig> ItemConfigs { get; set; } = new List<OrganizerItemConfig>();
+        [JsonPropertyName("ItemConfigs")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<OrganizerItemConfig> LegacyItemConfigs { get; set; }
         public Guid? SharedItemListId { get; set; }
         public Guid? IgnoreItemListId { get; set; }
 
-        [JsonIgnore]
-        internal IEnumerable<OrganizerItemConfig> EffectiveItemConfigs =>
-            ItemListLibrary.Rules(SharedItemListId, ItemConfigs, static rule => (rule.Graphic, rule.Hue),
-                static item => new OrganizerItemConfig { Graphic = item.Graphic, Hue = item.Hue });
-
-        public OrganizerItemConfig NewItemConfig()
+        internal SharedItem[] BuildMigratedItems(SharedItemList main)
         {
-            var config = new OrganizerItemConfig();
-            ItemConfigs.Add(config);
-            return config;
-        }
-
-        public void DeleteItemConfig(OrganizerItemConfig config)
-        {
-            if (config != null)
+            var rules = (LegacyItemConfigs ?? []).Where(rule => rule is { Graphic: > 0 });
+            if (main == null)
             {
-                ItemConfigs?.Remove(config);
+                return rules.Where(rule => rule.Enabled).Select(rule => new SharedItem(rule.Graphic, rule.Hue, "")
+                {
+                    MaxAmount = rule.Amount,
+                    DestinationContainer = rule.DestContSerial
+                }).ToArray();
             }
+
+            // A linked list supplied membership. The first legacy rule of each exact key supplied settings.
+            var overrides = rules.ToLookup(rule => (rule.Graphic, rule.Hue));
+            var migrated = new List<SharedItem>();
+            foreach (var item in main.Items ?? [])
+            {
+                if (item == null)
+                    continue;
+
+                var rule = overrides[(item.Graphic, item.Hue)].FirstOrDefault();
+                if (rule == null)
+                    migrated.Add(item);
+                else if (rule.Enabled)
+                    migrated.Add(item with { MaxAmount = rule.Amount, DestinationContainer = rule.DestContSerial });
+            }
+
+            return migrated.ToArray();
         }
     }
 
@@ -552,6 +715,5 @@ namespace ClassicUO.Game.Managers
         public bool Enabled { get; set; } = true;
         public uint DestContSerial { get; set; } = 0; // 0 = use configuration's destination
 
-        public bool IsMatch(ushort graphic, ushort hue) => graphic == Graphic && (hue == Hue || Hue == ushort.MaxValue);
     }
 }

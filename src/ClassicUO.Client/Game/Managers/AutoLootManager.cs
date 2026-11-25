@@ -42,18 +42,17 @@ namespace ClassicUO.Game.Managers
             private set => field = value;
         }
         /// <summary>
-        /// Entries of the currently selected loot list. Matching, adding and removing all operate
-        /// against this list.
+        /// Legacy local entries kept for importing rules from older character settings.
         /// </summary>
         public List<AutoLootConfigEntry> AutoLootEntries => _currentList?.Entries ?? _fallbackEntries;
 
         /// <summary>
-        /// All configured loot lists. There is always at least one.
+        /// All Auto Loot presets. There is always at least one.
         /// </summary>
         public IReadOnlyList<AutoLootList> Lists => _data.Lists;
 
         /// <summary>
-        /// The loot list currently selected/active.
+        /// The preset used when Auto Loot is enabled.
         /// </summary>
         public AutoLootList CurrentList => _currentList;
 
@@ -92,6 +91,7 @@ namespace ClassicUO.Game.Managers
 
         private readonly HashSet<uint> _quickContainsLookup = new ();
         private readonly HashSet<uint> _recentlyLooted = new ();
+        private readonly HashSet<ObjectActionQueueItem> _automaticLootActions = new();
 
         /// <summary>
         /// Corpses already scanned while in range; rescanned after they leave range or on retry.
@@ -106,7 +106,7 @@ namespace ClassicUO.Game.Managers
         private ProgressBarGump _progressBarGump;
         private int _currentLootTotalCount = 0;
         private int _pendingLootCount = 0;
-        private bool IsEnabled => ProfileManager.CurrentProfile.EnableAutoLoot;
+        internal bool IsEnabled => ProfileManager.CurrentProfile?.EnableAutoLoot == true;
 
         private readonly World _world;
 
@@ -138,19 +138,25 @@ namespace ClassicUO.Game.Managers
             uint serial = item.Serial;
             uint originalContainer = item.Container;
 
-            ObjectActionQueue.Instance.Enqueue(
-                new ObjectActionQueueItem(
-                    () =>
-                    {
-                        if (_world.Items.Get(serial) is { IsDestroyed: false } current && current.Container == originalContainer)
-                            MoveLootItem(serial, entry, automatic);
-                    },
-                    _ => OnLootActionComplete(serial))
+            var action = new ObjectActionQueueItem(
+                () =>
                 {
-                    Serial = serial,
-                    TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+                    if (_world.Items.Get(serial) is { IsDestroyed: false } current && current.Container == originalContainer)
+                        MoveLootItem(serial, entry, automatic);
                 },
-                ToActionPriority(priority));
+                completed =>
+                {
+                    _automaticLootActions.Remove(completed);
+                    OnLootActionComplete(serial);
+                })
+            {
+                Serial = serial,
+                TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+            };
+            if (automatic)
+                _automaticLootActions.Add(action);
+
+            ObjectActionQueue.Instance.Enqueue(action, ToActionPriority(priority));
 
             _currentLootTotalCount++;
             _pendingLootCount++;
@@ -158,8 +164,8 @@ namespace ClassicUO.Game.Managers
             CreateProgressBar();
         }
 
-        private static bool IsIgnored(Item item) =>
-            ItemListLibrary.Resolve(ProfileManager.CurrentProfile?.AutoLootIgnoreItemListId)?.Find(item.Graphic, item.Hue) != null;
+        private bool IsIgnored(Item item) =>
+            ItemListLibrary.Resolve(_currentList?.IgnoreItemListId)?.Find(item.Graphic, item.Hue) != null;
 
         public void ForceLootContainer(uint serial)
         {
@@ -203,7 +209,7 @@ namespace ClassicUO.Game.Managers
         {
             if (!_loaded) return null;
 
-            var list = ItemListLibrary.Resolve(ProfileManager.CurrentProfile?.AutoLootSharedItemListId);
+            var list = ItemListLibrary.Resolve(_currentList.MainItemListId);
             if (list == null)
                 return null;
 
@@ -242,13 +248,13 @@ namespace ClassicUO.Game.Managers
             if (graphic == 0)
                 return null;
 
-            Profile profile = ProfileManager.CurrentProfile;
             var library = ItemListLibrary.Instance;
-            var list = ItemListLibrary.Resolve(profile.AutoLootSharedItemListId);
+            var list = ItemListLibrary.Resolve(_currentList.MainItemListId);
             if (list == null)
             {
-                list = library.Create("Auto Loot");
-                profile.AutoLootSharedItemListId = list.Id;
+                list = library.Create($"Auto Loot - {_currentList.Name}");
+                _currentList.MainItemListId = list.Id;
+                Save();
             }
 
             if (list.AddItems([GatheringListRules.From(item)], preserveRules: true) > 0)
@@ -281,7 +287,7 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (corpse.IsHumanCorpse && !ProfileManager.CurrentProfile.AutoLootHumanCorpses) return;
+            if (corpse.IsHumanCorpse && !_currentList.LootHumanCorpses) return;
 
             for (LinkedObject i = corpse.Items; i != null; i = i.Next)
                 CheckAndLoot((Item)i);
@@ -346,6 +352,7 @@ namespace ClassicUO.Game.Managers
         {
             _data ??= new AutoLootData();
             _data.Lists ??= new List<AutoLootList>();
+            _data.Lists.RemoveAll(list => list == null);
 
             if (_data.Lists.Count == 0)
                 _data.Lists.Add(new AutoLootList { Name = DefaultListName });
@@ -369,33 +376,73 @@ namespace ClassicUO.Game.Managers
         {
             if (!_loaded || list == null || !_data.Lists.Contains(list) || _currentList == list) return;
 
+            ClearActiveLootQueue();
             _currentList = list;
             _data.SelectedUid = list.Uid;
-            InvalidateScannedCorpses();
+            Save();
+        }
+
+        internal void SetEnabled(bool enabled)
+        {
+            if (ProfileManager.CurrentProfile is not { } profile)
+                return;
+
+            profile.EnableAutoLoot = enabled;
+            if (enabled)
+                InvalidateScannedCorpses();
+            else
+                ClearActiveLootQueue();
+        }
+
+        internal void StartPreset(AutoLootList preset)
+        {
+            if (!_loaded || !_data.Lists.Contains(preset))
+                return;
+
+            SelectList(preset);
+            SetEnabled(true);
+            if (_world.InGame)
+                OnPositionChanged(null, default);
+        }
+
+        internal void SavePreset(AutoLootList preset)
+        {
+            if (ReferenceEquals(preset, _currentList))
+                ClearActiveLootQueue();
             Save();
         }
 
         /// <summary>
-        /// Creates a new loot list and selects it.
+        /// Creates and selects a preset.
         /// </summary>
         public AutoLootList AddList(string name)
         {
+            var preset = AddPreset(name);
+            SelectList(preset);
+            return preset;
+        }
+
+        internal AutoLootList AddPreset(string name, AutoLootList copy = null)
+        {
             if (!_loaded) return null;
 
-            var list = new AutoLootList { Name = string.IsNullOrWhiteSpace(name) ? "New List" : name.Trim() };
+            var list = new AutoLootList
+            {
+                Name = GetUniquePresetName(string.IsNullOrWhiteSpace(name) ? "New Auto Loot" : name.Trim()),
+                MainItemListId = copy?.MainItemListId,
+                IgnoreItemListId = copy?.IgnoreItemListId,
+                GrabBagSerial = copy?.GrabBagSerial,
+                LootHumanCorpses = copy?.LootHumanCorpses ?? false
+            };
 
             _data.Lists.Add(list);
-            _currentList = list;
-            _data.SelectedUid = list.Uid;
-            InvalidateScannedCorpses();
             Save();
 
             return list;
         }
 
         /// <summary>
-        /// Deletes a loot list. Refuses to delete the last remaining list so there is always at
-        /// least one. If the deleted list was selected, the first remaining list becomes active.
+        /// Removes a preset. Removing the running preset stops looting.
         /// </summary>
         /// <returns>True if the list was deleted.</returns>
         public bool DeleteList(AutoLootList list)
@@ -404,11 +451,11 @@ namespace ClassicUO.Game.Managers
 
             if (_currentList == list)
             {
+                SetEnabled(false);
                 _currentList = _data.Lists[0];
                 _data.SelectedUid = _currentList.Uid;
             }
 
-            InvalidateScannedCorpses();
             Save();
             return true;
         }
@@ -418,10 +465,20 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         public void RenameList(AutoLootList list, string newName)
         {
-            if (!_loaded || list == null || string.IsNullOrWhiteSpace(newName)) return;
+            if (!_loaded || !_data.Lists.Contains(list) || string.IsNullOrWhiteSpace(newName)) return;
 
-            list.Name = newName.Trim();
+            list.Name = GetUniquePresetName(newName.Trim(), list);
             Save();
+        }
+
+        private string GetUniquePresetName(string name, AutoLootList except = null)
+        {
+            string candidate = name;
+            for (int suffix = 2; _data.Lists.Any(list => list != except &&
+                string.Equals(list.Name, candidate, StringComparison.OrdinalIgnoreCase)); suffix++)
+                candidate = $"{name} ({suffix})";
+
+            return candidate;
         }
 
         /// <summary>
@@ -543,10 +600,9 @@ namespace ClassicUO.Game.Managers
 
         public void Update()
         {
-            if (!_loaded || !IsEnabled || !_world.InGame) return;
+            if (!_loaded || !_world.InGame) return;
 
-            Profile profile = ProfileManager.CurrentProfile;
-            if ((profile.AutoLootSharedItemListId != null || profile.AutoLootIgnoreItemListId != null) &&
+            if (IsEnabled && (_currentList.MainItemListId != null || _currentList.IgnoreItemListId != null) &&
                 _sharedListRevision != ItemListLibrary.Instance.Revision)
             {
                 _sharedListRevision = ItemListLibrary.Instance.Revision;
@@ -618,7 +674,7 @@ namespace ClassicUO.Game.Managers
                     return;
             }
 
-            uint destinationSerial = ResolveDestination(entry);
+            uint destinationSerial = ResolveDestination(entry, automatic);
 
             if (destinationSerial == 0)
             {
@@ -651,7 +707,7 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         /// <param name="entry">The loot list entry that matched, if any</param>
         /// <returns>Serial of the destination container, or 0 if none could be found</returns>
-        private uint ResolveDestination(AutoLootConfigEntry entry)
+        private uint ResolveDestination(AutoLootConfigEntry entry, bool automatic)
         {
             if (entry != null && entry.DestinationContainer != 0)
             {
@@ -659,11 +715,9 @@ namespace ClassicUO.Game.Managers
                 if (itemDestContainer != null) return entry.DestinationContainer;
             }
 
-            if (ProfileManager.CurrentProfile.GrabBagSerial != 0)
-            {
-                Item grabBag = _world.Items.Get(ProfileManager.CurrentProfile.GrabBagSerial);
-                if (grabBag != null) return ProfileManager.CurrentProfile.GrabBagSerial;
-            }
+            uint bagSerial = (automatic ? _currentList.GrabBagSerial : null) ?? ProfileManager.CurrentProfile.GrabBagSerial;
+            if (bagSerial != 0 && _world.Items.Get(bagSerial) != null)
+                return bagSerial;
 
             Item backpack = _world.Player.Backpack;
             if (backpack != null) return backpack.Serial;
@@ -732,22 +786,10 @@ namespace ClassicUO.Game.Managers
                 _data = AutoLootData.Load();
                 _currentList = null;
                 EnsureAtLeastOneList();
+                bool migrated = _data.MigratePresets(ProfileManager.CurrentProfile, _currentList);
                 _loaded = true;
-                Profile profile = ProfileManager.CurrentProfile;
-                if (!profile.AutoLootListsMigrated)
-                {
-                    string owner = profile.CharacterName ?? "Character";
-                    foreach (var legacy in Lists)
-                    {
-                        bool active = ReferenceEquals(legacy, CurrentList);
-                        Guid? linked = active ? profile.AutoLootSharedItemListId : null;
-                        Guid? migrated = GatheringListRules.Migrate(linked, $"{owner} Auto Loot - {legacy.Name}",
-                            legacy.Entries.Select(GatheringListRules.From));
-                        if (active)
-                            profile.AutoLootSharedItemListId = migrated;
-                    }
-                    profile.AutoLootListsMigrated = true;
-                }
+                if (migrated)
+                    Save();
             }
             catch
             {
@@ -827,15 +869,25 @@ namespace ClassicUO.Game.Managers
 
         public void ClearActiveLootQueue()
         {
-            ObjectActionQueue.Instance.ClearByPriority(ActionPriority.LootItemHigh);
-            ObjectActionQueue.Instance.ClearByPriority(ActionPriority.LootItemMedium);
-            ObjectActionQueue.Instance.ClearByPriority(ActionPriority.LootItem);
-            _pendingLootCount = 0;
-            _currentLootTotalCount = 0;
-            _quickContainsLookup.Clear();
-            _scannedCorpsesInRange.Clear();
-            _progressBarGump?.Dispose();
-            _progressBarGump = null;
+            if (_automaticLootActions.Count > 0)
+            {
+                ObjectActionQueue.Instance.CancelActions(action =>
+                {
+                    if (!_automaticLootActions.Contains(action))
+                        return false;
+
+                    _recentlyLooted.Remove(action.Serial);
+                    return true;
+                });
+            }
+
+            InvalidateScannedCorpses();
+            if (_pendingLootCount == 0)
+            {
+                _currentLootTotalCount = 0;
+                _progressBarGump?.Dispose();
+                _progressBarGump = null;
+            }
         }
 
         public void ImportFromOtherCharacter(string characterName, List<AutoLootConfigEntry> entries)
@@ -993,6 +1045,11 @@ namespace ClassicUO.Game.Managers
         {
             public string Name { get; set; } = "";
             public List<AutoLootConfigEntry> Entries { get; set; } = new();
+            public Guid? MainItemListId { get; set; }
+            public Guid? IgnoreItemListId { get; set; }
+            // Null uses the shared grab bag. Zero sends loot directly to the backpack.
+            public uint? GrabBagSerial { get; set; }
+            public bool LootHumanCorpses { get; set; }
             /// <summary>
             /// Do not set this manually.
             /// </summary>
@@ -1009,6 +1066,31 @@ namespace ClassicUO.Game.Managers
 
             public List<AutoLootList> Lists { get; set; } = new();
             public string SelectedUid { get; set; } = "";
+            public bool PresetsMigrated { get; set; }
+
+            internal bool MigratePresets(Profile profile, AutoLootList active)
+            {
+                if (PresetsMigrated)
+                    return false;
+
+                string owner = profile.CharacterName ?? "Character";
+                active.MainItemListId = profile.AutoLootSharedItemListId;
+                active.IgnoreItemListId = profile.AutoLootIgnoreItemListId;
+                foreach (var preset in Lists)
+                {
+                    preset.LootHumanCorpses = profile.AutoLootHumanCorpses;
+                    bool wasActive = ReferenceEquals(preset, active);
+                    if (wasActive && profile.AutoLootListsMigrated)
+                        continue;
+
+                    string name = $"{owner} Auto Loot - {preset.Name}";
+                    preset.MainItemListId = GatheringListRules.Migrate(preset.MainItemListId, name,
+                        (preset.Entries ?? []).Where(entry => entry != null).Select(GatheringListRules.From));
+                }
+
+                PresetsMigrated = true;
+                return true;
+            }
 
             /// <summary>Lives in the profile folder alongside the other per-character configs.</summary>
             protected override SettingsScope Scope => SettingsScope.Char;

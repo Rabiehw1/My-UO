@@ -4168,7 +4168,7 @@ namespace ClassicUO.LegionScripting
         /// API.ToggleAutoLoot()
         /// ```
         /// </summary>
-        public void ToggleAutoLoot() => OnMain(() => { ProfileManager.CurrentProfile.EnableAutoLoot ^= true; });
+        public void ToggleAutoLoot() => OnMain(() => AutoLootManager.Instance.SetEnabled(!AutoLootManager.Instance.IsEnabled));
 
         /// <summary>
         /// Use autoloot on a specific container.

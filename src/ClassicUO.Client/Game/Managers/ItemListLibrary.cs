@@ -5,8 +5,10 @@ using System.ComponentModel;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Text.RegularExpressions;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Utility;
 
 namespace ClassicUO.Game.Managers;
 
@@ -127,6 +129,27 @@ internal sealed class SharedItemList
         return null;
     }
 
+    internal SharedItem? Find(Item item)
+    {
+        string? search = null;
+        foreach (SharedItem rule in Items ?? [])
+        {
+            if (rule == null || rule.Graphic == 0
+                || (rule.Graphic != ushort.MaxValue && rule.Graphic != item.Graphic)
+                || (rule.Hue != ushort.MaxValue && rule.Hue != item.Hue))
+                continue;
+
+            if (string.IsNullOrEmpty(rule.RegexSearch))
+                return rule;
+
+            search ??= (string.IsNullOrEmpty(item.OPLName) ? item.GetNormalizedName(false) : item.OPLName) + item.OPLData;
+            if (RegexHelper.GetRegex(rule.RegexSearch, RegexOptions.Multiline).IsMatch(search))
+                return rule;
+        }
+
+        return null;
+    }
+
     internal IEnumerable<T> ResolveRules<T>(IEnumerable<T>? local, Func<T, (ushort Graphic, ushort Hue)> key,
         Func<SharedItem, T> create) where T : class
     {
@@ -141,10 +164,15 @@ internal sealed class SharedItemList
 
 internal sealed record SharedItem(ushort Graphic, ushort Hue, string Name)
 {
+    private static readonly Regex BaseFontTag = new(@"</?basefont(?:\s[^<>]*)?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public string Name { get; init => field = CleanName(value); } = CleanName(Name);
     public string RegexSearch { get; init; } = "";
     public int Priority { get; init; } = 1;
     public int MaxAmount { get; init; }
     public uint DestinationContainer { get; init; }
+
+    private static string CleanName(string? name) => BaseFontTag.Replace(name ?? "", "");
 }
 
 internal static class GatheringListRules

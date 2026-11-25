@@ -1,17 +1,12 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
-using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
-using Myra.Graphics2D.UI.WrapPanel;
 using Myra.Graphics2D;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -23,23 +18,20 @@ public static class AutoLootAgentTabContent
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
-        Profile? profile = ProfileManager.CurrentProfile;
+        if (ProfileManager.CurrentProfile is not { } profile)
+            return new MyraLabel("Log in to configure Auto Loot.", MyraLabel.TextStyle.P);
 
-        var root = new VerticalStackPanel { Spacing = 6 };
+        var loot = AutoLootManager.Instance;
+        if (!loot.IsLoaded)
+            return new MyraLabel("Auto Loot settings could not be loaded.", MyraLabel.TextStyle.P);
 
-        // Enable Auto Loot + Set Grab Bag
-        var topRow = new HorizontalStackPanel { Spacing = 8 };
-        topRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
-            profile.EnableAutoLoot,
-            b => profile.EnableAutoLoot = b,
-            "Enable Auto Loot",
-            "Auto Loot allows you to automatically pick up items from corpses based on configured criteria."));
-        topRow.Widgets.Add(new MyraButton("Set Grab Bag", () =>
-        {
-            GameActions.Print(Client.Game.UO.World, "Target container to grab items into");
-            interaction.SelectGrabBag();
-        }) { Tooltip = "Choose a container to grab items into" });
-        root.Widgets.Add(topRow);
+        var root = new VerticalStackPanel { Spacing = 8 };
+        root.Widgets.Add(AgentPresetPanel.Build(
+            interaction, "Auto Loot presets", loot.Lists, loot.CurrentList, preset => preset.Name,
+            name => loot.AddPreset(name), loot.RenameList,
+            preset => loot.AddPreset(preset.Name + " Copy", preset), loot.DeleteList,
+            BuildPreset, minimumCount: 1, display: preset =>
+                loot.IsEnabled && ReferenceEquals(preset, loot.CurrentList) ? $"{preset.Name} (running)" : preset.Name));
 
         // Options
         var showProgress = MyraCheckButton.CreateWithCallback(
@@ -48,11 +40,6 @@ public static class AutoLootAgentTabContent
             "Enable Progress Bar",
             "Shows a progress bar gump.");
 
-        var lootHumans = MyraCheckButton.CreateWithCallback(
-            profile.AutoLootHumanCorpses,
-            b => profile.AutoLootHumanCorpses = b,
-            "Auto Loot Human Corpses",
-            "Auto loots human corpses.");
         var hueCorpse = MyraCheckButton.CreateWithCallback(
             profile.HueCorpseAfterAutoloot,
             b => profile.HueCorpseAfterAutoloot = b,
@@ -132,7 +119,7 @@ public static class AutoLootAgentTabContent
             options.AddColumn(new Proportion(ProportionType.Part, 1));
             options.AddColumn(new Proportion(ProportionType.Part, 1));
             options.AddWidget(DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_corpse_handling", "Corpse handling"),
-                showProgress, lootHumans, hueCorpse, retryRow, disableRetry), 0, 0);
+                showProgress, hueCorpse, retryRow, disableRetry), 0, 0);
             options.AddWidget(DesktopAssistantTheme.Group(skinningTitle,
                 enableSkinning, skinHumans, targetKnife, skinGraphicsRow), 0, 1);
             root.Widgets.Add(options);
@@ -140,7 +127,6 @@ public static class AutoLootAgentTabContent
         else
         {
             var corpseChecks = new HorizontalStackPanel { Spacing = 8 };
-            corpseChecks.Widgets.Add(lootHumans);
             corpseChecks.Widgets.Add(hueCorpse);
             retryRow.Widgets.Add(disableRetry);
             root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = "Options:" }, showProgress, corpseChecks, retryRow));
@@ -152,17 +138,87 @@ public static class AutoLootAgentTabContent
             root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = skinningTitle }, skinChecks, skinGraphicsRow));
         }
 
-        root.Widgets.Add(SharedItemListPicker.BuildGathering(interaction, profile.AutoLootSharedItemListId,
-            id =>
-            {
-                profile.AutoLootSharedItemListId = id;
-                AutoLootManager.Instance.InvalidateScannedCorpses();
-            }, (profile.AutoLootIgnoreItemListId, id =>
-            {
-                profile.AutoLootIgnoreItemListId = id;
-                AutoLootManager.Instance.InvalidateScannedCorpses();
-            })));
         return root;
+
+        Widget BuildPreset(AutoLootManager.AutoLootList? preset, Action<AutoLootManager.AutoLootList?> refresh)
+        {
+            var details = new VerticalStackPanel { Spacing = 6 };
+            if (preset == null)
+                return details;
+
+            bool running = loot.IsEnabled && ReferenceEquals(preset, loot.CurrentList);
+            string status = running ? "Running" : loot.IsEnabled ? $"Running: {loot.CurrentList.Name}" : "Auto Loot stopped";
+            var controls = AgentPresetPanel.Actions();
+            var start = new MyraButton(running ? "Stop Auto Loot" : "Start Selected", () =>
+            {
+                if (running)
+                    loot.SetEnabled(false);
+                else
+                    loot.StartPreset(preset);
+                refresh(preset);
+            });
+            if (interaction.IsDesktop && !running)
+                DesktopAssistantTheme.ApplyActionButtonStyle(start, primary: true);
+            controls.Widgets.Add(start);
+            if (!running && loot.IsEnabled)
+            {
+                controls.Widgets.Add(new MyraButton("Stop Auto Loot", () =>
+                {
+                    loot.SetEnabled(false);
+                    refresh(preset);
+                }));
+            }
+
+            details.Widgets.Add(ItemListsTabContent.Section(interaction, preset.Name,
+                new MyraLabel(status, MyraLabel.TextStyle.P), controls));
+            details.Widgets.Add(SharedItemListPicker.BuildGathering(interaction, preset.MainItemListId,
+                id =>
+                {
+                    preset.MainItemListId = id;
+                    loot.SavePreset(preset);
+                },
+                (preset.IgnoreItemListId, id =>
+                {
+                    preset.IgnoreItemListId = id;
+                    loot.SavePreset(preset);
+                })));
+
+            string bag = preset.GrabBagSerial switch
+            {
+                null => profile.GrabBagSerial == 0 ? "Shared grab bag (backpack)" : $"Shared grab bag (0x{profile.GrabBagSerial:X8})",
+                0 => "Backpack",
+                uint serial => $"0x{serial:X8}"
+            };
+            var bagActions = AgentPresetPanel.Actions();
+            bagActions.Widgets.Add(new MyraButton("Set Grab Bag", () =>
+            {
+                GameActions.Print("Target the loot bag for this preset.");
+                interaction.SelectTarget(target =>
+                {
+                    if (target is Item { ItemData.IsContainer: true } item)
+                        SetBag(item.Serial);
+                    else
+                        GameActions.Print("Select a container in the game.", Constants.HUE_ERROR);
+                });
+            }));
+            bagActions.Widgets.Add(new MyraButton("Use Backpack", () => SetBag(0)) { Enabled = preset.GrabBagSerial != 0 });
+            bagActions.Widgets.Add(new MyraButton("Use Shared Bag", () => SetBag(null)) { Enabled = preset.GrabBagSerial.HasValue });
+            var lootHumans = MyraCheckButton.CreateWithCallback(preset.LootHumanCorpses, value =>
+            {
+                preset.LootHumanCorpses = value;
+                loot.SavePreset(preset);
+            }, "Auto Loot Human Corpses");
+            details.Widgets.Add(ItemListsTabContent.Section(interaction, "Loot destination",
+                new MyraLabel(bag, MyraLabel.TextStyle.P), bagActions, lootHumans));
+            return details;
+
+            void SetBag(uint? serial)
+            {
+                preset.GrabBagSerial = serial;
+                loot.SavePreset(preset);
+                refresh(preset);
+            }
+        }
     }
 
     private static string AppendSkinningGraphic(string current, ushort graphic)

@@ -77,6 +77,22 @@ public class ItemListLibraryTests
     }
 
     [Fact]
+    public void ItemNamesDropBaseFontMarkupFromNewAndSavedEntries()
+    {
+        var item = new SharedItem(0x0EED, 0, "<BASEFONT color=#FFCC33>Gold</BASEFONT>");
+        Assert.Equal("Gold", item.Name);
+        Assert.Equal("Gold coins", (item with { Name = "<basefont>Gold coins" }).Name);
+
+        const string savedList = """
+            [{"Graphic":3821,"Hue":0,"Name":"<BASEFONT>Gold</basefont>","RegexSearch":"<BASEFONT>"}]
+            """;
+        var loaded = Assert.Single(JsonSerializer.Deserialize(savedList, ItemListJsonContext.Default.ListSharedItem));
+
+        Assert.Equal("Gold", loaded.Name);
+        Assert.Equal("<BASEFONT>", loaded.RegexSearch);
+    }
+
+    [Fact]
     public void GatheringRulesPreserveOrderedRegexVariantsAndSettings()
     {
         var list = new SharedItemList();

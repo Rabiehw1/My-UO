@@ -2568,8 +2568,7 @@ namespace ClassicUO.Game.Managers
 
                 case MacroType.ToggleAutoLoot:
                     bool newLootStatus = !ProfileManager.CurrentProfile.EnableAutoLoot;
-                    ProfileManager.CurrentProfile.EnableAutoLoot = newLootStatus;
-                    if (!newLootStatus) AutoLootManager.Instance.ClearActiveLootQueue();
+                    AutoLootManager.Instance.SetEnabled(newLootStatus);
                     GameActions.Print($"Auto loot {(newLootStatus ? "enabled" : "disabled")}.", newLootStatus ? Constants.HUE_SUCCESS : Constants.HUE_ERROR);
                     break;
 

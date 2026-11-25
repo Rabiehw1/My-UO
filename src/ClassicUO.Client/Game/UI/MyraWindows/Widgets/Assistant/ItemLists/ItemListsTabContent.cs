@@ -94,8 +94,10 @@ internal static class ItemListsTabContent
         var rename = Button("Rename list");
         var duplicate = Button("Copy list");
         var delete = Button("Remove list");
+        MyraStyle.ApplyButtonDangerStyle(delete);
         var edit = Button("Edit item");
         var remove = Button("Remove item");
+        MyraStyle.ApplyButtonDangerStyle(remove);
         var earlier = Button("Move up");
         var later = Button("Move down");
         earlier.OnClick = () => MoveSelected(-1);
@@ -468,6 +470,8 @@ internal static class ItemListsTabContent
                 AddChoice($"{character} · Auto Loot", rules.Select(GatheringListRules.From));
             foreach (var (character, rules) in ScavengerManager.GetOtherCharacterConfigs().OrderBy(entry => entry.Key))
                 AddChoice($"{character} · Scavenger", rules.Select(GatheringListRules.From));
+            foreach (var (name, items) in OrganizerConfigSave.GetOtherCharacterLists())
+                AddChoice(name, items);
 
             if (rulesByChoice.Count > 0)
             {
@@ -475,7 +479,7 @@ internal static class ItemListsTabContent
                 picker.SelectedIndex = 0;
             }
             else
-                choices.Widgets.Add(new Label { Text = "No legacy character gathering lists found.", Wrap = true });
+                choices.Widgets.Add(new Label { Text = "No legacy item rules found for other characters.", Wrap = true });
 
             interaction.ShowDialog(importCharacter, "Import from Character", DialogBody(importCharacter, choices, 340), confirmed =>
             {

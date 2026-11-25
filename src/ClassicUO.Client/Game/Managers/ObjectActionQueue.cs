@@ -33,11 +33,16 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     {
         if (serial == 0) return;
 
+        CancelActions(item => item.Serial == serial);
+    }
+
+    internal void CancelActions(Predicate<ObjectActionQueueItem> matches)
+    {
         List<ObjectActionQueueItem> canceled = null;
 
         RemoveWhere(item =>
         {
-            if (item.Serial != serial) return false;
+            if (!matches(item)) return false;
 
             (canceled ??= new List<ObjectActionQueueItem>()).Add(item);
 
