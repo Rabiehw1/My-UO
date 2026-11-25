@@ -6,6 +6,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 
@@ -96,7 +97,7 @@ internal static class ShopListsTabContent
             });
 
         details.Widgets.Add(DesktopAssistantForm.Fields(
-            new(TazLang.Get("shopping_item_list"), BuildListPicker(ctx, preset, refresh),
+            new DesktopAssistantForm.Field(TazLang.Get("shopping_item_list"), BuildListPicker(ctx, preset, refresh),
                 Button(TazLang.Get("autoloot_manage_lists"), ctx.Interaction.OpenItemLists, ctx.Interaction))));
 
         details.Widgets.Add(MyraCheckButton.CreateWithCallback(preset.TakeAll, value =>
