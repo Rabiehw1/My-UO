@@ -229,15 +229,12 @@ internal sealed class DesktopAgentsWindow
         ];
         foreach (AgentTab.AgentGroup group in groups)
         {
-            if (group != AgentTab.AgentGroup.Support)
+            navigation.Widgets.Add(new MyraLabel(GetGroupName(group), MyraLabel.TextStyle.P)
             {
-                navigation.Widgets.Add(new MyraLabel(GetGroupName(group), MyraLabel.TextStyle.P)
-                {
-                    Font = DesktopAssistantTheme.Font(-2),
-                    Margin = new Thickness(1, navigation.Widgets.Count > 0 ? 6 : 0, 0, 0),
-                    TextColor = DesktopAssistantTheme.SecondaryText
-                });
-            }
+                Font = DesktopAssistantTheme.Font(-2),
+                Margin = new Thickness(1, navigation.Widgets.Count > 0 ? 6 : 0, 0, 0),
+                TextColor = DesktopAssistantTheme.SecondaryText
+            });
 
             foreach (var (page, index) in _pages.Select((page, index) => (page, index)).Where(item => item.page.Group == group))
             {
@@ -284,6 +281,7 @@ internal sealed class DesktopAgentsWindow
         AgentTab.AgentGroup.HealingAndStats => TazLang.Get("assistant_agents_healing_stats", "Healing & Stats"),
         AgentTab.AgentGroup.LootAndScavenge => TazLang.Get("assistant_agents_loot_scavenge", "Loot & Scavenge"),
         AgentTab.AgentGroup.Vendors => TazLang.Get("assistant_agents_vendors", "Vendors"),
+        AgentTab.AgentGroup.Support => TazLang.Get("assistant_agents_support"),
         _ => TazLang.Get("assistant_agents_gear_inventory", "Gear & Inventory")
     };
 
