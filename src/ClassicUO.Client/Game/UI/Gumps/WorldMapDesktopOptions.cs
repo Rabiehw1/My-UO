@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Xml;
 using ClassicUO.Assets;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.Input;
 using ClassicUO.Renderer;
 using ClassicUO.Utility;
@@ -20,6 +22,51 @@ public partial class WorldMapGump
     private static int _desktopTextureFacet;
     private Point? _desktopPointer;
     private int _navVersion;
+    private int _navigationFacet;
+    private MapRouteStatus _navigationStatus;
+
+    internal enum MapRouteStatus { Idle, Planning, Walking, Arrived, NoRoute }
+
+    internal MapRouteStatus NavigationStatus => _navigationStatus;
+
+    private bool HasMapRoute => _navigationStatus is MapRouteStatus.Planning or MapRouteStatus.Walking;
+
+    internal void WalkFromDesktop(int facet, Point tile, bool append)
+    {
+        if (append && _navigationFacet == facet && _navigationStatus == MapRouteStatus.Walking
+            && World.Player?.Pathfinder?.AutoWalking == true)
+            StartNavPath(facet, _navPlannedEnd.X, _navPlannedEnd.Y, _navPlannedEndZ, tile.X, tile.Y, firstAttempt: true, append: true);
+        else
+            BeginFreshNavTo(facet, tile.X, tile.Y);
+    }
+
+    private void UpdateNavigationState()
+    {
+        if (!HasMapRoute)
+            return;
+        if (World.MapIndex != _navigationFacet || World.Player?.Pathfinder == null)
+        {
+            StopDesktopNavigation();
+            return;
+        }
+        if (_navigationStatus == MapRouteStatus.Walking && !World.Player.Pathfinder.AutoWalking)
+        {
+            bool arrived = _navDest is Point destination
+                && Math.Max(Math.Abs(World.Player.X - destination.X), Math.Abs(World.Player.Y - destination.Y)) <= 1;
+            FinishNavigation(arrived ? MapRouteStatus.Arrived : MapRouteStatus.Idle);
+        }
+    }
+
+    private void FinishNavigation(MapRouteStatus status)
+    {
+        if (World.Player?.Pathfinder is { } pathfinder && _navStepFailedHandler != null)
+            pathfinder.OnComputedPathStepFailed -= _navStepFailedHandler;
+        _navStepFailedHandler = null;
+        _navDest = null;
+        _navPath = null;
+        _navSegments = 0;
+        _navigationStatus = status;
+    }
 
     private Point? MapHoverPointer => IsDetached ? _desktopPointer : Mouse.Position;
 
@@ -59,7 +106,12 @@ public partial class WorldMapGump
             marker.Y = sighting.Y;
             marker.MapId = sighting.Facet;
             marker.Name = sighting.Name;
-            marker.Color = sightings.LayerFor(sighting) switch
+            var layer = sightings.LayerFor(sighting);
+            marker.MarkerIconName = layer == MapSightingLayers.Vendors ? "map-vendor"
+                : (layer is MapSightingLayers.Monsters or MapSightingLayers.Bosses or MapSightingLayers.SuperBosses)
+                    && WeaponSwitchCatalog.Find(sighting.Graphic, sighting.Hue) is { } monster
+                    ? MonsterMapIcon.Key(monster) : "";
+            marker.Color = layer switch
             {
                 MapSightingLayers.Npcs => Color.DeepSkyBlue,
                 MapSightingLayers.Vendors => Color.LimeGreen,
@@ -76,6 +128,8 @@ public partial class WorldMapGump
             marker.Y = hovered.Y;
             marker.Name = string.IsNullOrEmpty(hovered.Details) || hovered.Name.Equals(hovered.Details, StringComparison.Ordinal)
                 ? hovered.Name : $"{hovered.Name} · {hovered.Details}";
+            if (hovered.LastSeen is { } lastSeen)
+                marker.Name += TazLang.Get("detached_map_last_seen", [lastSeen.ToLocalTime().ToString("g")]);
             DrawMarkerString(batcher, marker, x, y, halfWidth, halfHeight);
         }
     }
@@ -141,8 +195,9 @@ public partial class WorldMapGump
         if (string.IsNullOrWhiteSpace(text))
             return false;
 
-        string[] parts = text.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (parts.Length == 2 && int.TryParse(parts[0], out int x) && int.TryParse(parts[1], out int y))
+        string[] parts = text.Split([',', ':', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length is 2 or 3 && int.TryParse(parts[0], out int x) && int.TryParse(parts[1], out int y)
+            && (parts.Length == 2 || int.TryParse(parts[2], out _)))
             tile = new Point(x, y);
         else if (_map.Index != facet || !Sextant.Parse(_map, text, out tile))
             return false;
@@ -153,41 +208,35 @@ public partial class WorldMapGump
     internal void StopDesktopNavigation()
     {
         _navVersion++;
-        var pathfinder = World.Player?.Pathfinder;
-        if (pathfinder != null && _navStepFailedHandler != null)
-            pathfinder.OnComputedPathStepFailed -= _navStepFailedHandler;
-        if (_navDest.HasValue)
+        if (HasMapRoute)
         {
             WorldMapPathfinder.Cancel();
-            pathfinder?.StopAutoWalk();
+            World.Player?.Pathfinder?.StopAutoWalk();
         }
-        _navStepFailedHandler = null;
-        _navDest = null;
-        _navPath = null;
-        _navSegments = 0;
+        FinishNavigation(MapRouteStatus.Idle);
     }
 
-    internal IEnumerable<(string Label, bool Enabled, Action<bool> Set)> DesktopDisplayOptions()
+    internal IEnumerable<(string Group, string Label, bool Enabled, Action<bool> Set)> DesktopDisplayOptions()
     {
-        yield return ("Rotate map", _flipMap, value => { _flipMap = value; OnResize(); });
-        yield return ("Grid at high zoom", _showGridIfZoomed, value => _showGridIfZoomed = value);
-        yield return ("Markers", _showMarkers, value => _showMarkers = value);
-        yield return ("Always show markers", _alwaysShowMarkers, value => _alwaysShowMarkers = value);
-        yield return ("Marker names", _showMarkerNames, value => _showMarkerNames = value);
-        yield return ("Marker icons", _showMarkerIcons, value => _showMarkerIcons = value);
-        yield return ("Party members", _showPartyMembers, value => _showPartyMembers = value);
-        yield return ("Nearby mobiles", _showMobiles, value => _showMobiles = value);
-        yield return ("My corpse", _showCorpse, value => _showCorpse = value);
-        yield return ("Houses and boats", _showMultis, value => _showMultis = value);
-        yield return ("Resurrection waypoints", _showResurrectionWaypoints, value => _showResurrectionWaypoints = value);
-        yield return ("Player name", _showPlayerName, value => _showPlayerName = value);
-        yield return ("Player health bar", _showPlayerBar, value => _showPlayerBar = value);
-        yield return ("Group names", _showGroupName, value => _showGroupName = value);
-        yield return ("Group health bars", _showGroupBar, value => _showGroupBar = value);
-        yield return ("Player coordinates", _showCoordinates, value => _showCoordinates = value);
-        yield return ("Cursor coordinates", _showMouseCoordinates, value => _showMouseCoordinates = value);
-        yield return ("Sextant coordinates", _showSextantCoordinates, value => _showSextantCoordinates = value);
-        yield return ("Allow tile targeting", _allowPositionalTarget, value => _allowPositionalTarget = value);
+        yield return (TazLang.Get("detached_map_group_map"), TazLang.Get("flip_map"), _flipMap, value => { _flipMap = value; OnResize(); });
+        yield return (TazLang.Get("detached_map_group_map"), TazLang.Get("grid_if_zoomed"), _showGridIfZoomed, value => _showGridIfZoomed = value);
+        yield return (TazLang.Get("detached_map_group_markers"), TazLang.Get("show_all_markers"), _showMarkers, value => _showMarkers = value);
+        yield return (TazLang.Get("detached_map_group_markers"), TazLang.Get("always_show_markers"), _alwaysShowMarkers, value => _alwaysShowMarkers = value);
+        yield return (TazLang.Get("detached_map_group_markers"), TazLang.Get("show_marker_names"), _showMarkerNames, value => _showMarkerNames = value);
+        yield return (TazLang.Get("detached_map_group_markers"), TazLang.Get("show_marker_icons"), _showMarkerIcons, value => _showMarkerIcons = value);
+        yield return (TazLang.Get("detached_map_group_people"), TazLang.Get("show_party_members"), _showPartyMembers, value => _showPartyMembers = value);
+        yield return (TazLang.Get("detached_map_group_people"), TazLang.Get("show_mobiles"), _showMobiles, value => _showMobiles = value);
+        yield return (TazLang.Get("detached_map_group_map"), TazLang.Get("detached_map_corpse"), _showCorpse, value => _showCorpse = value);
+        yield return (TazLang.Get("detached_map_group_map"), TazLang.Get("show_houses_boats"), _showMultis, value => _showMultis = value);
+        yield return (TazLang.Get("detached_map_group_map"), TazLang.Get("show_resurrection_waypoints"), _showResurrectionWaypoints, value => _showResurrectionWaypoints = value);
+        yield return (TazLang.Get("detached_map_group_people"), TazLang.Get("show_your_name"), _showPlayerName, value => _showPlayerName = value);
+        yield return (TazLang.Get("detached_map_group_people"), TazLang.Get("show_your_healthbar"), _showPlayerBar, value => _showPlayerBar = value);
+        yield return (TazLang.Get("detached_map_group_people"), TazLang.Get("show_group_name"), _showGroupName, value => _showGroupName = value);
+        yield return (TazLang.Get("detached_map_group_people"), TazLang.Get("show_group_healthbar"), _showGroupBar, value => _showGroupBar = value);
+        yield return (TazLang.Get("detached_map_group_coordinates"), TazLang.Get("show_your_coordinates"), _showCoordinates, value => _showCoordinates = value);
+        yield return (TazLang.Get("detached_map_group_coordinates"), TazLang.Get("show_mouse_coordinates"), _showMouseCoordinates, value => _showMouseCoordinates = value);
+        yield return (TazLang.Get("detached_map_group_coordinates"), TazLang.Get("show_sextant_coordinates"), _showSextantCoordinates, value => _showSextantCoordinates = value);
+        yield return (TazLang.Get("detached_map_group_coordinates"), TazLang.Get("detached_map_allow_target"), _allowPositionalTarget, value => _allowPositionalTarget = value);
     }
 
     internal int DesktopSpriteFont => _markerFontIndex;
@@ -214,7 +263,7 @@ public partial class WorldMapGump
                 yield return (file.Name, !file.Hidden, enabled =>
                 {
                     file.Hidden = !enabled;
-                    SetFileVisibility(_hiddenMarkerFiles, file.Name, enabled);
+                    SetMarkerFileVisibility(file, enabled);
                 });
         }
     }
@@ -229,27 +278,69 @@ public partial class WorldMapGump
 
     internal void ReloadDesktopZones() => LoadZones();
 
-    internal bool TryImportMarkerFile(string source)
+    internal void ReloadDesktopMarkers() => LoadMarkers();
+
+    private static string MarkerFileIdentity(WMapMarkerFile file) =>
+        "file:" + Uri.EscapeDataString(Path.GetFullPath(file.FullPath));
+
+    private void SetMarkerFileVisibility(WMapMarkerFile file, bool enabled)
     {
+        _hiddenMarkerFiles.RemoveAll(name => name.Equals(file.Name, StringComparison.OrdinalIgnoreCase));
+        SetFileVisibility(_hiddenMarkerFiles, MarkerFileIdentity(file), enabled);
+    }
+
+    internal bool TryImportMarkerFile(string source) => TryImportMarkerFile(source, false, out _);
+
+    internal bool TryImportMarkerFile(string source, bool replace, out string result)
+    {
+        result = TazLang.Get("map_import_map_file_failed");
+        string temporary = null;
         try
         {
             string extension = Path.GetExtension(source);
             if (!File.Exists(source) || !new[] { ".map", ".csv", ".xml" }.Contains(extension, StringComparer.OrdinalIgnoreCase))
                 return false;
 
+            var parsed = LoadMarkerFile(source, out int skipped, rejectUnreadable: true);
+            if (parsed.Markers.Count == 0)
+                return false;
+
             string directory = Path.Combine(ShardMapDirectory, "MapMarkers");
             Directory.CreateDirectory(directory);
             string destination = Path.Combine(directory, Path.GetFileName(source));
-            if (!string.Equals(Path.GetFullPath(source), destination, StringComparison.OrdinalIgnoreCase))
-                File.Copy(source, destination, overwrite: true);
+            if (!string.Equals(Path.GetFullPath(source), Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
+            {
+                if (!replace)
+                {
+                    var name = Path.GetFileNameWithoutExtension(source);
+                    for (int suffix = 2; File.Exists(destination); suffix++)
+                        destination = Path.Combine(directory, $"{name} ({suffix}){extension}");
+                }
+                temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                File.Copy(source, temporary);
+                File.Move(temporary, destination, overwrite: replace);
+            }
 
             LoadMarkers();
+            result = TazLang.Get("detached_map_import_result",
+                [Path.GetFileName(destination), parsed.Markers.Count.ToString(), skipped.ToString()]);
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or XmlException or FormatException)
         {
             Log.Error($"Could not import map marker file: {ex}");
             return false;
+        }
+        finally
+        {
+            if (temporary != null && File.Exists(temporary))
+            {
+                try { File.Delete(temporary); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn($"Could not remove temporary marker import: {ex}");
+                }
+            }
         }
     }
 

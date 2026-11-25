@@ -226,7 +226,8 @@ namespace ClassicUO.Game.Map
                         }
                     }
 
-                    UIManager.GetGump<WorldMapGump>()?.UpdateWorldMapChunk(X, Y, bufferBlock);
+                    (ClassicUO.Game.UI.MyraWindows.DetachedWorldMapWindow.MapFor(_world) ?? UIManager.GetGump<WorldMapGump>())
+                        ?.UpdateWorldMapChunk(map.Index, X, Y, bufferBlock);
                 }
             }
             finally

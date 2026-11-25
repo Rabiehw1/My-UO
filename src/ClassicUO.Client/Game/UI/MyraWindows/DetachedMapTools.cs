@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using System.Linq;
 using ClassicUO.Assets;
 using ClassicUO.Configuration;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using Myra.Graphics2D;
+using Microsoft.Xna.Framework;
+using static SDL3.SDL;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
 using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.File;
@@ -12,21 +16,10 @@ namespace ClassicUO.Game.UI.MyraWindows;
 
 internal sealed partial class DetachedMapMarkers
 {
-    private void ShowTools()
-    {
-        Show();
-        _content.Widgets.Add(Label("Map tools"));
-        _content.Widgets.Add(new MyraButton("Navigation", ShowNavigation));
-        _content.Widgets.Add(new MyraButton("Display and coordinates", ShowDisplay));
-        _content.Widgets.Add(new MyraButton("Marker and zone files", ShowFiles));
-        _content.Widgets.Add(new MyraButton("Sightings", ShowSightings));
-        _content.Widgets.Add(new MyraButton("Reset map cache", ConfirmResetCache));
-    }
-
     private void ShowNavigation()
     {
         Show();
-        AddToolsBack("Navigation");
+        _content.Widgets.Add(Label(TazLang.Get("detached_map_gestures")));
         var status = Label("");
         var targets = _map.DesktopFollowTargets().ToArray();
         var follow = Choice(new[] { "My character" }.Concat(targets.Select(target => target.Name)),
@@ -57,7 +50,8 @@ internal sealed partial class DetachedMapMarkers
         _content.Widgets.Add(facet);
 
         _content.Widgets.Add(Label("Map X, Y or sextant coordinates"));
-        var location = new MyraInputBox { HintText = "Coordinates" };
+        var player = _map.MapWorld.Player;
+        var location = new MyraInputBox { HintText = "Coordinates", Text = $"{player.X}, {player.Y}" };
         _content.Widgets.Add(location);
         void Navigate(bool walk)
         {
@@ -76,7 +70,23 @@ internal sealed partial class DetachedMapMarkers
             Hide();
         }
 
-        _content.Widgets.Add(Row(new MyraButton("Go to", () => Navigate(false)), new MyraButton("Walk to", () => Navigate(true))));
+        var go = DesktopAssistantTheme.ActionButton("Go to", () => Navigate(false));
+        var walkTo = DesktopAssistantTheme.ActionButton("Walk to", () => Navigate(true), primary: true);
+        walkTo.Enabled = _window.SelectedFacet == _map.MapWorld.MapIndex;
+        location.TextChangedByUser += (_, _) =>
+        {
+            bool valid = _map.TryParseDesktopLocation(location.Text, _window.SelectedFacet, out _);
+            go.Enabled = valid;
+            walkTo.Enabled = valid && _window.SelectedFacet == _map.MapWorld.MapIndex;
+            status.Text = valid ? "" : TazLang.Get("detached_map_invalid_coordinates");
+        };
+        location.KeyDown += (_, args) =>
+        {
+            if (args.Data == Microsoft.Xna.Framework.Input.Keys.Enter && go.Enabled)
+                Navigate(false);
+        };
+        _content.Widgets.Add(Row(go, walkTo, DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_copy_coordinates"),
+            () => SDL_SetClipboardText($"{player.X}, {player.Y}, {player.Z}"))));
         _content.Widgets.Add(Row(new MyraButton("Clear destination", _map.ClearGoToMarker),
             new MyraButton("Stop walking", _map.StopDesktopNavigation)));
         _content.Widgets.Add(status);
@@ -85,9 +95,14 @@ internal sealed partial class DetachedMapMarkers
     private void ShowDisplay()
     {
         Show();
-        AddToolsBack("Display and coordinates");
-        foreach (var (label, enabled, set) in _map.DesktopDisplayOptions())
-            AddToggle(label, enabled, value => { set(value); _map.SaveSettings(); });
+        _content.Widgets.Add(Label(TazLang.Get("detached_map_display")));
+        foreach (var group in _map.DesktopDisplayOptions().GroupBy(option => option.Group))
+            _content.Widgets.Add(DesktopAssistantTheme.Group(group.Key, group.Select(option =>
+                (Widget)MyraCheckButton.CreateWithCallback(option.Enabled, value =>
+                {
+                    option.Set(value);
+                    _map.SaveSettings();
+                }, option.Label)).ToArray()));
         _content.Widgets.Add(Label("Click a map tile with an active position cursor to target it."));
 
         var (fontNames, _) = TrueTypeLoader.Instance.GetSortedFontNames();
@@ -137,13 +152,17 @@ internal sealed partial class DetachedMapMarkers
             status.Text = "Sextant base updated.";
         })));
         _content.Widgets.Add(status);
+        _content.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("detached_map_maintenance"),
+            DesktopAssistantTheme.ActionButton(TazLang.Get("reset_maps_cache"), ConfirmResetCache)));
     }
 
-    private void ShowFiles()
+    private void ShowFiles(string message = "")
     {
         Show();
-        AddToolsBack("Marker and zone files");
-        var status = Label("");
+        _content.Widgets.Add(Row(DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_back"), ShowSightings),
+            Label(TazLang.Get("detached_map_files"))));
+        var status = Label(message);
+        var replace = new MyraCheckButton(TazLang.Get("detached_map_replace"), false);
         _content.Widgets.Add(new MyraButton("Import marker file", () =>
         {
             var dialog = new FileDialog(FileDialogMode.OpenFile)
@@ -156,21 +175,26 @@ internal sealed partial class DetachedMapMarkers
             {
                 if (!dialog.Result)
                     return;
-                try
-                {
-                    if (_map.TryImportMarkerFile(dialog.FilePath))
-                        ShowFiles();
-                    else
-                        status.Text = "Choose an existing .map, .csv, or .xml marker file.";
-                }
-                catch (ArgumentException)
-                {
-                    status.Text = "Choose a valid marker file.";
-                }
+                string source = dialog.FilePath;
+                if (replace.IsChecked)
+                    Confirm(TazLang.Get("detached_map_import_replace_title"), TazLang.Get("detached_map_import_replace_confirm"),
+                        () => Import(source, true), destructive: true);
+                else
+                    Import(source, false);
             };
             dialog.ShowModal(_desktop);
         }));
+        void Import(string source, bool overwrite)
+        {
+            if (_map.TryImportMarkerFile(source, overwrite, out string result))
+                ShowFiles(result);
+            else
+                status.Text = result;
+        }
+
+        _content.Widgets.Add(replace);
         _content.Widgets.Add(status);
+        _content.Widgets.Add(DesktopAssistantTheme.ActionButton(TazLang.Get("reload_markers"), () => { _map.ReloadDesktopMarkers(); ShowFiles(); }));
         AddFiles("Marker files", false);
         _content.Widgets.Add(new MyraButton("Reload zone files", () => { _map.ReloadDesktopZones(); ShowFiles(); }));
         AddFiles("Zones", true);
@@ -188,29 +212,17 @@ internal sealed partial class DetachedMapMarkers
 
     private void ConfirmResetCache()
     {
-        Show();
-        AddToolsBack("Reset map cache");
-        _content.Widgets.Add(Label("Delete the generated map images and rebuild the current facet."));
-        var status = Label("");
-        _content.Widgets.Add(new MyraButton("Reset and rebuild", () =>
+        Confirm(TazLang.Get("reset_maps_cache"), TazLang.Get("detached_map_reset_message"), () =>
         {
             if (_map.TryResetDesktopCache())
                 Hide();
             else
-                status.Text = "The map cache could not be reset. Try again after the map finishes loading.";
-        }));
-        _content.Widgets.Add(status);
+                _content.Widgets.Add(Label(TazLang.Get("detached_map_reset_failed")));
+        }, destructive: true);
     }
 
-    private void AddToolsBack(string title) =>
-        _content.Widgets.Add(Row(new MyraButton("Back", ShowTools), Label(title)));
-
-    private void AddToggle(string text, bool enabled, Action<bool> change)
-    {
-        var check = new CheckButton { Content = Label(text), IsChecked = enabled };
-        check.IsCheckedChanged += (_, _) => change(check.IsChecked);
-        _content.Widgets.Add(check);
-    }
+    private void AddToggle(string text, bool enabled, Action<bool> change) =>
+        _content.Widgets.Add(MyraCheckButton.CreateWithCallback(enabled, change, text));
 
     private static ComboView Choice(IEnumerable<string> items, int selected)
     {

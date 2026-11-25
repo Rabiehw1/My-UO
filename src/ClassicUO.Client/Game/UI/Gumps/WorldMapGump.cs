@@ -135,7 +135,6 @@ public partial class WorldMapGump : ResizableGump
     private WMapMarker _gotoMarker;
 
     private Point? _navDest;
-    private long _navDestSetTime;
     private List<Point> _navPath;
     private Action<int, int> _navStepFailedHandler;
 
@@ -218,7 +217,9 @@ public partial class WorldMapGump : ResizableGump
             const float diagonal = .70710678f;
             delta = new Vector2((delta.X + delta.Y) * diagonal, (delta.Y - delta.X) * diagonal);
         }
-        return Vector2.Clamp(from - delta / _zooms[zoomIndex], Vector2.Zero, new Vector2(ushort.MaxValue));
+        var sizes = Client.Game.UO.FileManager.Maps.MapsDefaultSize;
+        return Vector2.Clamp(from - delta / _zooms[zoomIndex], Vector2.Zero,
+            new Vector2(sizes[_map.Index, 0] - 1, sizes[_map.Index, 1] - 1));
     }
 
     internal bool TryGetDesktopPosition(Vector2 center, int zoomIndex, Vector2 offset, out Point location)
@@ -241,9 +242,9 @@ public partial class WorldMapGump : ResizableGump
     internal IReadOnlyList<WMapMarker> DesktopUserMarkers =>
         _markerFiles.FirstOrDefault(file => file.FullPath == UserMarkersFilePath)?.Markers;
 
-    internal bool TryChangeDesktopMarker(WMapMarker previous, WMapMarker replacement)
+    internal bool TryChangeDesktopMarker(WMapMarker previous, WMapMarker replacement, WMapMarkerFile file = null)
     {
-        var file = _markerFiles.FirstOrDefault(file => file.FullPath == UserMarkersFilePath);
+        file ??= _markerFiles.FirstOrDefault(file => file.FullPath == UserMarkersFilePath);
         if (file is not { IsEditable: true })
             return false;
 
@@ -261,16 +262,35 @@ public partial class WorldMapGump : ResizableGump
             updated.Insert(index, replacement);
         }
 
-        string temporaryPath = UserMarkersFilePath + ".tmp";
+        return TrySaveDesktopMarkers(file, updated);
+    }
+
+    internal static bool TrySaveDesktopMarkers(WMapMarkerFile file, List<WMapMarker> updated)
+    {
+        if (file is not { IsEditable: true } || !_markerFiles.Contains(file))
+            return false;
+
+        string temporaryPath = file.FullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             File.WriteAllLines(temporaryPath, updated.Select(MarkerToCsvLine));
-            File.Move(temporaryPath, UserMarkersFilePath, overwrite: true);
+            File.Move(temporaryPath, file.FullPath, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Error($"Error saving map markers: {ex}");
             return false;
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                try { File.Delete(temporaryPath); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Log.Warn($"Could not remove temporary marker file: {ex}");
+                }
+            }
         }
 
         file.Markers.Clear();
@@ -282,6 +302,8 @@ public partial class WorldMapGump : ResizableGump
     {
         if (_map.Index != facet)
             ChangeMap(facet);
+
+        UpdateNavigationState();
 
         if (_ttfTextBoxes.Count > 0)
             PurgeTtfTextBoxes();
@@ -871,20 +893,7 @@ public partial class WorldMapGump : ResizableGump
                     () =>
                     {
                         markerFile.Hidden = !markerFile.Hidden;
-
-                            if (!markerFile.Hidden)
-                            {
-                                string hiddenFile = _hiddenMarkerFiles.FirstOrDefault(x => x.Equals(markerFile.Name));
-
-                            if (!string.IsNullOrEmpty(hiddenFile))
-                            {
-                                _hiddenMarkerFiles.Remove(hiddenFile);
-                            }
-                        }
-                        else
-                        {
-                            _hiddenMarkerFiles.Add(markerFile.Name);
-                        }
+                        SetMarkerFileVisibility(markerFile, !markerFile.Hidden);
                     },
                     true,
                     !markerFile.Hidden
@@ -997,6 +1006,7 @@ public partial class WorldMapGump : ResizableGump
             }
         }
 
+        UpdateNavigationState();
         World.WMapManager.RequestServerPartyGuildInfo();
     }
 
@@ -1760,44 +1770,24 @@ public partial class WorldMapGump : ResizableGump
         }
     }
 
-    public unsafe Task UpdateWorldMapChunk(int mapBlockX, int mapBlockY, uint[] bufferBlock)
+    internal void UpdateWorldMapChunk(int facet, int mapBlockX, int mapBlockY, uint[] bufferBlock)
     {
-        if (_mapLoading == 1 || _mapTexture == null || _mapTexture.IsDisposed
-            || (IsDetached && _desktopTextureFacet != World.MapIndex))
+        var texture = _mapTexture;
+        if (_mapLoading != 0 || texture is not { IsDisposed: false } || _desktopTextureFacet != facet)
+            return;
+
+        MainThreadQueue.EnqueueAction(() =>
         {
-            return Task.CompletedTask;
-        }
+            if (IsDisposed || _world != World.Instance || _map.Index != facet || _mapLoading != 0
+                || _desktopTextureFacet != facet || !ReferenceEquals(_mapTexture, texture) || texture.IsDisposed)
+                return;
 
-        return Task.Run
-        (
-            () =>
-            {
-                const int OFFSET_PIX = 2;
-                const int OFFSET_PIX_HALF = OFFSET_PIX / 2;
-
-                // Adjust map coordinates based on the block to reload
-                // Multiply by 8 to get the actual map coordinate
-                int startMapX = (mapBlockX << 3) + OFFSET_PIX_HALF;
-                int startMapY = (mapBlockY << 3) + OFFSET_PIX_HALF;
-
-                int blockWidth = 8;
-                int blockHeight = 8;
-
-                // Clamp block size if near the right or bottom border
-                if (startMapX + blockWidth > _mapTexture.Width)
-                    blockWidth = _mapTexture.Width - startMapX;
-                if (startMapY + blockHeight > _mapTexture.Height)
-                    blockHeight = _mapTexture.Height - startMapY;
-
-                if (blockWidth > 0 && blockHeight > 0)
-                {
-                    fixed (uint* pixels = &bufferBlock[0])
-                    {
-                        _mapTexture.SetDataPointerEXT(0, new Rectangle(startMapX, startMapY, blockWidth, blockHeight), (IntPtr)pixels, sizeof(uint) * blockWidth * blockHeight);
-                    }
-                }
-            }
-        );
+            const int blockSize = 8;
+            int x = (mapBlockX << 3) + 1;
+            int y = (mapBlockY << 3) + 1;
+            if (x >= 0 && y >= 0 && x + blockSize <= texture.Width && y + blockSize <= texture.Height)
+                texture.SetData(0, new Rectangle(x, y, blockSize, blockSize), bufferBlock, 0, blockSize * blockSize);
+        });
     }
 
     public static void ClearMapCache() => Map.Map.ClearMapPngCache();
@@ -1820,6 +1810,7 @@ public partial class WorldMapGump : ResizableGump
             return;
         }
 
+        World world = World.Instance;
         try
         {
             Utility.Logging.Log.Info($"Loading/generating map texture for map {mapIndex}...");
@@ -1827,8 +1818,8 @@ public partial class WorldMapGump : ResizableGump
             // Generate the PNG file on a background thread using Map.GenerateMapPng
             string generatedMapPath = await Task.Run(() =>
             {
-                var map = new Map.Map(World.Instance, mapIndex);
-                return Map.Map.GenerateMapPng(mapIndex, map, World.Instance);
+                var map = new Map.Map(world, mapIndex);
+                return Map.Map.GenerateMapPng(mapIndex, map, world);
             });
 
             // Now load the texture from the generated PNG on the main thread.
@@ -1838,6 +1829,9 @@ public partial class WorldMapGump : ResizableGump
                 _mapPngFilePath = generatedMapPath;
                 MainThreadQueue.BubblingInvokeOnMainThread(() =>
                 {
+                    if (World.Instance != world || !world.InGame || DetachedWorldMapWindow.IsOpenFor(world))
+                        return;
+
                     _mapTexture?.Dispose();
                     using FileStream stream = File.OpenRead(generatedMapPath);
                     _mapTexture = Texture2D.FromStream(Client.Game.GraphicsDevice, stream);
@@ -2005,9 +1999,9 @@ public partial class WorldMapGump : ResizableGump
             if (string.IsNullOrEmpty(path))
                 return;
 
-            if (TryImportMarkerFile(path))
+            if (TryImportMarkerFile(path, false, out string result))
             {
-                GameActions.Print(World, string.Format(TazLang.Get("map_import_map_file_success", "Imported map file: {0}"), Path.GetFileName(path)), 0x2A);
+                GameActions.Print(World, result, 0x2A);
                 BuildContextMenu();
             }
             else
@@ -2116,7 +2110,9 @@ public partial class WorldMapGump : ResizableGump
     /// </remarks>
     /// <param name="mapFilePath">Full path of the marker file to read.</param>
     /// <returns>The marker file, holding whatever markers could be read.</returns>
-    private WMapMarkerFile LoadMarkerFile(string mapFilePath)
+    private WMapMarkerFile LoadMarkerFile(string mapFilePath) => LoadMarkerFile(mapFilePath, out _, rejectUnreadable: false);
+
+    private WMapMarkerFile LoadMarkerFile(string mapFilePath, out int skippedMarkers, bool rejectUnreadable)
     {
         var markerFile = new WMapMarkerFile
         {
@@ -2127,14 +2123,12 @@ public partial class WorldMapGump : ResizableGump
             IsEditable = false
         };
 
-        string hiddenFile = _hiddenMarkerFiles.FirstOrDefault(x => x.Contains(markerFile.Name));
-
-        if (!string.IsNullOrEmpty(hiddenFile))
-            markerFile.Hidden = true;
+        markerFile.Hidden = _hiddenMarkerFiles.Any(name => name.Equals(markerFile.Name, StringComparison.OrdinalIgnoreCase)
+            || name.Equals(MarkerFileIdentity(markerFile), StringComparison.OrdinalIgnoreCase));
 
         string mapFileExtension = Path.GetExtension(mapFilePath);
 
-        int skippedMarkers = 0;
+        skippedMarkers = 0;
 
         try
         {
@@ -2162,7 +2156,7 @@ public partial class WorldMapGump : ResizableGump
                 markerFile.Markers = LoadCsvMarkers(mapFilePath, out skippedMarkers);
             }
         }
-        catch (Exception e)
+        catch (Exception e) when (!rejectUnreadable)
         {
             Log.Error($"Failed to load marker file {mapFilePath}: {e}");
             GameActions.Print(World, string.Format(TazLang.Get("marker_file_load_failed0"), Path.GetFileName(mapFilePath)), Constants.HUE_WARN);
@@ -2173,10 +2167,10 @@ public partial class WorldMapGump : ResizableGump
             return markerFile;
         }
 
-        if (markerFile.Markers.Count > 0)
+        if (!rejectUnreadable && markerFile.Markers.Count > 0)
             GameActions.Print(World, $"..{Path.GetFileName(mapFilePath)} ({markerFile.Markers.Count})", 0x2B);
 
-        if (skippedMarkers > 0)
+        if (!rejectUnreadable && skippedMarkers > 0)
             GameActions.Print(World, $"..{Path.GetFileName(mapFilePath)}: skipped {skippedMarkers} malformed marker line(s), see log for details",
                 Constants.HUE_WARN);
 
@@ -2860,7 +2854,7 @@ public partial class WorldMapGump : ResizableGump
         {
             foreach (Mobile mob in World.Mobiles.Values)
             {
-                if (mob == World.Player)
+                if (mob == World.Player || mob.InParty)
                 {
                     continue;
                 }
@@ -3385,6 +3379,21 @@ public partial class WorldMapGump : ResizableGump
 
         bool drewMonster = (_showMarkerIcons && (IsDetached || !zoomGated))
             && MonsterMapIcon.Draw(batcher, marker.MarkerIconName, rot);
+        if (!drewMonster && _showMarkerIcons && marker.MarkerIcon == null
+            && (!zoomGated || IsDetached) && marker.MarkerIconName is "map-house" or "map-vendor")
+        {
+            bool house = marker.MarkerIconName == "map-house";
+            var ink = SolidColorTextureCache.GetTexture(marker.Color);
+            batcher.Draw(ink, new Rectangle(rot.X - 5, rot.Y - 3, 10, 8), hueVector);
+            if (house)
+            {
+                batcher.Draw(ink, new Rectangle(rot.X - 6, rot.Y - 4, 12, 2), hueVector);
+                batcher.Draw(ink, new Rectangle(rot.X - 3, rot.Y - 6, 6, 2), hueVector);
+            }
+            else
+                batcher.Draw(ink, new Rectangle(rot.X - 2, rot.Y - 6, 4, 3), hueVector);
+            drewMonster = true;
+        }
         if (!drewMonster && (zoomGated || !_showMarkerIcons || marker.MarkerIcon == null))
         {
             batcher.Draw
@@ -3527,30 +3536,6 @@ public partial class WorldMapGump : ResizableGump
     {
         if (!_navDest.HasValue || _world.Player == null)
             return;
-
-        long elapsed = Environment.TickCount64 - _navDestSetTime;
-
-        // Auto-clear: player arrived within 3 tiles, after a 2-second grace period.
-        if (elapsed > 2000)
-        {
-            int dx = _world.Player.X - _navDest.Value.X;
-            int dy = _world.Player.Y - _navDest.Value.Y;
-
-            if (dx * dx + dy * dy <= 9)
-            {
-                _navDest = null;
-                _navPath = null;
-                return;
-            }
-
-            // Also clear if pathfinding has fully stopped (cancelled or completed).
-            if (!_world.Player.Pathfinder.AutoWalking)
-            {
-                _navDest = null;
-                _navPath = null;
-                return;
-            }
-        }
 
         Vector3 hueVector = ShaderHueTranslator.GetHueVector(0, false, 1f);
         Texture2D pathTex = SolidColorTextureCache.GetTexture(new Color(220, 220, 220));
@@ -4256,6 +4241,8 @@ public partial class WorldMapGump : ResizableGump
             {
                 CanvasToWorld(x, y, out int wX, out int wY);
                 int mapIndex = _world.Map.Index;
+                if (_map.Index != mapIndex || !IsDesktopTileValid(mapIndex, new Point(wX, wY)))
+                    return;
 
                 // The append modifier (Shift by default, rebindable) extends the active route:
                 // search from the end of the current path to the new point and append the result
@@ -4314,7 +4301,8 @@ public partial class WorldMapGump : ResizableGump
 
         _navVersion++;
         _navDest = new Point(wX, wY);
-        _navDestSetTime = Environment.TickCount64;
+        _navigationFacet = mapIndex;
+        _navigationStatus = MapRouteStatus.Planning;
         _navPath = null;
         _navPlannedEnd = new Point(wX, wY);
         _navPlannedEndZ = _world.Player.Z;
@@ -4368,9 +4356,7 @@ public partial class WorldMapGump : ResizableGump
 
                 if (firstAttempt)
                     GameActions.Print("Can't find a path there.");
-                _navDest = null;
-                _navPath = null;
-                _navSegments = 0;
+                FinishNavigation(MapRouteStatus.NoRoute);
                 return;
             }
 
@@ -4393,7 +4379,6 @@ public partial class WorldMapGump : ResizableGump
                     _navPath.AddRange(navRender);
 
                 _navDest = new Point(last.X, last.Y);
-                _navDestSetTime = Environment.TickCount64;
                 _navPlannedEnd = new Point(last.X, last.Y);
                 _navPlannedEndZ = (sbyte)last.Z;
                 _navSegments++;
@@ -4404,7 +4389,7 @@ public partial class WorldMapGump : ResizableGump
             // route had already finished): replace whatever was there.
             _navPath = navRender;
             _navDest = new Point(last.X, last.Y);
-            _navDestSetTime = Environment.TickCount64;
+            _navigationStatus = MapRouteStatus.Walking;
             _navPlannedEnd = new Point(last.X, last.Y);
             _navPlannedEndZ = (sbyte)last.Z;
             _navSegments = 1;
@@ -4428,22 +4413,9 @@ public partial class WorldMapGump : ResizableGump
 
                 // Multi-segment routes can't be locally replanned around a block without
                 // skipping waypoints, so a blocked step clears the entire route.
-                if (_navSegments > 1)
+                if (_navSegments > 1 || _navReplansLeft <= 0 || !_navDest.HasValue)
                 {
-                    if (_navStepFailedHandler != null)
-                        _world.Player.Pathfinder.OnComputedPathStepFailed -= _navStepFailedHandler;
-                    _navStepFailedHandler = null;
-                    _navDest = null;
-                    _navPath = null;
-                    _navSegments = 0;
-                    return;
-                }
-
-                if (_navReplansLeft <= 0 || !_navDest.HasValue)
-                {
-                    _navDest = null;
-                    _navPath = null;
-                    _navSegments = 0;
+                    FinishNavigation(MapRouteStatus.NoRoute);
                     return;
                 }
 
@@ -4451,6 +4423,7 @@ public partial class WorldMapGump : ResizableGump
                 WorldMapPathfinder.MarkDynamicBlock(blockX, blockY);
 
                 Point dest = _navDest.Value;
+                _navigationStatus = MapRouteStatus.Planning;
                 StartNavPath(_world.Map.Index, _world.Player.X, _world.Player.Y, _world.Player.Z,
                              dest.X, dest.Y, firstAttempt: false, append: false);
             };

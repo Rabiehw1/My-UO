@@ -13,7 +13,7 @@ internal sealed partial class DetachedMapMarkers
     private void ShowSightings()
     {
         Show();
-        AddToolsBack("Sightings");
+        _content.Widgets.Add(new MyraButton(TazLang.Get("detached_map_files"), () => ShowFiles()));
         var profile = ProfileManager.CurrentProfile;
         var sightings = _map.MapWorld.MapSightings;
         AddToggle("Record nearby NPCs and creatures", profile.WorldMapRecordSightings,
@@ -38,10 +38,19 @@ internal sealed partial class DetachedMapMarkers
 
         AddToggle("Vendors in current town only", profile.WorldMapVendorsCurrentTownOnly,
             value => profile.WorldMapVendorsCurrentTownOnly = value);
-        var town = sightings.CurrentTown();
-        _content.Widgets.Add(Label(town == null ? "Outside saved town areas" : $"Current town: {town.Name}"));
+        _townStatus = Label(CurrentTownText());
+        _content.Widgets.Add(_townStatus);
         _content.Widgets.Add(new MyraButton("Manage town areas", ShowTownAreas));
         _content.Widgets.Add(new MyraButton("Set creature tiers", ShowCreatureTiers));
+    }
+
+    private string CurrentTownText()
+    {
+        var sightings = _map.MapWorld.MapSightings;
+        if (sightings.CurrentTown() is { } town)
+            return TazLang.Get("detached_map_current_town", [town.Name]);
+
+        return TazLang.Get(sightings.Towns.Count == 0 ? "detached_map_no_towns" : "detached_map_outside_town");
     }
 
     private void ShowTownAreas()
@@ -75,28 +84,20 @@ internal sealed partial class DetachedMapMarkers
         foreach (MapTown town in towns)
             list.Widgets.Add(Label($"{town.Name} · Facet {town.Facet} · {town.X}, {town.Y} · {town.Radius} tiles"));
         _content.Widgets.Add(list);
-        bool confirm = false;
         var remove = new MyraButton("Remove area", () =>
         {
             if (list.SelectedIndex is not int index)
                 return;
 
-            if (!confirm)
+            Confirm(TazLang.Get("remove"), TazLang.Get("detached_map_remove_town", [towns[index].Name]), () =>
             {
-                confirm = true;
-                status.Text = "Click Remove area again to confirm.";
-                return;
-            }
-            sightings.RemoveTown(towns[index]);
-            sightings.Flush();
-            ShowTownAreas();
+                sightings.RemoveTown(towns[index]);
+                sightings.Flush();
+                ShowTownAreas();
+            }, destructive: true);
         }) { Enabled = false };
-        list.SelectedIndexChanged += (_, _) =>
-        {
-            remove.Enabled = list.SelectedIndex.HasValue;
-            confirm = false;
-            status.Text = "";
-        };
+        MyraStyle.ApplyButtonDangerStyle(remove);
+        list.SelectedIndexChanged += (_, _) => remove.Enabled = list.SelectedIndex.HasValue;
         _content.Widgets.Add(remove);
     }
 

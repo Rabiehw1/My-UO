@@ -509,6 +509,11 @@ namespace ClassicUO.Configuration
         public bool WorldMapShowGroupName { get; set => SetProperty(ref field, value); } = true;
         public bool WorldMapShowGroupBar { get; set => SetProperty(ref field, value); } = true;
         public bool WorldMapShowMarkers { get; set => SetProperty(ref field, value); } = true;
+        [JsonConverter(typeof(Point2Converter))]
+        public Point DetachedMapPosition { get; set => SetProperty(ref field, value); }
+        [JsonConverter(typeof(Point2Converter))]
+        public Point DetachedMapSize { get; set => SetProperty(ref field, value); }
+        public int? DetachedMapZoom { get; set => SetProperty(ref field, value); }
         public bool WorldMapRecordSightings { get; set => SetProperty(ref field, value); }
         public MapSightingLayers WorldMapSightingLayers { get; set => SetProperty(ref field, value); }
         public bool WorldMapVendorsCurrentTownOnly { get; set => SetProperty(ref field, value); } = true;

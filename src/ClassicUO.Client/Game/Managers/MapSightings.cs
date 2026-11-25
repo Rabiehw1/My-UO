@@ -24,7 +24,7 @@ public enum MapSightingLayers
     SuperBosses = 16
 }
 
-internal sealed record MapSighting(int Facet, int X, int Y, string Name, string Details, ushort Graphic, ushort Hue, MapSightingLayers Kind);
+internal sealed record MapSighting(int Facet, int X, int Y, string Name, string Details, ushort Graphic, ushort Hue, MapSightingLayers Kind, DateTimeOffset? LastSeen = null);
 internal sealed record MapTown(string Name, int Facet, int X, int Y, int Radius)
 {
     internal bool Contains(int facet, int x, int y) => Facet == facet
@@ -69,6 +69,7 @@ internal sealed class MapSightings(World world)
             yield break;
 
         EnsureLoaded();
+        currentTownOnly &= _data.Towns.Count > 0;
         MapTown? town = currentTownOnly ? CurrentTown() : null;
         foreach (MapSighting sighting in _locations.Values)
         {
@@ -182,12 +183,16 @@ internal sealed class MapSightings(World world)
         string name = CleanName(string.IsNullOrWhiteSpace(mobile.Name) ? propertyName : mobile.Name);
         string details = CleanName(string.IsNullOrWhiteSpace(mobile.Title) ? properties : mobile.Title);
         string classification = $"{name} {details}";
+        var knownCreature = WeaponSwitchCatalog.Find(mobile.Graphic, mobile.Hue);
         bool vendor = confirmedVendor || mobile.IsHuman && HasRole(classification, VendorRoles);
         MapSightingLayers kind;
         if (vendor)
             kind = MapSightingLayers.Vendors;
         else if (HasRole(classification, BossRoles))
             kind = MonsterTier(classification);
+        else if (knownCreature != null && (!mobile.IsHuman
+            || knownCreature.Name.Split(" / ").Any(candidate => HasRole(classification, [candidate]))))
+            kind = MapSightingLayers.Monsters;
         else if (HasRole(classification, NpcRoles) || mobile.IsHuman && mobile.NotorietyFlag == NotorietyFlag.Invulnerable)
             kind = MapSightingLayers.Npcs;
         else if (!mobile.IsHuman)
@@ -200,7 +205,7 @@ internal sealed class MapSightings(World world)
             if (!IsMonsterLayer(kind))
                 return;
 
-            name = WeaponSwitchCatalog.Find(mobile.Graphic, mobile.Hue)?.Name ?? $"Creature 0x{mobile.Graphic:X4}";
+            name = knownCreature?.Name ?? $"Creature 0x{mobile.Graphic:X4}";
         }
 
         Add(new MapSighting(world.MapIndex, mobile.X, mobile.Y, name, details, mobile.Graphic, mobile.Hue, kind));
@@ -221,12 +226,14 @@ internal sealed class MapSightings(World world)
         if (_path == null || _readFailed)
             return;
 
+        sighting = sighting with { LastSeen = DateTimeOffset.UtcNow };
         LocationKey key = KeyFor(sighting);
         if (_locations.TryGetValue(key, out var existing))
         {
             // Keep a stable pin for moving creatures and upgrade details when richer data arrives.
             if (Rank(sighting.Kind) > Rank(existing.Kind)
-                || sighting.Details.Length > existing.Details.Length)
+                || sighting.Details.Length > existing.Details.Length
+                || !existing.LastSeen.HasValue || sighting.LastSeen.Value - existing.LastSeen.Value >= TimeSpan.FromMinutes(5))
             {
                 _locations[key] = sighting with
                 {

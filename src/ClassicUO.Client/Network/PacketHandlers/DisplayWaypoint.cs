@@ -1,3 +1,4 @@
+using System.Linq;
 using ClassicUO.Game;
 using ClassicUO.Game.Data;
 using ClassicUO.IO;
@@ -45,6 +46,9 @@ internal static class DisplayWaypoint
                 world.WMapManager.AddOrUpdate(serial, x, y, 0, map, true, "Corpse");
                 break;
             case WaypointsType.PartyMember:
+                if (world.Party?.Leader != 0 && world.Party?.Members?.Any(member =>
+                    member != null && member.Serial == serial) == true)
+                    world.WMapManager.AddOrUpdate(serial, x, y, 0, map, false, name, type: type);
                 break;
             case WaypointsType.RallyPoint:
                 break;

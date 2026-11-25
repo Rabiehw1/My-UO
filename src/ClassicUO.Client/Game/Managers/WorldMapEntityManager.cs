@@ -182,7 +182,7 @@ namespace ClassicUO.Game.Managers
 
             foreach (WMapEntity entity in Entities.Values)
             {
-                if (entity.WaypointType != WaypointsType.None)
+                if (entity.WaypointType is not (WaypointsType.None or WaypointsType.PartyMember))
                 {
                     continue;
                 }
