@@ -3,6 +3,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Hotkeys;
+using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.Scenes;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Input;
@@ -43,6 +44,7 @@ namespace ClassicUO.Game.Managers
         private MacroObject _lastMacro;
         private MacroObject _currentMacroHead; // head node of the macro currently executing (for toggle-stop)
         private long _nextTimer;
+        private bool _waitingForShardSpell;
         private readonly World _world;
 
         /// <summary>Head node of the last macro triggered, and when. Retained past the end of execution
@@ -600,6 +602,7 @@ namespace ClassicUO.Game.Managers
             }
 
             _lastMacro = macro;
+            _waitingForShardSpell = false;
             _currentMacroHead = macro;
 
             _lastTriggeredHead = macro;
@@ -655,6 +658,7 @@ namespace ClassicUO.Game.Managers
 
             _lastMacro = null;
             _currentMacroHead = null;
+            _waitingForShardSpell = false;
 
             // Dropped rather than left to expire: stopping a running loop should read as immediate.
             _lastTriggeredHead = null;
@@ -689,6 +693,14 @@ namespace ClassicUO.Game.Managers
 
         private int Process()
         {
+            if (_waitingForShardSpell)
+            {
+                if (ShardSpellCaster.Instance.IsCasting)
+                    return 1;
+
+                _waitingForShardSpell = false;
+            }
+
             int result;
 
             if (_lastMacro == null) // MRC_STOP
@@ -1515,6 +1527,22 @@ namespace ClassicUO.Game.Managers
                     break;
 
                 case MacroType.CastSpell:
+                    if (macro is MacroObjectString shardCast)
+                    {
+                        if (ShardSpellCatalog.TryParseMacroSelection(shardCast.Text, out ShardSpellBook book, out int spellIndex)
+                            && spellIndex >= 0)
+                        {
+                            ShardSpellCaster caster = ShardSpellCaster.Instance;
+                            if (caster.IsCasting)
+                                return 1;
+
+                            caster.Cast(book, spellIndex);
+                            _waitingForShardSpell = caster.IsCasting;
+                        }
+
+                        break;
+                    }
+
                     int spell = macro.SubCode - MacroSubType.Clumsy + 1;
 
                     if (spell > 0 && spell <= 151)
@@ -3427,6 +3455,10 @@ namespace ClassicUO.Game.Managers
 
             return obj;
         }
+
+        // Shard casts use the XML text field. A legacy client must not execute their numeric subcode.
+        internal static MacroObjectString CreateShardSpellAction(string selection = "") =>
+            new(MacroType.CastSpell, (MacroSubType)(-1), selection) { SubMenuType = 0 };
 
         public static MacroLoopContainer CreateLoopContainer(int loopCount = 1, int delayBetweenIterations = 0)
         {

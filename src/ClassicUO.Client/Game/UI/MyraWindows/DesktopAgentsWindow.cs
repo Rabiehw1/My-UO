@@ -12,7 +12,6 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
-using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Macros;
 using ClassicUO.Utility.Logging;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -40,8 +39,7 @@ internal sealed class DesktopAgentsWindow
     [
         ..AgentTab.GetPages(),
         new(ItemListsTabContent.Title, AgentTab.AgentGroup.ItemLists, ItemListsTabContent.Build),
-        new(HotkeysTabContent.Title, AgentTab.AgentGroup.Controls, HotkeysTabContent.Build),
-        new(MacrosTabContent.Title, AgentTab.AgentGroup.Controls, MacrosTabContent.Build),
+        new(HotkeysMacrosTabContent.Title, AgentTab.AgentGroup.Controls, HotkeysMacrosTabContent.Build),
         new(ShardSpellBooksTabContent.Title, AgentTab.AgentGroup.Controls, ShardSpellBooksTabContent.Build),
         new(FiltersTab.Title, AgentTab.AgentGroup.Settings, FiltersTab.Build),
         new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
@@ -215,7 +213,7 @@ internal sealed class DesktopAgentsWindow
             VerticalSpacing = 2,
             UniformSizing = false
         };
-        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysTabContent.Title, MacrosTabContent.Title, ShardSpellBooksTabContent.Title, FiltersTab.Title })
+        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysMacrosTabContent.Title, ShardSpellBooksTabContent.Title, FiltersTab.Title })
         {
             var tab = DesktopAssistantTheme.NavigationButton(name, tab: true);
             tab.Click += (_, _) => SelectPage(name);

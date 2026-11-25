@@ -3,6 +3,7 @@ using ClassicUO.Common.Enums;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.Hotkeys;
+using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.UI.Controls;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -344,16 +345,19 @@ public static class MacrosTabContent
 
             var action = (MacroObject)macro.Items;
             int actionIndex = 0;
+            bool hasCastSpell = false;
 
             while (action != null && action.Code != MacroType.None)
             {
                 if (action is MacroLoopContainer loopContainer)
                 {
+                    hasCastSpell |= loopContainer.Items.Any(item => item.Code == MacroType.CastSpell);
                     BuildLoopContainerWidget(loopContainer, macro, actionIndex);
                     actionIndex++;
                 }
                 else
                 {
+                    hasCastSpell |= action.Code == MacroType.CastSpell;
                     MacroObject capturedAction = action;
                     int capturedIndex = actionIndex;
 
@@ -390,6 +394,10 @@ public static class MacrosTabContent
 
             if (actionIndex == 0)
                 actionsPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_noactions"), MyraLabel.TextStyle.H3));
+            if (hasCastSpell)
+                actionsPanel.Widgets.Insert(0, new MyraLabel(
+                    TazLang.Get("macrostab_set_spell_book", "You must set your spell book in the Spell Books tab."),
+                    MyraLabel.TextStyle.P) { Wrap = true });
         }
 
         HorizontalStackPanel BuildActionRow(
@@ -423,7 +431,9 @@ public static class MacrosTabContent
                 MacroType newType = _sortedMacroTypeValues[typeCombo.SelectedIndex.Value];
                 if (newType == capturedAction.Code) return;
 
-                MacroObject newAction = Macro.Create(newType);
+                MacroObject newAction = newType == MacroType.CastSpell
+                    ? Macro.CreateShardSpellAction()
+                    : Macro.Create(newType);
                 onTypeReplace(newAction);
                 MarkDirty();
 
@@ -434,7 +444,11 @@ public static class MacrosTabContent
             row.Widgets.Add(typeCombo);
 
             // Sub-type dropdown
-            if (capturedAction.SubMenuType == 1)
+            if (capturedAction.Code == MacroType.CastSpell)
+            {
+                AddSpellSelectors(row, capturedAction, onTypeReplace);
+            }
+            else if (capturedAction.SubMenuType == 1)
             {
                 int subCount = 0, subOffset = 0;
                 Macro.GetBoundByCode(capturedAction.Code, ref subCount, ref subOffset);
@@ -512,6 +526,79 @@ public static class MacrosTabContent
             { Tooltip = TazLang.Get("macrostab_removeaction_tooltip") }));
 
             return row;
+        }
+
+        void AddSpellSelectors(HorizontalStackPanel row, MacroObject action, Action<MacroObject> replace)
+        {
+            string selectSpell = TazLang.Get("macrostab_select_spell", "Select spell");
+            var bookPicker = new ContainsLevenshteinComboBox
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                PlaceholderText = TazLang.Get("macrostab_select_book", "Select book")
+            };
+            var spellPicker = new ContainsLevenshteinComboBox
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                PlaceholderText = action is MacroObjectString
+                    ? selectSpell
+                    : $"Saved spell · {Macro.GetSubTypeName(action.Code, action.SubCode)}",
+                Enabled = false
+            };
+            MyraStyle.ApplySearchComboBoxPopupBorder(bookPicker);
+            MyraStyle.ApplySearchComboBoxPopupBorder(spellPicker);
+            foreach (ShardSpellBookInfo entry in ShardSpellCatalog.Books)
+                bookPicker.Items.Add(entry.Name);
+
+            if (action is MacroObjectString saved
+                && ShardSpellCatalog.TryParseMacroSelection(saved.Text, out ShardSpellBook selectedBook, out int selectedSpell))
+            {
+                bookPicker.SelectedIndex = (int)selectedBook;
+                FillSpells(selectedBook, selectedSpell);
+            }
+
+            bookPicker.SelectedItemChanged += (_, _) =>
+            {
+                if (bookPicker.SelectedIndex is not int bookIndex)
+                    return;
+
+                var book = (ShardSpellBook)bookIndex;
+                SaveSelection(book, -1);
+                if (action is MacroObjectString)
+                    FillSpells(book, -1);
+            };
+            spellPicker.SelectedItemChanged += (_, _) =>
+            {
+                if (bookPicker.SelectedIndex is int bookIndex && spellPicker.SelectedIndex is int spellIndex)
+                    SaveSelection((ShardSpellBook)bookIndex, spellIndex);
+            };
+            row.Widgets.Add(bookPicker);
+            row.Widgets.Add(spellPicker);
+
+            void FillSpells(ShardSpellBook book, int index)
+            {
+                spellPicker.Items.Clear();
+                spellPicker.PlaceholderText = selectSpell;
+                foreach (ShardSpell spell in ShardSpellCatalog.Get(book).Spells)
+                    spellPicker.Items.Add(spell.Name);
+
+                spellPicker.SelectedIndex = index >= 0 ? index : null;
+                spellPicker.Enabled = true;
+            }
+
+            void SaveSelection(ShardSpellBook book, int index)
+            {
+                string selection = ShardSpellCatalog.FormatMacroSelection(book, index);
+                if (action is MacroObjectString custom)
+                {
+                    custom.Text = selection;
+                    MarkDirty();
+                    return;
+                }
+
+                replace(Macro.CreateShardSpellAction(selection));
+                MarkDirty();
+                BuildActionsPanel();
+            }
         }
 
         void BuildLoopContainerWidget(MacroLoopContainer loopContainer, Macro macro, int loopIndex)

@@ -1,6 +1,8 @@
 #nullable enable
 
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Microsoft.Xna.Framework;
 
 namespace ClassicUO.Game.Managers.ShardSpells;
@@ -76,6 +78,24 @@ internal static class ShardSpellCatalog
 
         IReadOnlyList<ShardSpell> spells = Get(book).Spells;
         return index >= 0 && index < spells.Count ? spells[index] : null;
+    }
+
+    internal static string FormatMacroSelection(ShardSpellBook book, int index) =>
+        string.Create(CultureInfo.InvariantCulture, $"{book}:{index}");
+
+    internal static bool TryParseMacroSelection(string? text, out ShardSpellBook book, out int index)
+    {
+        book = default;
+        index = -1;
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        ReadOnlySpan<char> value = text.AsSpan();
+        int delimiter = value.IndexOf(':');
+        return delimiter > 0 && Enum.TryParse(value[..delimiter], out book)
+            && (uint)book < Books.Count
+            && int.TryParse(value[(delimiter + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out index)
+            && (index == -1 || GetSpell(book, index) != null);
     }
 
     #endregion

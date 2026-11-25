@@ -50,6 +50,7 @@ internal sealed class ShardSpellCaster : IDisposable
 
     /// <summary>Settings of the logged-in character, loaded on first use.</summary>
     public ShardSpellSave Settings => _settings ??= ShardSpellSave.Load();
+    public bool IsCasting => _pendingGump.IsArmed;
 
     #endregion
 
@@ -80,7 +81,7 @@ internal sealed class ShardSpellCaster : IDisposable
     {
         ShardSpell? spell = ShardSpellCatalog.GetSpell(book, index);
 
-        if (spell == null || !_world.InGame)
+        if (spell == null || !_world.InGame || IsCasting)
             return;
 
         uint bookSerial = GetBookSerial(book);

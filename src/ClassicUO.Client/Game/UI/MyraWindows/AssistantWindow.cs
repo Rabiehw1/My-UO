@@ -7,7 +7,6 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemDatabase;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
-using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Macros;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Skills;
 using Myra.Graphics2D.UI;
 
@@ -84,15 +83,13 @@ public class AssistantWindow : MyraControl
         _tabs.AddTab(ItemListsTabContent.Title, () => ItemListsTabContent.Build(AgentPageInteraction.InGame), rebuildOnSelect: true);
         _tabs.AddTab(FiltersTab.Title, FiltersTab.Build, rebuildOnSelect: true);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_itemdatabase", "Item Database"), ItemDatabaseTabContent.Build);
-        _tabs.AddTab(MacrosTabContent.Title, () => MacrosTabContent.Build(this), rebuildOnSelect: true);
-        _tabs.AddTab(HotkeysTabContent.Title, HotkeysTabContent.Build, rebuildOnSelect: true);
+        _tabs.AddTab(HotkeysMacrosTabContent.Title, () => HotkeysMacrosTabContent.Build(AgentPageInteraction.InGame), rebuildOnSelect: true);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_skills", "Skills"), () => _skillsTabContent = new SkillsTabContent());
         var openDesktop = new MyraButton(
             TazLang.Get("assistant_open_desktop", "Open Desktop Assistant"),
             () => DesktopAgentsWindow.Show(_tabs.SelectedItem?.Text)) { Visible = false, HorizontalAlignment = HorizontalAlignment.Left };
         _tabs.SelectedIndexChanged += (_, _) => openDesktop.Visible = _tabs.SelectedIndex == 1
-            || _tabs.SelectedItem?.Text == MacrosTabContent.Title
-            || _tabs.SelectedItem?.Text == HotkeysTabContent.Title
+            || _tabs.SelectedItem?.Text == HotkeysMacrosTabContent.Title
             || _tabs.SelectedItem?.Text == FiltersTab.Title
             || _tabs.SelectedItem?.Text == GeneralTab.Title
             || _tabs.SelectedItem?.Text == ItemListsTabContent.Title;
