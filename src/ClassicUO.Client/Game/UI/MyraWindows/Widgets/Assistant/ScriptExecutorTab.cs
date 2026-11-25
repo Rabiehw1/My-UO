@@ -34,7 +34,14 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
         Refresh();
     }
 
-    internal static Widget BuildAutorun()
+    internal static Widget BuildAutorun() =>
+        DesktopAssistantTheme.Group("Autorun",
+            new MyraLabel("Choose one script to start when this character logs in.", MyraLabel.TextStyle.P) { Wrap = true },
+            BuildAutorunPicker());
+
+    /// <summary>Drop-down choosing the script that starts when this character logs in; saves on change.</summary>
+    /// <returns>The picker widget.</returns>
+    internal static Widget BuildAutorunPicker()
     {
         var scripts = Legion.LoadedScripts.OrderBy(script => script.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray();
         string autoRunPath = Legion.AutoRunPath;
@@ -50,9 +57,7 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
             if (autorun.ListView.SelectedIndex is int index && index <= scripts.Length)
                 Legion.SetAutoRun(index == 0 ? null : scripts[index - 1]);
         };
-        return DesktopAssistantTheme.Group("Autorun",
-            new MyraLabel("Choose one script to start when this character logs in.", MyraLabel.TextStyle.P) { Wrap = true },
-            autorun);
+        return autorun;
     }
 
     internal void Refresh()

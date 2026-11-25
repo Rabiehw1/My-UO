@@ -5,14 +5,19 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Processes;
+using ClassicUO.Game.UI.MyraWindows.Options.Tabs;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 public static class GeneralTabContent
 {
+    private const int MIN_RECONNECT_SECONDS = 1;
+    private const int RECONNECT_INDENT = 18;
+
     public static Widget Build() => Build(AgentPageInteraction.InGame);
 
     internal static Widget Build(AgentPageInteraction interaction)
@@ -87,7 +92,14 @@ public static class GeneralTabContent
             var desktop = new VerticalStackPanel { Spacing = 8, VerticalAlignment = VerticalAlignment.Top };
             var map = DesktopAssistantTheme.Group(TazLang.Get("world_map"),
                 DesktopAssistantTheme.ActionButton(TazLang.Get("assistant_open_detached_map"), DetachedWorldMapWindow.Show, primary: true));
-            desktop.Widgets.Add(new DesktopAssistantForm.SectionPair(ScriptExecutorTab.BuildAutorun(), map));
+            Widget[] reconnect = BuildReconnectRows();
+            var startup = DesktopAssistantTheme.Group(TazLang.Get("assistant_loginstartup"),
+                new MyraLabel(TazLang.Get("assistant_autorunscript"), MyraLabel.TextStyle.P),
+                ScriptExecutorTab.BuildAutorunPicker(),
+                OptionTabCommons.StyledHorizontalSeparator(),
+                reconnect[0],
+                reconnect[1]);
+            desktop.Widgets.Add(new DesktopAssistantForm.SectionPair(startup, map));
             var visuals = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_visuals"),
                 [.. visualToggles, DesktopAssistantForm.Fields(new(dragDistanceLabel, dragDistance), new(scaleLabel, scale)), applyScale]);
             var timing = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_object_timing"),
@@ -119,6 +131,10 @@ public static class GeneralTabContent
         right.Widgets.Add(new MyraLabel(healLabel, MyraLabel.TextStyle.P).PlaceBefore(quickHeal));
         right.Widgets.Add(new MyraLabel(cureLabel, MyraLabel.TextStyle.P).PlaceBefore(quickCure));
         right.Widgets.Add(setLastTarget);
+        right.Widgets.Add(new MyraSpacer(20, 15));
+        right.Widgets.Add(new MyraLabel(TazLang.Get("assistant_loginstartup"), MyraLabel.TextStyle.H2));
+        foreach (Widget row in BuildReconnectRows())
+            right.Widgets.Add(row);
         return game;
 
         void ApplyScale()
@@ -126,6 +142,30 @@ public static class GeneralTabContent
             Client.Game.SetScale(gameScale);
             ProfileManager.GlobalSettings.GlobalScale = gameScale;
         }
+    }
+
+    /// <summary>
+    /// Reconnect toggle and delay. Machine-wide login settings (same as the login screen's), saved immediately.
+    /// </summary>
+    private static Widget[] BuildReconnectRows()
+    {
+        Settings settings = Settings.GlobalSettings;
+
+        Widget toggle = MyraCheckButton.CreateWithCallback(settings.Reconnect, value =>
+        {
+            settings.Reconnect = value;
+            settings.Save();
+        }, TazLang.Get("assistant_reconnect"), TazLang.Get("autoreconnecttooltip"));
+
+        var delay = new HorizontalStackPanel { Spacing = 4, Margin = new Thickness(RECONNECT_INDENT, 0, 0, 0) };
+        delay.Widgets.Add(new LabeledIntegerInput(TazLang.Get("assistant_reconnectwait"), settings.ReconnectTime, value =>
+        {
+            settings.ReconnectTime = Math.Max(MIN_RECONNECT_SECONDS, value);
+            settings.Save();
+        }) { Tooltip = TazLang.Get("reconnecttooltip") });
+        delay.Widgets.Add(new MyraLabel(TazLang.Get("assistant_seconds"), MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center });
+
+        return [toggle, delay];
     }
 
     private static Widget GameSliderRow(string label, LabeledHorizontalSlider slider)
