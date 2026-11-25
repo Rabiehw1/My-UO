@@ -19,7 +19,7 @@ using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 
-internal static class ItemListsTabContent
+internal static partial class ItemListsTabContent
 {
     public static string Title => TazLang.Get("assistantwindow_tab_lists", "Lists");
 
@@ -51,6 +51,8 @@ internal static class ItemListsTabContent
 
         var root = new VerticalStackPanel { Spacing = 8 };
         var listPicker = new ListView { Height = 285, HorizontalAlignment = HorizontalAlignment.Stretch };
+        // Long list names are cut at the edge instead of adding a sideways scroll bar.
+        listPicker.ScrollViewer.ShowHorizontalScrollBar = false;
         var name = new MyraInputBox { Width = 180, HintText = "List name" };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
         var details = new VerticalStackPanel { Spacing = 6 };
@@ -72,7 +74,9 @@ internal static class ItemListsTabContent
         var grid = new MyraGrid { ColumnSpacing = 12, MaxWidth = interaction.IsDesktop ? 1040 : 700 };
         grid.AddColumn(new Proportion(ProportionType.Pixels, interaction.IsDesktop ? 202 : 175));
         grid.AddColumn(new Proportion(ProportionType.Fill));
-        var listActions = Toolbar();
+        var listActions = new MyraGrid { ColumnSpacing = 4, RowSpacing = 4 };
+        listActions.AddColumn(new Proportion(ProportionType.Fill));
+        listActions.AddColumn(new Proportion(ProportionType.Fill));
         var addActions = Toolbar();
         var transferActions = Toolbar();
         var itemActions = Toolbar();
@@ -94,11 +98,11 @@ internal static class ItemListsTabContent
         names.Widgets.Add(listPicker);
         names.Widgets.Add(name);
         names.Widgets.Add(listActions);
-        listActions.Widgets.Add(Button("New list", () =>
+        var create = Button("New list", () =>
         {
             Select(library.Create(name.Text ?? ""));
             Report($"Created {selected!.Name}.");
-        }, primary: true));
+        }, primary: true);
         rename.OnClick = () =>
         {
             if (selected == null || string.IsNullOrWhiteSpace(name.Text))
@@ -121,9 +125,13 @@ internal static class ItemListsTabContent
                 Select(copy);
             }
         };
-        listActions.Widgets.Add(rename);
-        listActions.Widgets.Add(duplicate);
-        listActions.Widgets.Add(delete);
+        // Two equal columns, so the four list buttons line up as a tidy block under the list.
+        MyraButton[] listButtons = [create, rename, duplicate, delete];
+        for (int i = 0; i < listButtons.Length; i++)
+        {
+            listButtons[i].HorizontalAlignment = HorizontalAlignment.Stretch;
+            listActions.AddWidget(listButtons[i], i / LIST_BUTTON_COLUMNS, i % LIST_BUTTON_COLUMNS);
+        }
 
         delete.OnClick = () =>
         {
@@ -584,7 +592,7 @@ internal static class ItemListsTabContent
         }
 
         SharedItem FromItem(Item item) =>
-            new(item.Graphic, matchHue.IsChecked ? item.Hue : ushort.MaxValue, item.OPLName ?? item.Name ?? "");
+            new(item.Graphic, matchHue.IsChecked ? item.Hue : ushort.MaxValue, NameWithoutAmount(item));
 
         void Add(IEnumerable<SharedItem> items)
         {
@@ -686,6 +694,7 @@ internal static class ItemListsTabContent
     }
 
     private static readonly int[] ItemColumns = [34, 66, 58, 132, 125, 65, 49, 100];
+    private const int LIST_BUTTON_COLUMNS = 2;
     private const int CompactRowHeight = 34;
     private const int CompactVisibleRows = 8;
     private const int ExpandedTableWidth = 790;
@@ -710,6 +719,23 @@ internal static class ItemListsTabContent
         }
         return row;
     }
+
+    /// <summary>
+    /// The item's name without a stack count: "52 Bandages" and "Bandages : 52" both become "Bandages".
+    /// The shard's name can hold an older count than the stack has now, so any count is removed, not just the current one.
+    /// </summary>
+    private static string NameWithoutAmount(Item item)
+    {
+        string name = item.GetNormalizedName(showAmount: false);
+        name = LeadingAmountRegex().Replace(name, "");
+        return TrailingAmountRegex().Replace(name, "").Trim();
+    }
+
+    [GeneratedRegex(@"^\d[\d,.]*\s+")]
+    private static partial Regex LeadingAmountRegex();
+
+    [GeneratedRegex(@"\s*(?::\s*\d[\d,.]*|\(\s*\d[\d,.]*\s*\))$")]
+    private static partial Regex TrailingAmountRegex();
 
     private static WrapPanel Toolbar(params Widget[] widgets)
     {
