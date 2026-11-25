@@ -26,6 +26,8 @@ internal sealed class ItemListLibrary : JsonSave<ItemListLibrary>, INotifyProper
 
     public SharedItemList? Find(Guid id) => Lists?.Find(list => list?.Id == id);
 
+    internal static SharedItemList? Resolve(Guid? id) => id is Guid listId ? Instance.Find(listId) : null;
+
     public SharedItemList Create(string name, IEnumerable<SharedItem>? items = null)
     {
         var list = new SharedItemList { Name = AvailableName(name) };
@@ -62,7 +64,7 @@ internal sealed class ItemListLibrary : JsonSave<ItemListLibrary>, INotifyProper
         if (id == null)
             return local ?? [];
 
-        var list = Instance.Find(id.Value);
+        var list = Resolve(id);
         return list == null ? [] : list.ResolveRules(local, key, create);
     }
 

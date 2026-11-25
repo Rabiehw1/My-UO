@@ -3,6 +3,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
@@ -234,11 +235,11 @@ public static class OrganizerAgentTabContent
                     BuildConfigDetails();
                 }
             }));
-            actionRow.Widgets.Add(new MyraButton("Create Macro", () =>
+            actionRow.Widgets.Add(new MyraButton("Create Macro", () => interaction.RunInGame(() =>
             {
                 OrganizerAgent.Instance.CreateOrganizerMacroButton(selectedConfig.Name);
                 GameActions.Print($"Created Organizer Macro: {selectedConfig.Name}");
-            }));
+            })));
             actionRow.Widgets.Add(new MyraButton("Import", () =>
             {
                 string? json = Clipboard.GetClipboardText();
@@ -315,7 +316,8 @@ public static class OrganizerAgentTabContent
 
             // Items section
             rightPanel.Widgets.Add(new MyraSpacer(5, 1));
-            rightPanel.Widgets.Add(new MyraLabel("Items to Organize:", MyraLabel.TextStyle.H2));
+            if (!interaction.IsDesktop)
+                rightPanel.Widgets.Add(new MyraLabel("Items to Organize:", MyraLabel.TextStyle.H2));
 
             var itemsPanel = new VerticalStackPanel { Spacing = 2 };
 
@@ -337,8 +339,10 @@ public static class OrganizerAgentTabContent
                     rule.Hue = item.Hue;
                     return true;
                 },
-                () => BuildItemsGrid(itemsPanel)));
-
+                () => BuildItemsGrid(itemsPanel), ignoreList: (config.IgnoreItemListId, id => config.IgnoreItemListId = id),
+                includedAction: TazLang.Get("assistant_desktop_move", "Move")));
+            if (interaction.IsDesktop)
+                rightPanel.Widgets.Add(new MyraLabel(TazLang.Get("assistant_desktop_local_rules", "Local rules"), MyraLabel.TextStyle.H3));
 
             // Add item buttons
             var addEntryPanel = new VerticalStackPanel { Visible = false, Spacing = 4 };

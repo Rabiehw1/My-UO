@@ -892,6 +892,7 @@ namespace ClassicUO.Configuration
         public int SellAgentMaxUniques { get; set => SetProperty(ref field, value); } = 50;
         public int SellAgentMaxItems { get; set => SetProperty(ref field, value); } = 0;
         public Guid? AutoLootSharedItemListId { get; set => SetProperty(ref field, value); }
+        public Guid? AutoLootIgnoreItemListId { get; set => SetProperty(ref field, value); }
         public Guid? ScavengerSharedItemListId { get; set => SetProperty(ref field, value); }
         public Guid? AutoBuySharedItemListId { get; set => SetProperty(ref field, value); }
         public Guid? AutoSellSharedItemListId { get; set => SetProperty(ref field, value); }

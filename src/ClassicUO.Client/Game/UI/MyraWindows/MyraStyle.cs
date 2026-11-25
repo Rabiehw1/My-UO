@@ -28,15 +28,16 @@ public static class MyraStyle
     /// Outline for grids and framed areas. Read through the palette on every access rather than
     /// captured once, so a theme change reaches everything rebuilt after it.
     /// </summary>
-    public static Color GridBorderColor => MyraTheme.Current.PanelBorder;
-    public static SpriteFontBase UiFont => _uiFont;
+    public static Color GridBorderColor => DesktopAssistantTheme.Current != null ? DesktopAssistantTheme.Divider.Color : MyraTheme.Current.PanelBorder;
+    public static SpriteFontBase UiFont => DesktopAssistantTheme.Current != null ? DesktopAssistantTheme.Font() : _uiFont;
 
     /// <summary>Font size offset that renders hint text at <see cref="HINT_FONT_SCALE"/> of the UI font.</summary>
     public static int HintFontSizeOffset => -(int)MathF.Round(UiFontSize * (1f - HINT_FONT_SCALE));
 
-    public static int UiFontSize => ProfileManager.CurrentProfile == null ? 16 : ProfileManager.CurrentProfile.OptionsFontSize;
+    public static int UiFontSize => DesktopAssistantTheme.Current != null ? DesktopAssistantTheme.FontSize : ProfileManager.CurrentProfile?.OptionsFontSize ?? 16;
     public static SpriteFontBase GetUiFont(int sizeOffset) =>
-        TrueTypeLoader.Instance.GetFont(ProfileManager.CurrentProfile == null ? EmbeddedFontNames.IBM_PLEX : ProfileManager.CurrentProfile.OptionsFont, UiFontSize + sizeOffset);
+        DesktopAssistantTheme.Current != null ? DesktopAssistantTheme.Font(sizeOffset) :
+            TrueTypeLoader.Instance.GetFont(ProfileManager.CurrentProfile?.OptionsFont ?? EmbeddedFontNames.IBM_PLEX, UiFontSize + sizeOffset);
 
     private static Color TazUO_Orange = new (0.306f, 0.271f, 0.251f, 0.9f);
 
@@ -81,6 +82,8 @@ public static class MyraStyle
 
     public static void SetDefault()
     {
+        using var gameStyle = DesktopAssistantTheme.UseGameStyle();
+
         _ninePatchPanel = new NinePatchRegion(
             ModernUIConstants.ModernUIPanel,
             ModernUIConstants.ModernUIPanel.Bounds,
@@ -384,13 +387,23 @@ public static class MyraStyle
         grid.BorderThickness = new Thickness(1);
         grid.GridLinesColor = GridBorderColor;
         grid.ShowGridLines = true;
-        grid.Background = new SolidBrush(new Color(0, 0, 0, 25));
+        grid.Background = DesktopAssistantTheme.Current != null ? DesktopAssistantTheme.Canvas : new SolidBrush(new Color(0, 0, 0, 25));
         grid.ColumnSpacing = 4;
         grid.RowSpacing = 1;
     }
 
     public static Button ApplyButtonDangerStyle(Button button)
     {
+        if (DesktopAssistantTheme.Current != null)
+        {
+            button.Background = new SolidBrush(new Color(254, 249, 249));
+            button.OverBackground = new SolidBrush(new Color(250, 233, 233));
+            button.PressedBackground = button.OverBackground;
+            if (button.Content is Label label)
+                label.TextColor = new Color(150, 46, 48);
+            return button;
+        }
+
         button.Background = _ninePatchButtonDangerUp;
         button.OverBackground = _ninePatchButtonDangerDown;
         button.PressedBackground = _ninePatchButtonDangerDown;

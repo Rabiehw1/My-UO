@@ -2,6 +2,7 @@
 
 using System;
 using ClassicUO.Common;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using Myra.Events;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
@@ -37,7 +38,7 @@ public class MyraCheckButton : CheckButton, IHighlightTarget
 
     private void Build()
     {
-        CheckContentSpacing = 0;
+        CheckContentSpacing = DesktopAssistantTheme.Current != null ? 2 : 0;
         Padding = new Thickness(2);
         VerticalAlignment = VerticalAlignment.Center;
     }

@@ -1,3 +1,4 @@
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using Microsoft.Xna.Framework;
 using Myra.Graphics2D;
 using Myra.Graphics2D.Brushes;
@@ -107,6 +108,14 @@ public class VisualContainer : Container, IHighlightTarget
         Border = new SolidBrush(new Color(0, 0, 0, 75));
         BorderThickness = new Thickness(2);
         VerticalAlignment = VerticalAlignment.Top;
+        if (DesktopAssistantTheme.Current != null)
+        {
+            Margin = new Thickness(1, 2);
+            Padding = new Thickness(6, 4);
+            Background = DesktopAssistantTheme.Sidebar;
+            Border = DesktopAssistantTheme.Divider;
+            BorderThickness = new Thickness(1);
+        }
 
         int spacing = props.Spacing switch
         {

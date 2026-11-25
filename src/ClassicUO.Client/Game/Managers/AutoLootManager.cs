@@ -120,12 +120,16 @@ namespace ClassicUO.Game.Managers
         public void LootItem(uint serial)
         {
             Item item = _world.Items.Get(serial);
-            if (item != null) LootItem(item, null);
+            QueueLootItem(item, null, AutoLootPriority.Normal, automatic: false);
         }
 
-        public void LootItem(Item item, AutoLootConfigEntry entry = null, AutoLootPriority priority = AutoLootPriority.Normal)
+        public void LootItem(Item item, AutoLootConfigEntry entry = null, AutoLootPriority priority = AutoLootPriority.Normal) =>
+            QueueLootItem(item, entry, priority, automatic: true);
+
+        private void QueueLootItem(Item item, AutoLootConfigEntry entry, AutoLootPriority priority, bool automatic)
         {
-            if (item == null || !_recentlyLooted.Add(item.Serial) || !_quickContainsLookup.Add(item.Serial)) return;
+            if (item == null || (automatic && IsIgnored(item))) return;
+            if (!_recentlyLooted.Add(item.Serial) || !_quickContainsLookup.Add(item.Serial)) return;
 
             if (entry != null)
                 priority = entry.Priority;
@@ -134,7 +138,7 @@ namespace ClassicUO.Game.Managers
 
             ObjectActionQueue.Instance.Enqueue(
                 new ObjectActionQueueItem(
-                    () => MoveLootItem(serial, entry),
+                    () => MoveLootItem(serial, entry, automatic),
                     _ => OnLootActionComplete(serial)),
                 ToActionPriority(priority));
 
@@ -143,6 +147,9 @@ namespace ClassicUO.Game.Managers
             _nextClearRecents = Time.Ticks + (ProfileManager.CurrentProfile?.AutoLootRetryDelay ?? 5000);
             CreateProgressBar();
         }
+
+        private static bool IsIgnored(Item item) =>
+            ItemListLibrary.Resolve(ProfileManager.CurrentProfile?.AutoLootIgnoreItemListId)?.Find(item.Graphic, item.Hue) != null;
 
         public void ForceLootContainer(uint serial)
         {
@@ -508,7 +515,8 @@ namespace ClassicUO.Game.Managers
         {
             if (!_loaded || !IsEnabled || !_world.InGame) return;
 
-            if (ProfileManager.CurrentProfile.AutoLootSharedItemListId != null &&
+            Profile profile = ProfileManager.CurrentProfile;
+            if ((profile.AutoLootSharedItemListId != null || profile.AutoLootIgnoreItemListId != null) &&
                 _sharedListRevision != ItemListLibrary.Instance.Revision)
             {
                 _sharedListRevision = ItemListLibrary.Instance.Revision;
@@ -543,12 +551,19 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         /// <param name="serial">Serial of the item to move</param>
         /// <param name="entry">The loot list entry that matched, if any</param>
-        private void MoveLootItem(uint serial, AutoLootConfigEntry entry)
+        /// <param name="automatic">Whether to apply the Auto Loot ignore list</param>
+        private void MoveLootItem(uint serial, AutoLootConfigEntry entry, bool automatic)
         {
             Item moveItem = _world.Items.Get(serial);
 
             if (moveItem == null)
                 return;
+
+            if (automatic && IsIgnored(moveItem))
+            {
+                _recentlyLooted.Remove(serial);
+                return;
+            }
 
             if (moveItem.Distance > ProfileManager.CurrentProfile.AutoOpenCorpseRange)
             {

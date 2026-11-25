@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -18,8 +19,8 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Myra;
 using Myra.Graphics2D;
-using Myra.Graphics2D.Brushes;
 using Myra.Graphics2D.UI;
+using Myra.Graphics2D.UI.WrapPanel;
 using static SDL3.SDL;
 
 namespace ClassicUO.Game.UI.MyraWindows;
@@ -32,7 +33,9 @@ internal sealed class DesktopAgentsWindow
 
     private readonly nint _window;
     private readonly Desktop _desktop;
+    private readonly DesktopAssistantTheme _theme;
     private readonly AgentPageInteraction _interaction;
+    private readonly string _agentsTitle = TazLang.Get("assistantwindow_tab_agents", "Agents");
     private readonly AgentTab.AgentPage[] _pages =
     [
         ..AgentTab.GetPages(),
@@ -43,10 +46,12 @@ internal sealed class DesktopAgentsWindow
         new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
     ];
     private readonly Dictionary<int, MyraButton> _navigation = new();
-    private readonly MyraLabel _session = new("", MyraLabel.TextStyle.P);
-    private readonly MyraLabel _pageTitle = new("", MyraLabel.TextStyle.H2);
-    private readonly MyraLabel _status = new("", MyraLabel.TextStyle.P) { Visible = false };
-    private readonly ScrollViewer _content = new();
+    private readonly Dictionary<string, MyraButton> _primaryNavigation = new(StringComparer.Ordinal);
+    private readonly MyraLabel _session;
+    private readonly MyraLabel _pageTitle;
+    private readonly MyraLabel _status;
+    private readonly ScrollViewer _content;
+    private readonly ScrollViewer _sidebar;
     // SDL may invoke the event filter off-thread. Copy text while SDL still owns its buffer.
     private readonly ConcurrentQueue<(SDL_Event Event, string? Text)> _events = new();
     private readonly bool[] _keys = new bool[256];
@@ -57,6 +62,7 @@ internal sealed class DesktopAgentsWindow
     private MouseInfo _mouse = new() { Position = new Point(-1, -1) };
     private Rectangle _bounds;
     private int _selectedPage;
+    private int _selectedAgent;
     private bool _returnToWindow;
     private bool _refreshRequested;
     private volatile bool _hasInputFocus;
@@ -66,11 +72,31 @@ internal sealed class DesktopAgentsWindow
     private DesktopAgentsWindow(nint window)
     {
         _window = window;
-        _interaction = new AgentPageInteraction(SetTargetStatus, () => SelectPage(ItemListsTabContent.Title));
+        _theme = new DesktopAssistantTheme();
+        using var styles = _theme.Use();
+        _interaction = new AgentPageInteraction(SetTargetStatus, () => SelectPage(ItemListsTabContent.Title), _theme);
+        _session = new MyraLabel("", MyraLabel.TextStyle.P) { Font = DesktopAssistantTheme.Font(-1), TextColor = DesktopAssistantTheme.SecondaryText };
+        _status = new MyraLabel("", MyraLabel.TextStyle.P) { Font = DesktopAssistantTheme.Font(-1), HorizontalAlignment = HorizontalAlignment.Right };
+        _pageTitle = new MyraLabel("", MyraLabel.TextStyle.P)
+        {
+            Font = DesktopAssistantTheme.Font(3, bold: true),
+            Margin = new Thickness(13, 10, 13, 5)
+        };
+        _content = new ScrollViewer { Padding = new Thickness(14, 0, 14, 12) };
+        _sidebar = new ScrollViewer
+        {
+            Width = DesktopAssistantTheme.SidebarWidth,
+            Background = DesktopAssistantTheme.Sidebar,
+            Border = DesktopAssistantTheme.Divider,
+            BorderThickness = new Thickness(0, 0, 1, 0),
+            Padding = new Thickness(7, 6),
+            ShowHorizontalScrollBar = false
+        };
         _desktop = new Desktop { BoundsFetcher = () => _bounds };
         // Game text is broadcast globally by FNA. Feed this desktop only its own SDL text events.
         TextInputEXT.TextInput -= _desktop.OnChar;
         _desktop.Root = BuildLayout();
+        SelectPage(_selectedPage);
     }
 
     public static void Show() => Show(null);
@@ -177,86 +203,86 @@ internal sealed class DesktopAgentsWindow
 
     private Widget BuildLayout()
     {
-        var navigation = new VerticalStackPanel
+        var topTabs = new WrapPanel
         {
-            Background = new SolidBrush(new Color(27, 35, 46)),
-            Padding = new Thickness(10),
-            Spacing = 3
+            Orientation = Orientation.Horizontal,
+            Background = DesktopAssistantTheme.TabStrip,
+            Border = DesktopAssistantTheme.Divider,
+            BorderThickness = new Thickness(0, 0, 0, 1),
+            Padding = new Thickness(7, 5, 7, 0),
+            HorizontalSpacing = 2,
+            VerticalSpacing = 2,
+            UniformSizing = false
         };
-
-        var buttons = _pages.Select((page, index) => (page, index))
-            .GroupBy(item => item.page.Group)
-            .OrderBy(group => group.Key);
-        var buttonBackground = new SolidBrush(new Color(31, 42, 55));
-        var hoveredBackground = new SolidBrush(new Color(39, 57, 75));
-        var selectedBackground = new SolidBrush(new Color(50, 75, 104));
-
-        foreach (var group in buttons)
+        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysTabContent.Title, MacrosTabContent.Title, FiltersTab.Title })
         {
-            if (group.Key != AgentTab.AgentGroup.ItemLists)
+            var tab = DesktopAssistantTheme.NavigationButton(name, tab: true);
+            tab.Click += (_, _) => SelectPage(name);
+            _primaryNavigation.Add(name, tab);
+            topTabs.Widgets.Add(tab);
+        }
+
+        var navigation = new VerticalStackPanel { Spacing = 1 };
+        AgentTab.AgentGroup[] groups =
+        [
+            AgentTab.AgentGroup.LootAndScavenge, AgentTab.AgentGroup.HealingAndStats,
+            AgentTab.AgentGroup.Vendors, AgentTab.AgentGroup.GearAndInventory, AgentTab.AgentGroup.Support
+        ];
+        foreach (AgentTab.AgentGroup group in groups)
+        {
+            if (group != AgentTab.AgentGroup.Support)
             {
-                navigation.Widgets.Add(new MyraLabel(GetGroupName(group.Key), MyraLabel.TextStyle.P)
+                navigation.Widgets.Add(new MyraLabel(GetGroupName(group), MyraLabel.TextStyle.P)
                 {
-                    Margin = new Thickness(3, 9, 0, 1),
-                    TextColor = new Color(173, 198, 220)
+                    Font = DesktopAssistantTheme.Font(-2),
+                    Margin = new Thickness(1, navigation.Widgets.Count > 0 ? 6 : 0, 0, 0),
+                    TextColor = DesktopAssistantTheme.SecondaryText
                 });
             }
 
-            foreach (var (page, index) in group)
+            foreach (var (page, index) in _pages.Select((page, index) => (page, index)).Where(item => item.page.Group == group))
             {
-                var button = new MyraButton(page.Name)
-                {
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    Background = buttonBackground,
-                    OverBackground = hoveredBackground,
-                    PressedBackground = selectedBackground,
-                    DisabledBackground = selectedBackground
-                };
+                var button = DesktopAssistantTheme.NavigationButton(page.Name);
                 // Selecting disables this button. Let Myra release it before changing pages.
                 button.Click += (_, _) => SelectPage(index);
-                ((MyraLabel)button.Content).DisabledTextColor = Color.White;
                 _navigation.Add(index, button);
                 navigation.Widgets.Add(button);
             }
         }
+        _sidebar.Content = navigation;
 
-        var header = new VerticalStackPanel { Spacing = 3 };
-        header.Widgets.Add(new MyraLabel(TazLang.Get("assistantwindow_title", "Legion Assistant"), MyraLabel.TextStyle.H1));
-        header.Widgets.Add(_session);
-
-        var panel = new MyraGrid
-        {
-            RowSpacing = 10,
-            Padding = new Thickness(14),
-            Background = new SolidBrush(new Color(24, 28, 36))
-        };
-        panel.AddRow();
+        var panel = new MyraGrid { RowSpacing = 0, Background = DesktopAssistantTheme.Canvas };
         panel.AddRow();
         panel.AddRow(new Proportion(ProportionType.Fill));
         panel.AddWidget(_pageTitle, 0, 0);
-        panel.AddWidget(_status, 1, 0);
-        panel.AddWidget(_content, 2, 0);
+        panel.AddWidget(_content, 1, 0);
 
-        var layout = new MyraGrid { Padding = new Thickness(16), RowSpacing = 12, ColumnSpacing = 12 };
-        layout.AddColumn(new Proportion(ProportionType.Pixels, 175));
+        var footer = new MyraGrid
+        {
+            Padding = new Thickness(6, 2), Background = DesktopAssistantTheme.Sidebar,
+            Border = DesktopAssistantTheme.Divider, BorderThickness = new Thickness(0, 1, 0, 0)
+        };
+        footer.AddColumn(new Proportion(ProportionType.Fill));
+        footer.AddColumn();
+        footer.AddWidget(_session, 0, 0);
+        footer.AddWidget(_status, 0, 1);
+
+        var layout = new MyraGrid { RowSpacing = 0, ColumnSpacing = 0 };
+        layout.AddColumn();
         layout.AddColumn(new Proportion(ProportionType.Fill));
         layout.AddRow();
         layout.AddRow(new Proportion(ProportionType.Fill));
-        layout.AddWidget(header, 0, 0, colspan: 2);
-        layout.AddWidget(new ScrollViewer { Content = navigation }, 1, 0);
+        layout.AddRow();
+        layout.AddWidget(topTabs, 0, 0, colspan: 2);
+        layout.AddWidget(_sidebar, 1, 0);
         layout.AddWidget(panel, 1, 1);
-        _desktop.Background = new SolidBrush(new Color(18, 22, 28));
-
-        SelectPage(_selectedPage);
+        layout.AddWidget(footer, 2, 0, colspan: 2);
         return layout;
     }
 
     private static string GetGroupName(AgentTab.AgentGroup group) => group switch
     {
-        AgentTab.AgentGroup.Controls => TazLang.Get("assistant_desktop_controls", "Controls"),
-        AgentTab.AgentGroup.Settings => TazLang.Get("assistant_desktop_settings", "Settings"),
         AgentTab.AgentGroup.HealingAndStats => TazLang.Get("assistant_agents_healing_stats", "Healing & Stats"),
-        AgentTab.AgentGroup.Support => TazLang.Get("assistant_agents_support"),
         AgentTab.AgentGroup.LootAndScavenge => TazLang.Get("assistant_agents_loot_scavenge", "Loot & Scavenge"),
         AgentTab.AgentGroup.Vendors => TazLang.Get("assistant_agents_vendors", "Vendors"),
         _ => TazLang.Get("assistant_agents_gear_inventory", "Gear & Inventory")
@@ -264,6 +290,12 @@ internal sealed class DesktopAgentsWindow
 
     private void SelectPage(string? name)
     {
+        if (name == _agentsTitle)
+        {
+            SelectPage(_selectedAgent);
+            return;
+        }
+
         int index = Array.FindIndex(_pages, page => page.Name == name);
         if (index >= 0)
             SelectPage(index);
@@ -271,14 +303,24 @@ internal sealed class DesktopAgentsWindow
 
     private void SelectPage(int index)
     {
+        using var styles = _theme.Use();
         _interaction.CancelTarget();
         _interaction.CancelKeyCapture();
         _interaction.CancelDialog();
         _desktop.FocusedKeyboardWidget = null;
         _desktop.HideContextMenu();
         SetTargetStatus("", false, false);
-        _navigation[_selectedPage].Enabled = true;
-        _navigation[index].Enabled = false;
+        bool isAgent = _navigation.ContainsKey(index);
+        if (isAgent)
+            _selectedAgent = index;
+        _sidebar.Visible = isAgent;
+        foreach (var (agent, button) in _navigation)
+            DesktopAssistantTheme.SelectNavigation(button, agent == index);
+
+        string activeTab = isAgent ? _agentsTitle : _pages[index].Name;
+        foreach (var (name, button) in _primaryNavigation)
+            DesktopAssistantTheme.SelectNavigation(button, name == activeTab);
+
         _selectedPage = index;
         _pageTitle.Text = _pages[index].Name;
         _session.Text = _profile == null
@@ -292,8 +334,10 @@ internal sealed class DesktopAgentsWindow
 
     private void SetTargetStatus(string text, bool waiting, bool returnToWindow)
     {
-        _status.Text = text;
-        _status.Visible = text.Length > 0;
+        bool connected = text.Length == 0 && _profile != null;
+        _status.Text = connected ? $"● {TazLang.Get("assistant_desktop_connected", "Connected")}" : text;
+        _status.TextColor = connected ? new Color(37, 111, 69) : DesktopAssistantTheme.SecondaryText;
+        _status.Visible = connected || text.Length > 0;
         _content.Enabled = !waiting;
         _returnToWindow = returnToWindow;
         _nextFrame = 0;
@@ -301,6 +345,7 @@ internal sealed class DesktopAgentsWindow
 
     private void UpdateWindow(GraphicsDevice device)
     {
+        using var styles = _theme.Use();
         Profile? profile = World.Instance?.InGame == true ? ProfileManager.CurrentProfile : null;
         if (_refreshRequested || !ReferenceEquals(_profile, profile))
         {
@@ -407,7 +452,7 @@ internal sealed class DesktopAgentsWindow
 
     private void RenderDesktop(GraphicsDevice device)
     {
-        device.Clear(new Color(18, 22, 28));
+        device.Clear(DesktopAssistantTheme.Canvas.Color);
         _desktop.Render();
     }
 

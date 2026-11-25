@@ -138,6 +138,7 @@ namespace ClassicUO.Game.Managers
                 SourceContSerial = config.SourceContSerial,
                 DestContSerial = config.DestContSerial,
                 SharedItemListId = config.SharedItemListId,
+                IgnoreItemListId = config.IgnoreItemListId,
                 Enabled = false,
                 ItemConfigs = config.ItemConfigs.Select(c => new OrganizerItemConfig
                 {
@@ -269,10 +270,14 @@ namespace ClassicUO.Game.Managers
 
             var sourceItems = (Item)sourceCont.Items;
             OrganizerItemConfig[] itemConfigs = config.EffectiveItemConfigs.ToArray();
+            SharedItemList ignoreList = ItemListLibrary.Resolve(config.IgnoreItemListId);
 
             // First pass: identify items to move and group by destination
             for (Item item = sourceItems; item != null; item = (Item)item.Next)
             {
+                if (ignoreList?.Find(item.Graphic, item.Hue) != null)
+                    continue;
+
                 foreach (OrganizerItemConfig itemConfig in itemConfigs)
                 {
                     if (itemConfig.Enabled && itemConfig.IsMatch(item.Graphic, item.Hue))
@@ -516,6 +521,7 @@ namespace ClassicUO.Game.Managers
         public bool Enabled { get; set; } = true;
         public List<OrganizerItemConfig> ItemConfigs { get; set; } = new List<OrganizerItemConfig>();
         public Guid? SharedItemListId { get; set; }
+        public Guid? IgnoreItemListId { get; set; }
 
         [JsonIgnore]
         internal IEnumerable<OrganizerItemConfig> EffectiveItemConfigs =>

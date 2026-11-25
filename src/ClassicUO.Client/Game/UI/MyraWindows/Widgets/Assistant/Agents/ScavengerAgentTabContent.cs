@@ -102,7 +102,7 @@ public static class ScavengerAgentTabContent
         listSelectRow.Widgets.Add(new MyraButton(TazLang.Get("scavenger_list_new", "New"), () =>
         {
             var nameBox = new MyraInputBox { HintText = TazLang.Get("scavenger_list_namehint", "List name"), Width = 220 };
-            new MyraDialog(TazLang.Get("scavenger_list_newtitle", "New Scavenger List"), nameBox, ok =>
+            interaction.ShowDialog(root, TazLang.Get("scavenger_list_newtitle", "New Scavenger List"), nameBox, ok =>
             {
                 if (!ok) return;
                 ScavengerManager.Instance.AddList(nameBox.Text);
@@ -121,7 +121,7 @@ public static class ScavengerAgentTabContent
                 HintText = TazLang.Get("scavenger_list_namehint", "List name"),
                 Width = 220,
             };
-            new MyraDialog(TazLang.Get("scavenger_list_renametitle", "Rename Scavenger List"), nameBox, ok =>
+            interaction.ShowDialog(root, TazLang.Get("scavenger_list_renametitle", "Rename Scavenger List"), nameBox, ok =>
             {
                 if (!ok || string.IsNullOrWhiteSpace(nameBox.Text)) return;
                 ScavengerManager.Instance.RenameList(current, nameBox.Text);
@@ -142,7 +142,7 @@ public static class ScavengerAgentTabContent
 
             ScavengerManager.ScavengerList current = ScavengerManager.Instance.CurrentList;
             if (current == null) return;
-            new MyraDialog(TazLang.Get("scavenger_list_deletetitle", "Delete Scavenger List"),
+            interaction.ShowDialog(root, TazLang.Get("scavenger_list_deletetitle", "Delete Scavenger List"),
                 new MyraLabel(
                     TazLang.GetEx("scavenger_list_deleteconfirm", "Delete list \"{0}\" and all of its entries?", [current.Name]),
                     MyraLabel.TextStyle.P
@@ -247,7 +247,7 @@ public static class ScavengerAgentTabContent
                         Height = 80,
                         Tooltip = TazLang.Get("scavenger_entry_regex_tooltip", "Regex to match against item name and properties.")
                     };
-                    new MyraDialog(TazLang.Get("scavenger_entry_editregex", "Edit Regex"), regexInput,
+                    interaction.ShowDialog(root, TazLang.Get("scavenger_entry_editregex", "Edit Regex"), regexInput,
                         ok =>
                         {
                             if (ok)

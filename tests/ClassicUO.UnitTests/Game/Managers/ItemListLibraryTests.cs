@@ -1,5 +1,7 @@
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using Xunit;
 
@@ -72,5 +74,28 @@ public class ItemListLibraryTests
         Assert.Equal(list.Id, reloaded.Id);
         Assert.Equal(list.Name, reloaded.Name);
         Assert.Equal(Assert.Single(list.Items), Assert.Single(reloaded.Items));
+    }
+
+    [Fact]
+    public void AgentSettingsKeepMainAndIgnoreListLinksSeparate()
+    {
+        var main = new SharedItemList { Name = "Supplies" };
+        var ignore = new SharedItemList { Name = "Arrows" };
+        var profile = new Profile { AutoLootSharedItemListId = main.Id, AutoLootIgnoreItemListId = ignore.Id };
+        var organizer = new OrganizerConfig { SharedItemListId = main.Id, IgnoreItemListId = ignore.Id };
+
+        var profileType = ProfileJsonContext.DefaultToUse.Profile;
+        var organizerType = OrganizerAgentContext.Default.OrganizerConfig;
+        JsonObject profileJson = JsonSerializer.SerializeToNode(profile, profileType).AsObject();
+        profileJson.Remove("options_font"); // Loading the font initializes the game UI.
+        var reloadedProfile = profileJson.Deserialize(profileType);
+        var reloadedOrganizer = JsonSerializer.Deserialize(JsonSerializer.Serialize(organizer, organizerType), organizerType);
+
+        Assert.Equal(main.Id, reloadedProfile.AutoLootSharedItemListId);
+        Assert.Equal(ignore.Id, reloadedProfile.AutoLootIgnoreItemListId);
+        Assert.Equal(main.Id, reloadedOrganizer.SharedItemListId);
+        Assert.Equal(ignore.Id, reloadedOrganizer.IgnoreItemListId);
+        Assert.Null(JsonSerializer.Deserialize("{}", profileType).AutoLootIgnoreItemListId);
+        Assert.Null(JsonSerializer.Deserialize("{}", organizerType).IgnoreItemListId);
     }
 }

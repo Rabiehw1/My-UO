@@ -4,6 +4,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.Hotkeys;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Input;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
@@ -11,7 +12,8 @@ using SDL3;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
-internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTargetStatus = null, Action? openItemLists = null)
+internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTargetStatus = null, Action? openItemLists = null,
+    DesktopAssistantTheme? desktopTheme = null)
 {
     public static AgentPageInteraction InGame { get; } = new();
 
@@ -59,7 +61,10 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
                 return;
 
             if (result != null)
+            {
+                using var styles = desktopTheme?.Use();
                 callback(result);
+            }
 
             showTargetStatus(result == null ? "Selection cancelled." : "Selection returned from the game.", false, true);
         };
@@ -86,6 +91,7 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
 
     public void RunInGame(Action action)
     {
+        using var styles = DesktopAssistantTheme.UseGameStyle();
         action();
         if (IsDesktop)
             SDL.SDL_RaiseWindow(Client.Game.Window.Handle);
@@ -93,14 +99,18 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
 
     public void Confirm(Widget anchor, string title, string message, Action confirmed)
     {
-        var label = new MyraLabel(message, MyraLabel.TextStyle.P);
+        ShowDialog(anchor, title, new MyraLabel(message, MyraLabel.TextStyle.P), ok =>
+        {
+            if (ok)
+                confirmed();
+        });
+    }
+
+    public void ShowDialog(Widget anchor, string title, Widget body, Action<bool> onClose, Func<bool>? canClose = null)
+    {
         if (!IsDesktop)
         {
-            new MyraDialog(title, label, ok =>
-            {
-                if (ok)
-                    confirmed();
-            });
+            new MyraDialog(title, body, onClose, canClose);
             return;
         }
 
@@ -109,14 +119,23 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
         var buttons = new HorizontalStackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
         buttons.Widgets.Add(new MyraButton(TazLang.Get("mog_kw_ok", "OK"), () =>
         {
+            if (canClose?.Invoke() == false)
+                return;
+
             dialog.Close();
-            confirmed();
+            onClose(true);
         }));
-        buttons.Widgets.Add(new MyraButton(TazLang.Get("hotkeycapture_cancel", "Cancel"), dialog.Close));
-        content.Widgets.Add(label);
+        buttons.Widgets.Add(new MyraButton(TazLang.Get("hotkeycapture_cancel", "Cancel"), () =>
+        {
+            dialog.Close();
+            onClose(false);
+        }));
+        content.Widgets.Add(body);
         content.Widgets.Add(buttons);
         dialog.Content = content;
         ShowDesktopDialog(anchor, dialog);
+        if (body is TextBox && body.Desktop is Desktop desktop)
+            desktop.FocusedKeyboardWidget = body;
     }
 
     public void ShowDesktopDialog(Widget anchor, Window dialog, Action<HotkeyBinding>? capture = null)

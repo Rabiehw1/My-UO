@@ -1,7 +1,9 @@
 using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.UI.MyraWindows.Options.Tabs;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
@@ -41,8 +43,16 @@ public static class GeneralTab
             (TazLang.Get("mog_misctab_label", "Miscellaneous"), () => MiscTab.GetContent().Render())
         ];
 
-        var root = new VerticalStackPanel { Spacing = 8 };
-        var picker = new ComboView { MinWidth = 200 };
+        var root = new MyraGrid { ColumnSpacing = 12 };
+        root.AddColumn();
+        root.AddColumn(new Proportion(ProportionType.Fill));
+        var picker = new ListView
+        {
+            Width = DesktopAssistantTheme.SidebarWidth - 14,
+            Background = DesktopAssistantTheme.Sidebar,
+            VerticalAlignment = VerticalAlignment.Top,
+            Padding = new Thickness(3)
+        };
         foreach (var section in sections)
             picker.Widgets.Add(new Label { Text = section.Label });
 
@@ -55,8 +65,8 @@ public static class GeneralTab
                 content.Widgets.Add(sections[index].Build());
             }
         };
-        root.Widgets.Add(new MyraLabel(TazLang.Get("assistant_desktop_section", "Section"), MyraLabel.TextStyle.P).PlaceBefore(picker));
-        root.Widgets.Add(content);
+        root.AddWidget(picker, 0, 0);
+        root.AddWidget(content, 0, 1);
         picker.SelectedIndex = 0;
         return root;
     }
