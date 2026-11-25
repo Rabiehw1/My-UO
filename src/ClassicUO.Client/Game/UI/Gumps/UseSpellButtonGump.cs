@@ -46,6 +46,9 @@ namespace ClassicUO.Game.UI.Gumps
 
         public override GumpType GumpType => GumpType.SpellButton;
 
+        /// <summary>Spell icons sit snapped together in bars; right-click removes one without holding a key.</summary>
+        protected override bool RequiresModifierToCloseWhenAnchored => false;
+
         public int SpellID => _spell?.ID ?? 0;
 
         public ushort Hue
