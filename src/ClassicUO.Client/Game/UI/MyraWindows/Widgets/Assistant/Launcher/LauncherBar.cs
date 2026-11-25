@@ -93,7 +93,7 @@ internal sealed class LauncherBar : MyraGrid
                 running++;
         }
 
-        _running.Text = TazLang.Get("launcher_running_count", [running, _items.Count]);
+        _running.Text = TazLang.Get("launcher_running_count", [running.ToString(), _items.Count.ToString()]);
         _running.TextColor = running > 0 ? _runningColor : DesktopAssistantTheme.SecondaryText;
     }
 
@@ -158,7 +158,7 @@ internal sealed class LauncherBar : MyraGrid
                 lastError = error;
         }
 
-        _message.Text = lastError ?? TazLang.Get("launcher_started_count", [started]);
+        _message.Text = lastError ?? TazLang.Get("launcher_started_count", [started.ToString()]);
 
         if (started > 0)
             CloseLauncherIfDone();

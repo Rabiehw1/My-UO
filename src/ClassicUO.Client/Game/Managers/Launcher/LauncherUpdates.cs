@@ -87,7 +87,7 @@ internal static class LauncherUpdates
             return;
 
         IsBusy = true;
-        SetStatus(TazLang.Get("launcher_update_downloading", [0]));
+        SetStatus(TazLang.Get("launcher_update_downloading", ["0"]));
         int shownPercent = 0;
         var progress = new Progress<float>(value =>
         {
@@ -97,7 +97,7 @@ internal static class LauncherUpdates
                 return;
 
             shownPercent = percent;
-            MainThreadQueue.InvokeOnMainThread(() => SetStatus(TazLang.Get("launcher_update_downloading", [percent])));
+            MainThreadQueue.InvokeOnMainThread(() => SetStatus(TazLang.Get("launcher_update_downloading", [percent.ToString()])));
         });
 
         Task.Run(async () =>
