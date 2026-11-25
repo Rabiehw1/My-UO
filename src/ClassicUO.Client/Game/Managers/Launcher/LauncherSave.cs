@@ -45,6 +45,9 @@ internal sealed class LauncherSave
     /// <summary>Keep the launcher open after Play, for starting more characters.</summary>
     public bool KeepOpenAfterPlay { get; set; } = true;
 
+    /// <summary>Open each game window's Assistant as soon as that window starts.</summary>
+    public bool OpenAssistantWithClient { get; set; } = true;
+
     #endregion
 
     #region Private members

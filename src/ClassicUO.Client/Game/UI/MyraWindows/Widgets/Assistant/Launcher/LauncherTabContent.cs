@@ -213,7 +213,12 @@ internal static class LauncherTabContent
             {
                 save.KeepOpenAfterPlay = value;
                 save.Save();
-            }, TazLang.Get("launcher_keepopen"))
+            }, TazLang.Get("launcher_keepopen")),
+            MyraCheckButton.CreateWithCallback(save.OpenAssistantWithClient, value =>
+            {
+                save.OpenAssistantWithClient = value;
+                save.Save();
+            }, TazLang.Get("launcher_openassistant"), TazLang.Get("launcher_openassistant_tooltip"))
         );
 
     private static Widget BuildUpdates(LauncherSave save)
