@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClassicUO.Configuration;
+using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.ShardSpells;
@@ -38,6 +39,8 @@ internal static class ShardSpellBooksTabContent
 
     private static int _placedCount;
 
+    private const int SPELLS_PER_CIRCLE = 8;
+
     #endregion
 
     internal static string Title => TazLang.Get("shardspells_title");
@@ -69,20 +72,19 @@ internal static class ShardSpellBooksTabContent
         styleRow.Widgets.Add(style);
         root.Widgets.Add(styleRow);
 
+        // The regular Magery book first: it needs no binding, so it's the one every character can use.
+        Action<bool>? expandOpenBook = null;
+        var (magery, mageryDisclosure, setMageryExpanded) = BuildMageryBook(interaction);
+        mageryDisclosure.Click += (_, _) => Toggle(setMageryExpanded);
+        root.Widgets.Add(magery);
+
         ShardSpellCaster caster = ShardSpellCaster.Instance;
         ShardSpellBookInfo firstBook = ShardSpellCatalog.Books.FirstOrDefault(book => caster.GetBookSerial(book.Book) != 0)
             ?? ShardSpellCatalog.Books[0];
-        Action<bool>? expandOpenBook = null;
         foreach (ShardSpellBookInfo book in ShardSpellCatalog.Books)
         {
             var (section, disclosure, setExpanded) = BuildBook(book, interaction, previews, profile.UseIllustratedShardSpellIcons);
-            disclosure.Click += (_, _) =>
-            {
-                bool opening = expandOpenBook != setExpanded;
-                expandOpenBook?.Invoke(false);
-                expandOpenBook = opening ? setExpanded : null;
-                expandOpenBook?.Invoke(true);
-            };
+            disclosure.Click += (_, _) => Toggle(setExpanded);
             if (book.Book == firstBook.Book)
             {
                 expandOpenBook = setExpanded;
@@ -92,15 +94,94 @@ internal static class ShardSpellBooksTabContent
         }
 
         return root;
+
+        // One book open at a time: opening a book closes the one that was open.
+        void Toggle(Action<bool> setExpanded)
+        {
+            bool opening = expandOpenBook != setExpanded;
+            expandOpenBook?.Invoke(false);
+            expandOpenBook = opening ? setExpanded : null;
+            expandOpenBook?.Invoke(true);
+        }
     }
 
-    private static (VerticalStackPanel Section, MyraButton Disclosure, Action<bool> SetExpanded) BuildBook(
-        ShardSpellBookInfo book, AgentPageInteraction interaction, List<SpellPreview> previews, bool illustrated)
+    /// <summary>
+    /// Section for the regular Magery spellbook. Spells are cast directly, so there's no book to set and no button IDs.
+    /// </summary>
+    private static (VerticalStackPanel Section, MyraButton Disclosure, Action<bool> SetExpanded) BuildMageryBook(
+        AgentPageInteraction interaction)
     {
-        ShardSpellCaster caster = ShardSpellCaster.Instance;
-        var (table, buttonIds, placeButtons) = BuildSpellTable(book, interaction, previews, illustrated);
-        var disclosure = DesktopAssistantTheme.ActionButton(book.Name);
-        disclosure.Id = $"spell-book-{book.Book}";
+        var (header, disclosure, glyph) = BuildHeader(TazLang.Get("shardspells_magery"), "magery");
+        header.AddWidget(new MyraLabel(TazLang.Get("shardspells_magery_status"), MyraLabel.TextStyle.P)
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            TextColor = DesktopAssistantTheme.SecondaryText
+        }, 0, 1);
+
+        var table = new MyraGrid { Id = "spell-table-magery", Visible = false };
+        table.SetupWithHeaders(
+            GridColumnInfo.Fill(TazLang.Get("shardspells_spell")),
+            GridColumnInfo.Auto(TazLang.Get("shardspells_game_icon"), alignRight: true));
+        table.ShowGridLines = false;
+        table.BorderThickness = new Thickness(0);
+        table.RowSpacing = 0;
+
+        string[] circles = SpellsMagery.CircleNames;
+        int row = 1;
+        for (int id = 1; id <= SpellsMagery.MaxSpellCount; id++)
+        {
+            SpellDefinition spell = SpellsMagery.GetSpell(id);
+            if (spell.ID <= 0)
+                continue;
+
+            int circle = (id - 1) / SPELLS_PER_CIRCLE;
+            if ((id - 1) % SPELLS_PER_CIRCLE == 0 && circle < circles.Length)
+            {
+                table.AddWidget(new Panel { Background = DesktopAssistantTheme.Sidebar }, row, 0, colspan: 2);
+                table.AddWidget(new MyraLabel(circles[circle], MyraLabel.TextStyle.P)
+                {
+                    Margin = new Thickness(6, 3), TextColor = DesktopAssistantTheme.SecondaryText
+                }, row, 0, colspan: 2);
+                row++;
+            }
+
+            AddMageryRow(table, row++, spell, interaction);
+        }
+
+        var section = new VerticalStackPanel { Border = DesktopAssistantTheme.Divider, BorderThickness = new Thickness(1) };
+        section.Widgets.Add(header);
+        section.Widgets.Add(table);
+        return (section, disclosure, expanded =>
+        {
+            glyph.Text = expanded ? EXPANDED_GLYPH : COLLAPSED_GLYPH;
+            table.Visible = expanded;
+        });
+    }
+
+    private static void AddMageryRow(MyraGrid table, int row, SpellDefinition spell, AgentPageInteraction interaction)
+    {
+        table.AddWidget(new Panel { Border = DesktopAssistantTheme.Divider, BorderThickness = new Thickness(0, 1, 0, 0) }, row, 0, colspan: 2);
+        var name = new HorizontalStackPanel { Spacing = 7, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
+        name.Widgets.Add(new MyraGumpTexture((uint)spell.GumpIconSmallID, PREVIEW_SIZE) { VerticalAlignment = VerticalAlignment.Center });
+        MyraLabel label = MyraGrid.TableText(spell.Name);
+        label.VerticalAlignment = VerticalAlignment.Center;
+        name.Widgets.Add(label);
+        table.AddWidget(name, row, 0);
+
+        var place = DesktopAssistantTheme.ActionButton(TazLang.Get("shardspells_place"), primary: true);
+        place.Id = $"spell-place-magery-{spell.ID}";
+        place.Margin = new Thickness(6, 3);
+        place.HorizontalAlignment = HorizontalAlignment.Right;
+        place.Tooltip = TazLang.Get("shardspells_place_icon_tooltip");
+        place.Click += (_, _) => interaction.RunInGame(() => PlaceIcon(new UseSpellButtonGump(World.Instance, spell)));
+        table.AddWidget(place, row, 1);
+    }
+
+    /// <summary>The clickable book header: a disclosure button in column 0, columns 1-2 left for status and actions.</summary>
+    private static (MyraGrid Header, MyraButton Disclosure, MyraLabel Glyph) BuildHeader(string title, string id)
+    {
+        var disclosure = DesktopAssistantTheme.ActionButton(title);
+        disclosure.Id = $"spell-book-{id}";
         disclosure.Background = null;
         disclosure.Border = null;
         disclosure.Padding = new Thickness(4, 3);
@@ -110,6 +191,24 @@ internal static class ShardSpellBooksTabContent
         disclosure.Content = disclosureLabel;
         disclosureLabel.Widgets.Add(glyph);
         disclosureLabel.Widgets.Add(caption);
+
+        var header = new MyraGrid
+        {
+            Padding = new Thickness(6, 3), ColumnSpacing = 7, Background = DesktopAssistantTheme.Sidebar
+        };
+        header.AddColumn();
+        header.AddColumn(new Proportion(ProportionType.Fill));
+        header.AddColumn();
+        header.AddWidget(disclosure, 0, 0);
+        return (header, disclosure, glyph);
+    }
+
+    private static (VerticalStackPanel Section, MyraButton Disclosure, Action<bool> SetExpanded) BuildBook(
+        ShardSpellBookInfo book, AgentPageInteraction interaction, List<SpellPreview> previews, bool illustrated)
+    {
+        ShardSpellCaster caster = ShardSpellCaster.Instance;
+        var (table, buttonIds, placeButtons) = BuildSpellTable(book, interaction, previews, illustrated);
+        var (header, disclosure, glyph) = BuildHeader(book.Name, book.Book.ToString());
         var bookStatus = new MyraLabel("", MyraLabel.TextStyle.P)
         {
             VerticalAlignment = VerticalAlignment.Center,
@@ -143,14 +242,6 @@ internal static class ShardSpellBooksTabContent
         actions.Visible = false;
         table.Visible = false;
 
-        var header = new MyraGrid
-        {
-            Padding = new Thickness(6, 3), ColumnSpacing = 7, Background = DesktopAssistantTheme.Sidebar
-        };
-        header.AddColumn();
-        header.AddColumn(new Proportion(ProportionType.Fill));
-        header.AddColumn();
-        header.AddWidget(disclosure, 0, 0);
         header.AddWidget(bookStatus, 0, 1);
         header.AddWidget(actions, 0, 2);
 
@@ -259,9 +350,11 @@ internal static class ShardSpellBooksTabContent
     }
 
     /// <summary>Puts the spell's icon near the middle of the game window, each new one a step further along.</summary>
-    private static void PlaceIcon(ShardSpellBook book, int index)
+    private static void PlaceIcon(ShardSpellBook book, int index) =>
+        PlaceIcon(new ShardSpellButtonGump(World.Instance, book, index));
+
+    private static void PlaceIcon(Gump icon)
     {
-        var icon = new ShardSpellButtonGump(World.Instance, book, index);
         Point center = new(Client.Game.Window.ClientBounds.Width / 2, Client.Game.Window.ClientBounds.Height / 2);
 
         int slot = _placedCount++ % (ICONS_PER_STAGGER_ROW * ICONS_PER_STAGGER_ROW);
