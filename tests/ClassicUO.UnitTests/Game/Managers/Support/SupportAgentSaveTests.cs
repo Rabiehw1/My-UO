@@ -79,4 +79,16 @@ public sealed class SupportAgentSaveTests
         loaded.Combat.KeepDistance.Should().BeFalse();
         loaded.GetClassSettings(SupportClass.Mage).Abilities[0].CastTimeMs.Should().Be(1500);
     }
+
+    [Fact]
+    public void AddNewPresetAbilities_AddsMissingMageAbilitiesOnce()
+    {
+        var save = new SupportAgentSave();
+        save.GetClassSettings(SupportClass.Mage).Abilities.RemoveAll(a => a.Role == SupportRole.Bless);
+
+        save.AddNewPresetAbilities();
+        save.AddNewPresetAbilities();
+
+        save.GetClassSettings(SupportClass.Mage).Abilities.Should().ContainSingle(a => a.Role == SupportRole.Bless);
+    }
 }

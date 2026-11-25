@@ -3,6 +3,7 @@
 using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.Managers.Support;
 using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.WrapPanel;
@@ -208,6 +209,7 @@ internal static class SupportAgentTabContent
         ));
         row.Widgets.Add(Text(TazLang.Get("supportagent_followcommand"), commands.FollowCommand, v => commands.FollowCommand = v));
         row.Widgets.Add(Text(TazLang.Get("supportagent_healcommand"), commands.HealCommand, v => commands.HealCommand = v));
+        row.Widgets.Add(Text(TazLang.Get("supportagent_blesscommand"), commands.BlessCommand, v => commands.BlessCommand = v));
         row.Widgets.Add(Number(TazLang.Get("supportagent_followoverride"), commands.FollowOverrideMs, v => commands.FollowOverrideMs = Math.Max(0, v)));
 
         return new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_commands") }, row);
@@ -258,6 +260,14 @@ internal static class SupportAgentTabContent
 
             case SupportActionType.UseItem:
                 AddItemPicker(row, ability, settings, interaction, refresh);
+                break;
+
+            case SupportActionType.CastShardSpell:
+                row.Widgets.Add(Number(
+                    TazLang.Get("supportagent_bookspell", [ShardSpellCatalog.Get(ability.ShardBook).Name]),
+                    ability.SpellId,
+                    v => ability.SpellId = Math.Max(0, v)
+                ));
                 break;
 
             case SupportActionType.Say:

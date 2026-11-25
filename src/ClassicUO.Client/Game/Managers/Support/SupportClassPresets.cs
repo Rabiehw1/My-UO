@@ -1,6 +1,8 @@
 #nullable enable
 
 using System.Collections.Generic;
+using ClassicUO.Game.Data;
+using ClassicUO.Game.Managers.ShardSpells;
 
 namespace ClassicUO.Game.Managers.Support;
 
@@ -26,6 +28,18 @@ internal static class SupportClassPresets
 
     /// <summary>Recast interval for long-lasting buffs.</summary>
     private const int BUFF_RECAST_MS = 120_000;
+
+    /// <summary>Nagash's staff casts Bless; its bless lasts 30 minutes.</summary>
+    private const ushort NAGASH_STAFF_GRAPHIC = 0x13F9;
+
+    private const ushort NAGASH_STAFF_HUE = 1950;
+    private const int NAGASH_BLESS_MS = 30 * 60 * 1000;
+
+    /// <summary>Positions in their books (see ShardSpellCatalog): Nature's Touch is the Earth Book's 8th spell,
+    /// Angelic Aura the Holy Book's 4th.</summary>
+    private const int NATURES_TOUCH_INDEX = 7;
+
+    private const int ANGELIC_AURA_INDEX = 3;
 
     #endregion
 
@@ -128,7 +142,8 @@ internal static class SupportClassPresets
             SpellId = SPELL_PROTECTION,
             CastTimeMs = 1000,
             RecoveryMs = 750,
-            CooldownMs = BUFF_RECAST_MS
+            CooldownMs = BUFF_RECAST_MS,
+            ActiveBuff = BuffIconType.Protection
         },
         new()
         {
@@ -142,6 +157,45 @@ internal static class SupportClassPresets
             CastTimeMs = 1250,
             RecoveryMs = 750,
             CooldownMs = BUFF_RECAST_MS
+        },
+        new()
+        {
+            Id = "mage.nagashbless",
+            Name = "Bless (Nagash's staff)",
+            Role = SupportRole.Bless,
+            Action = SupportActionType.UseItem,
+            Target = SupportTargetMode.Leader,
+            ItemGraphic = NAGASH_STAFF_GRAPHIC,
+            ItemHue = NAGASH_STAFF_HUE,
+            CastTimeMs = 1000,
+            RecoveryMs = 750,
+            CooldownMs = NAGASH_BLESS_MS
+        },
+        new()
+        {
+            Id = "mage.naturestouch",
+            Name = "Nature's Touch (Earth Book)",
+            Enabled = false,
+            Role = SupportRole.Heal,
+            Action = SupportActionType.CastShardSpell,
+            Target = SupportTargetMode.Patient,
+            ShardBook = ShardSpellBook.Earth,
+            SpellId = NATURES_TOUCH_INDEX,
+            CastTimeMs = 2000,
+            RecoveryMs = 750
+        },
+        new()
+        {
+            Id = "mage.angelicaura",
+            Name = "Angelic Aura (Holy Book)",
+            Enabled = false,
+            Role = SupportRole.Heal,
+            Action = SupportActionType.CastShardSpell,
+            Target = SupportTargetMode.Patient,
+            ShardBook = ShardSpellBook.Holy,
+            SpellId = ANGELIC_AURA_INDEX,
+            CastTimeMs = 2000,
+            RecoveryMs = 750
         }
     ];
 

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using ClassicUO.Configuration;
+using ClassicUO.Game.Data;
 
 namespace ClassicUO.Game.Managers.Support;
 
@@ -29,7 +30,10 @@ public enum SupportRole
     Buff,
 
     /// <summary>The helper itself dropped to the emergency threshold; used once before falling back to heals.</summary>
-    Emergency
+    Emergency,
+
+    /// <summary>Used when the leader says the bless phrase, then kept up by recasting when its cooldown ends.</summary>
+    Bless
 }
 
 /// <summary>How an ability is performed.</summary>
@@ -48,7 +52,10 @@ public enum SupportActionType
     Bandage,
 
     /// <summary>Say a line, for shards with spoken commands.</summary>
-    Say
+    Say,
+
+    /// <summary>Cast a spell from a Zulu Hotel spell book (Earth, Holy, ...) picked in Spell Books.</summary>
+    CastShardSpell
 }
 
 /// <summary>Who an ability is aimed at.</summary>
@@ -79,8 +86,24 @@ public sealed class SupportAbility
     public SupportActionType Action { get; set; }
     public SupportTargetMode Target { get; set; }
 
-    /// <summary>Spell number for <see cref="SupportActionType.CastSpell" />.</summary>
+    /// <summary>Spell number for <see cref="SupportActionType.CastSpell" />; position in the book for
+    /// <see cref="SupportActionType.CastShardSpell" />.</summary>
     public int SpellId { get; set; }
+
+    /// <summary>Book for <see cref="SupportActionType.CastShardSpell" />.</summary>
+    public ShardSpells.ShardSpellBook ShardBook { get; set; }
+
+    /// <summary>
+    /// Hue that, with <see cref="ItemGraphic" />, finds the item in the helper's hands or backpack when none is
+    /// picked yet; the item found is then remembered by serial. <see cref="ushort.MaxValue" /> means any hue.
+    /// </summary>
+    public ushort ItemHue { get; set; } = ushort.MaxValue;
+
+    /// <summary>
+    /// Buff icon showing this ability's effect is still on the helper. While it shows, the ability isn't recast.
+    /// Only works on shards that send buff icons; otherwise the cooldown alone decides.
+    /// </summary>
+    public BuffIconType? ActiveBuff { get; set; }
 
     /// <summary>Graphic of the picked item; shown for reference only, items are always used by serial.</summary>
     public ushort ItemGraphic { get; set; }
@@ -167,6 +190,7 @@ public sealed class SupportCommandSettings
     public bool Enabled { get; set; } = true;
     public string FollowCommand { get; set; } = "follow me";
     public string HealCommand { get; set; } = "heal me";
+    public string BlessCommand { get; set; } = "bless me";
 
     /// <summary>After "follow me", the helper only follows (no fighting) for this long.</summary>
     public int FollowOverrideMs { get; set; } = 5000;
@@ -224,6 +248,22 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
         var created = new SupportClassSettings { Class = supportClass, Abilities = SupportClassPresets.Create(supportClass) };
         Classes.Add(created);
         return created;
+    }
+
+    /// <summary>
+    /// Adds abilities that newer presets introduced to saved class lists, so updates reach existing characters
+    /// without touching the player's own choices.
+    /// </summary>
+    public void AddNewPresetAbilities()
+    {
+        foreach (SupportClassSettings settings in Classes)
+        {
+            foreach (SupportAbility preset in SupportClassPresets.Create(settings.Class))
+            {
+                if (!settings.Abilities.Exists(ability => ability.Id == preset.Id))
+                    settings.Abilities.Add(preset);
+            }
+        }
     }
 }
 

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Utility.Logging;
 
@@ -51,6 +52,11 @@ internal sealed class SupportAbilityRunner
     public bool IsOffCooldown(SupportAbility ability, long now) =>
         !_lastUsed.TryGetValue(ability.Id, out long lastUsed) || now - lastUsed >= ability.CooldownMs;
 
+    /// <summary>Whether <paramref name="ability" /> has been used since the agent started.</summary>
+    /// <param name="ability">Ability to check.</param>
+    /// <returns>True after its first use this session.</returns>
+    public bool HasBeenUsed(SupportAbility ability) => _lastUsed.ContainsKey(ability.Id);
+
     /// <summary>
     /// Whether the helper has what <paramref name="ability" /> needs (the item, a bandage, a target), so a turn is
     /// never spent on something that can't work.
@@ -69,7 +75,10 @@ internal sealed class SupportAbilityRunner
             SupportActionType.CastSpell => ability.SpellId > 0,
             // Item abilities use the exact item picked in the tab. Its serial is sent as is: the shard accepts it even
             // when the client hasn't been shown the container holding it.
-            SupportActionType.UseItemAndGumpButton or SupportActionType.UseItem => ability.ItemSerial != 0,
+            SupportActionType.UseItemAndGumpButton => ability.ItemSerial != 0,
+            SupportActionType.UseItem => ability.ItemSerial != 0 || TryFindItemByGraphicAndHue(ability, player),
+            SupportActionType.CastShardSpell => ShardSpellCaster.Instance.GetBookSerial(ability.ShardBook) != 0
+                                                && !ShardSpellCaster.Instance.IsCasting,
             SupportActionType.Bandage => player.FindBandage(ProfileBandageGraphic()) != null,
             SupportActionType.Say => !string.IsNullOrWhiteSpace(ability.Text),
             _ => false
@@ -87,7 +96,8 @@ internal sealed class SupportAbilityRunner
         {
             SupportActionType.CastSpell => CastSpell(ability, targetSerial),
             SupportActionType.UseItemAndGumpButton => UseItemAndPressButton(ability, now),
-            SupportActionType.UseItem => UseItem(ability),
+            SupportActionType.UseItem => UseItem(ability, targetSerial),
+            SupportActionType.CastShardSpell => CastShardSpell(ability, targetSerial),
             SupportActionType.Bandage => targetSerial != 0 && GameActions.UseBandageOnTarget(_world, targetSerial, TARGET_CURSOR_GRACE_MS),
             SupportActionType.Say => Say(ability),
             _ => false
@@ -145,12 +155,50 @@ internal sealed class SupportAbilityRunner
         return true;
     }
 
-    private bool UseItem(SupportAbility ability)
+    private bool UseItem(SupportAbility ability, uint targetSerial)
     {
         if (ability.ItemSerial == 0)
             return false;
 
+        // Items like a blessing staff open a target cursor; answer it with the intended target.
+        if (targetSerial != 0)
+            SetAutoTarget(ability, targetSerial);
+
         GameActions.DoubleClick(_world, ability.ItemSerial, ignoreQueue: true);
+        return true;
+    }
+
+    private bool CastShardSpell(SupportAbility ability, uint targetSerial)
+    {
+        if (targetSerial != 0)
+            SetAutoTarget(ability, targetSerial);
+
+        return ShardSpellCaster.Instance.TryCast(ability.ShardBook, ability.SpellId);
+    }
+
+    private static void SetAutoTarget(SupportAbility ability, uint targetSerial) =>
+        TargetManager.SetAutoTarget(
+            targetSerial,
+            TargetType.Beneficial,
+            matchAnyTargetType: true,
+            ability.CastTimeMs + TARGET_CURSOR_GRACE_MS
+        );
+
+    /// <summary>
+    /// For an item given by graphic and hue but not picked yet (e.g. Nagash's staff), looks in the helper's hands
+    /// and backpack. A match is remembered by serial, so it is used directly from then on.
+    /// </summary>
+    private static bool TryFindItemByGraphicAndHue(SupportAbility ability, PlayerMobile player)
+    {
+        if (ability.ItemGraphic == 0)
+            return false;
+
+        Item? item = player.FindItem(ability.ItemGraphic, ability.ItemHue) ?? player.Backpack?.FindItem(ability.ItemGraphic, ability.ItemHue);
+
+        if (item == null)
+            return false;
+
+        ability.ItemSerial = item.Serial;
         return true;
     }
 

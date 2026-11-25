@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Utility;
 
 namespace ClassicUO.Game.Managers.Support;
@@ -36,7 +37,7 @@ internal sealed class SupportAgentManager : IDisposable
     }
 
     /// <summary>Settings of the logged-in character, loaded on first use.</summary>
-    public SupportAgentSave Settings => _settings ??= SupportAgentSave.Load();
+    public SupportAgentSave Settings => _settings ??= LoadSettings();
 
     #endregion
 
@@ -75,6 +76,7 @@ internal sealed class SupportAgentManager : IDisposable
     // Set by spoken commands from the leader, consumed on the next tick.
     private bool _followRequested;
     private bool _healRequested;
+    private bool _blessRequested;
 
     #endregion
 
@@ -261,6 +263,15 @@ internal sealed class SupportAgentManager : IDisposable
             _status.Show(TazLang.Get("supportagent_status_following"), SupportStatus.HUE_INFO);
         }
 
+        if (_blessRequested && now >= _abilityReadyAt)
+        {
+            _blessRequested = false;
+
+            // Asked for, so cast even if the 30-minute timer hasn't run out.
+            if (TryUseRole(classSettings, SupportRole.Bless, player, leader, leader ?? player, now, ignoreCooldown: true))
+                return true;
+        }
+
         if (!_healRequested)
             return false;
 
@@ -311,7 +322,7 @@ internal sealed class SupportAgentManager : IDisposable
         Mobile? patient
     )
     {
-        patient ??= FindMostHurt(settings.HealThreshold);
+        patient ??= FindMostHurt(settings.HealThreshold, settings.LeaderSerial);
 
         if (patient == null)
             return false;
@@ -319,20 +330,29 @@ internal sealed class SupportAgentManager : IDisposable
         return TryUseRole(classSettings, SupportRole.Heal, player, leader, patient, now);
     }
 
+    /// <summary>
+    /// Keeps buffs up. Bless abilities are only renewed once they have been used this session, so the helper
+    /// doesn't bless on login over a bless that may still be running.
+    /// </summary>
     private bool TryBuff(PlayerMobile player, SupportClassSettings classSettings, Mobile? leader, long now) =>
-        TryUseRole(classSettings, SupportRole.Buff, player, leader, null, now);
+        TryUseRole(classSettings, SupportRole.Buff, player, leader, null, now)
+        || TryUseRole(classSettings, SupportRole.Bless, player, leader, leader ?? player, now, onlyRenew: true);
 
     /// <summary>
     /// Uses the first enabled, ready ability of <paramref name="role" /> that has a valid target. Waits for the
     /// previous ability's recovery, except in an emergency.
     /// </summary>
+    /// <param name="ignoreCooldown">Use the ability even if its own cooldown hasn't ended (spoken requests).</param>
+    /// <param name="onlyRenew">Only use abilities that have already been used this session.</param>
     private bool TryUseRole(
         SupportClassSettings classSettings,
         SupportRole role,
         PlayerMobile player,
         Mobile? leader,
         Mobile? patient,
-        long now
+        long now,
+        bool ignoreCooldown = false,
+        bool onlyRenew = false
     )
     {
         if (role != SupportRole.Emergency && now < _abilityReadyAt)
@@ -343,7 +363,14 @@ internal sealed class SupportAgentManager : IDisposable
             if (!ability.Enabled || ability.Role != role)
                 continue;
 
-            if (!_runner.IsOffCooldown(ability, now))
+            if (!ignoreCooldown && !_runner.IsOffCooldown(ability, now))
+                continue;
+
+            if (onlyRenew && !_runner.HasBeenUsed(ability))
+                continue;
+
+            // Still active according to the shard's buff icon: casting again would waste the turn.
+            if (ability.ActiveBuff is { } buff && player.IsBuffIconExists(buff))
                 continue;
 
             if (!_runner.HasRequirements(ability))
@@ -422,13 +449,26 @@ internal sealed class SupportAgentManager : IDisposable
         }
     }
 
-    private Mobile? FindMostHurt(int threshold)
+    /// <summary>
+    /// The most hurt member below <paramref name="threshold" />. The helper and the leader come first; friends
+    /// are only considered when both of them are above the threshold.
+    /// </summary>
+    private Mobile? FindMostHurt(int threshold, uint leaderSerial)
+    {
+        Mobile? priority = FindMostHurt(threshold, member => member == _world.Player || member.Serial == leaderSerial);
+        return priority ?? FindMostHurt(threshold, _ => true);
+    }
+
+    private Mobile? FindMostHurt(int threshold, Func<Mobile, bool> include)
     {
         Mobile? mostHurt = null;
         int lowest = threshold;
 
         foreach (Mobile member in _group)
         {
+            if (!include(member))
+                continue;
+
             int health = HealthPercent(member);
 
             if (health < lowest)
@@ -592,6 +632,7 @@ internal sealed class SupportAgentManager : IDisposable
         _retreating = false;
         _followRequested = false;
         _healRequested = false;
+        _blessRequested = false;
         _castUntil = 0;
         _abilityReadyAt = 0;
         _wasEnabled = false;
@@ -622,6 +663,9 @@ internal sealed class SupportAgentManager : IDisposable
             case SupportRole.Emergency:
                 _status.Show(TazLang.Get("supportagent_status_emergencyability", [ability.Name]), SupportStatus.HUE_DANGER);
                 break;
+            case SupportRole.Bless:
+                _status.Show(TazLang.Get("supportagent_status_blessing", [name]), SupportStatus.HUE_BUFF);
+                break;
         }
     }
 
@@ -637,7 +681,17 @@ internal sealed class SupportAgentManager : IDisposable
             case SupportActionType.Bandage:
                 _status.Problem("bandages", TazLang.Get("supportagent_status_nobandages"));
                 break;
+            case SupportActionType.CastShardSpell when ShardSpellCaster.Instance.GetBookSerial(ability.ShardBook) == 0:
+                _status.Problem("book:" + ability.ShardBook, TazLang.Get("supportagent_status_nobook", [ShardSpellCatalog.Get(ability.ShardBook).Name]));
+                break;
         }
+    }
+
+    private static SupportAgentSave LoadSettings()
+    {
+        SupportAgentSave settings = SupportAgentSave.Load();
+        settings.AddNewPresetAbilities();
+        return settings;
     }
 
     private static string MobileName(Mobile mobile) => string.IsNullOrEmpty(mobile.Name) ? "?" : mobile.Name;
@@ -658,6 +712,8 @@ internal sealed class SupportAgentManager : IDisposable
 
         if (!string.IsNullOrWhiteSpace(settings.Commands.FollowCommand) && e.Text.ContainsIgnoreCase(settings.Commands.FollowCommand))
             _followRequested = true;
+        else if (!string.IsNullOrWhiteSpace(settings.Commands.BlessCommand) && e.Text.ContainsIgnoreCase(settings.Commands.BlessCommand))
+            _blessRequested = true;
         else if (!string.IsNullOrWhiteSpace(settings.Commands.HealCommand) && e.Text.ContainsIgnoreCase(settings.Commands.HealCommand))
             _healRequested = true;
     }
