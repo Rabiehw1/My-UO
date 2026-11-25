@@ -42,6 +42,7 @@ internal sealed class DesktopAgentsWindow
         new(ItemListsTabContent.Title, AgentTab.AgentGroup.ItemLists, ItemListsTabContent.Build),
         new(HotkeysTabContent.Title, AgentTab.AgentGroup.Controls, HotkeysTabContent.Build),
         new(MacrosTabContent.Title, AgentTab.AgentGroup.Controls, MacrosTabContent.Build),
+        new(ShardSpellBooksTabContent.Title, AgentTab.AgentGroup.Controls, ShardSpellBooksTabContent.Build),
         new(FiltersTab.Title, AgentTab.AgentGroup.Settings, FiltersTab.Build),
         new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
     ];
@@ -214,7 +215,7 @@ internal sealed class DesktopAgentsWindow
             VerticalSpacing = 2,
             UniformSizing = false
         };
-        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysTabContent.Title, MacrosTabContent.Title, FiltersTab.Title })
+        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysTabContent.Title, MacrosTabContent.Title, ShardSpellBooksTabContent.Title, FiltersTab.Title })
         {
             var tab = DesktopAssistantTheme.NavigationButton(name, tab: true);
             tab.Click += (_, _) => SelectPage(name);

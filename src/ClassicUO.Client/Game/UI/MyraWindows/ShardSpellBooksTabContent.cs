@@ -4,7 +4,6 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.ShardSpells;
-using ClassicUO.Game.UI.Controls;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -17,9 +16,9 @@ namespace ClassicUO.Game.UI.MyraWindows;
 /// <summary>
 /// Lists the shard spell books. For each book the player picks their own copy, then clicks a spell to place its
 /// icon on screen; the icon casts the spell on double-click. Each spell's gump button can be corrected if a book
-/// doesn't number its buttons in reading order. One instance at a time; game thread only.
+/// doesn't number its buttons in reading order.
 /// </summary>
-public sealed class ShardSpellBooksWindow : MyraControl
+internal static class ShardSpellBooksTabContent
 {
     #region Private members
 
@@ -35,47 +34,18 @@ public sealed class ShardSpellBooksWindow : MyraControl
 
     #endregion
 
-    #region Ctor
+    internal static string Title => TazLang.Get("shardspells_title", "Spell Books");
 
-    private ShardSpellBooksWindow() : base(TazLang.Get("shardspells_title"))
-    {
-        CanBeSaved = false;
-        SetRootContent(BuildContent());
-        CenterInViewPort();
-    }
-
-    #endregion
-
-    #region Public methods
-
-    /// <summary>Opens the window, or brings it to the front if already open.</summary>
-    public static void Show()
-    {
-        foreach (IGui gump in UIManager.Gumps)
-        {
-            if (gump is ShardSpellBooksWindow window && !window.IsDisposed)
-            {
-                window.BringOnTop();
-                return;
-            }
-        }
-
-        UIManager.Add(new ShardSpellBooksWindow());
-    }
-
-    #endregion
-
-    #region Private methods
-
-    private static Widget BuildContent()
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         var root = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING, Padding = new Thickness(6) };
         root.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_intro"), MyraLabel.TextStyle.P) { Wrap = true, MaxWidth = 560 });
         var styleRow = new HorizontalStackPanel { Spacing = 6 };
         var style = new ComboView { MinWidth = 130 };
         Profile profile = ProfileManager.CurrentProfile;
-        style.ListView.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_style_symbols", "Pictograms"), MyraLabel.TextStyle.P));
-        style.ListView.Widgets.Add(new MyraLabel(TazLang.Get("shardspells_style_art", "Illustrations"), MyraLabel.TextStyle.P));
+        // ComboView clones its selected item, so use Myra's cloneable Label.
+        style.ListView.Widgets.Add(new Label { Text = TazLang.Get("shardspells_style_symbols", "Pictograms") });
+        style.ListView.Widgets.Add(new Label { Text = TazLang.Get("shardspells_style_art", "Illustrations") });
         style.ListView.SelectedIndex = profile.UseIllustratedShardSpellIcons ? 1 : 0;
         style.ListView.SelectedIndexChanged += (_, _) =>
         {
@@ -87,12 +57,12 @@ public sealed class ShardSpellBooksWindow : MyraControl
         root.Widgets.Add(styleRow);
 
         foreach (ShardSpellBookInfo book in ShardSpellCatalog.Books)
-            root.Widgets.Add(BuildBook(book));
+            root.Widgets.Add(BuildBook(book, interaction));
 
-        return new ScrollViewer { Content = root, MaxHeight = 600 };
+        return root;
     }
 
-    private static Widget BuildBook(ShardSpellBookInfo book)
+    private static Widget BuildBook(ShardSpellBookInfo book, AgentPageInteraction interaction)
     {
         ShardSpellCaster caster = ShardSpellCaster.Instance;
         var bookLabel = new MyraLabel(BookText(book), MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center };
@@ -100,7 +70,7 @@ public sealed class ShardSpellBooksWindow : MyraControl
         var header = new HorizontalStackPanel { Spacing = 6 };
         header.Widgets.Add(bookLabel);
         header.Widgets.Add(new MyraButton(TazLang.Get("shardspells_pickbook"), () =>
-            AgentPageInteraction.InGame.SelectTarget(target =>
+            interaction.SelectTarget(target =>
             {
                 if (target is Item item)
                 {
@@ -114,7 +84,7 @@ public sealed class ShardSpellBooksWindow : MyraControl
 
         for (int i = 0; i < book.Spells.Count; i++)
         {
-            Widget cell = BuildSpell(book, i);
+            Widget cell = BuildSpell(book, i, interaction);
             Grid.SetColumn(cell, i % SPELLS_PER_ROW);
             Grid.SetRow(cell, i / SPELLS_PER_ROW);
             grid.Widgets.Add(cell);
@@ -123,13 +93,13 @@ public sealed class ShardSpellBooksWindow : MyraControl
         return new VisualContainer(new VisualContainerProps { LabelText = book.Name }, header, grid);
     }
 
-    private static Widget BuildSpell(ShardSpellBookInfo book, int index)
+    private static Widget BuildSpell(ShardSpellBookInfo book, int index, AgentPageInteraction interaction)
     {
         ShardSpell spell = book.Spells[index];
         ShardSpellCaster caster = ShardSpellCaster.Instance;
 
         var cell = new HorizontalStackPanel { Spacing = 2 };
-        cell.Widgets.Add(new MyraButton(spell.Name, () => PlaceIcon(book.Book, index))
+        cell.Widgets.Add(new MyraButton(spell.Name, () => interaction.RunInGame(() => PlaceIcon(book.Book, index)))
         {
             Tooltip = TazLang.Get("shardspells_place_tooltip")
         });
@@ -166,5 +136,4 @@ public sealed class ShardSpellBooksWindow : MyraControl
             : TazLang.Get("shardspells_book_picked", ["0x" + serial.ToString("X8")]);
     }
 
-    #endregion
 }
