@@ -74,11 +74,8 @@ internal static partial class ItemListsTabContent
         var grid = new MyraGrid { ColumnSpacing = 12, MaxWidth = interaction.IsDesktop ? 1040 : 700 };
         grid.AddColumn(new Proportion(ProportionType.Pixels, interaction.IsDesktop ? 202 : 175));
         grid.AddColumn(new Proportion(ProportionType.Fill));
-        // Uniform sizing gives every list button the same size; the narrow sidebar fits two per row.
-        var listActions = new WrapPanel
-        {
-            Orientation = Orientation.Horizontal, HorizontalSpacing = 4, VerticalSpacing = 4, UniformSizing = true
-        };
+        // Two plain rows of two: a wrapping panel reported one row's height here, so the panel cut off the second row.
+        var listActions = new VerticalStackPanel { Spacing = 4 };
         var addActions = Toolbar();
         var transferActions = Toolbar();
         var itemActions = Toolbar();
@@ -127,10 +124,18 @@ internal static partial class ItemListsTabContent
                 Select(copy);
             }
         };
-        foreach (MyraButton button in new[] { create, rename, duplicate, delete })
+        MyraButton[] listButtons = [create, rename, duplicate, delete];
+        for (int i = 0; i < listButtons.Length; i += LIST_BUTTONS_PER_ROW)
         {
-            button.HorizontalAlignment = HorizontalAlignment.Stretch;
-            listActions.Widgets.Add(button);
+            var buttonRow = new HorizontalStackPanel { Spacing = 4 };
+            for (int j = i; j < i + LIST_BUTTONS_PER_ROW && j < listButtons.Length; j++)
+            {
+                if (interaction.IsDesktop)
+                    listButtons[j].MinWidth = LIST_BUTTON_MIN_WIDTH;
+                buttonRow.Widgets.Add(listButtons[j]);
+            }
+
+            listActions.Widgets.Add(buttonRow);
         }
 
         delete.OnClick = () =>
@@ -694,6 +699,10 @@ internal static partial class ItemListsTabContent
     }
 
     private static readonly int[] ItemColumns = [34, 66, 58, 132, 125, 65, 49, 100];
+    private const int LIST_BUTTONS_PER_ROW = 2;
+
+    // About half the desktop Saved lists sidebar (inside its border), so each pair of buttons fills it evenly.
+    private const int LIST_BUTTON_MIN_WIDTH = 88;
     private const int CompactRowHeight = 34;
     private const int CompactVisibleRows = 8;
     private const int ExpandedTableWidth = 790;
