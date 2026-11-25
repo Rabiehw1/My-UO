@@ -10,7 +10,6 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
 using Microsoft.Xna.Framework;
 using Myra.Graphics2D;
-using Myra.Graphics2D.Brushes;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
@@ -45,9 +44,9 @@ internal static class WeaponSwitchListContent
         var weapon = new MyraInputBox { Width = 125 };
         var shield = new MyraInputBox { Width = 125 };
         var bagSummary = Help(DescribeBag());
-        var addMonster = MockupButton("Add Monster", emphasized: true);
-        var addLoadout = MockupButton("Add Loadout", emphasized: true);
-        var setBag = MockupButton("Set Weapon Bag");
+        var addMonster = ActionButton("Add Monster", emphasized: true);
+        var addLoadout = ActionButton("Add Loadout", emphasized: true);
+        var setBag = ActionButton("Set Weapon Bag", emphasized: true);
         bool refreshing = false;
 
         var names = new MyraGrid { RowSpacing = 6, Padding = new Thickness(10) };
@@ -81,7 +80,7 @@ internal static class WeaponSwitchListContent
             Row("Primary", primary),
             Row("Alternate", alternate)));
         var loadoutActions = new HorizontalStackPanel { Spacing = 6 };
-        loadoutActions.Widgets.Add(MockupButton("Save Loadout", SaveLoadout, emphasized: true));
+        loadoutActions.Widgets.Add(ActionButton("Save Loadout", SaveLoadout, emphasized: true));
         loadoutActions.Widgets.Add(addLoadout);
         sections.Widgets.Add(Section("Shared loadouts",
             Help("Set the weapon and optional shield serials used by every monster assigned to this loadout."),
@@ -135,25 +134,12 @@ internal static class WeaponSwitchListContent
             monsterList.SelectedIndex = index < 0 ? 0 : index;
         }
 
-        MyraButton MockupButton(string label, Action? click = null, bool emphasized = false)
+        MyraButton ActionButton(string label, Action? click = null, bool emphasized = false)
         {
-            var button = new MyraButton(label, click) { HorizontalAlignment = HorizontalAlignment.Left };
-            if (!interaction.IsDesktop)
-                return button;
-
-            button.Background = new SolidBrush(emphasized ? new Color(31, 95, 145) : new Color(237, 243, 249));
-            button.OverBackground = new SolidBrush(emphasized ? new Color(27, 83, 127) : new Color(222, 234, 246));
-            button.PressedBackground = button.OverBackground;
-            button.Border = new SolidBrush(emphasized ? new Color(31, 95, 145) : new Color(170, 186, 204));
-            button.Padding = new Thickness(9, 5);
-            button.Margin = new Thickness(0);
-            if (button.Content is Label caption)
-            {
-                caption.Font = DesktopAssistantTheme.Font(bold: true);
-                if (emphasized)
-                    caption.TextColor = Color.White;
-            }
-
+            var button = interaction.IsDesktop
+                ? DesktopAssistantTheme.ActionButton(label, click, primary: emphasized)
+                : new MyraButton(label, click);
+            button.HorizontalAlignment = HorizontalAlignment.Left;
             return button;
         }
 
@@ -202,7 +188,7 @@ internal static class WeaponSwitchListContent
             body.Widgets.Add(Row("Name", name));
             body.Widgets.Add(Row("Body graphic", graphic));
             body.Widgets.Add(Row("Hue", hue));
-            body.Widgets.Add(MockupButton("Target Monster", () => interaction.SelectTarget(selected =>
+            body.Widgets.Add(ActionButton("Target Monster", () => interaction.SelectTarget(selected =>
             {
                 if (selected is not Mobile mobile || mobile.Serial == World.Instance.Player?.Serial)
                 {
@@ -265,7 +251,7 @@ internal static class WeaponSwitchListContent
             var body = new VerticalStackPanel { Spacing = 6, Width = 385 };
             body.Widgets.Add(Help("Target a container in your backpack or enter its serial. Clear the bag to use your backpack."));
             var row = SerialRow("Bag serial", bag, item => item.ItemData.IsContainer, message);
-            row.Widgets.Add(MockupButton("Clear", () => bag.Text = "0"));
+            row.Widgets.Add(ActionButton("Clear", () => bag.Text = "0"));
             body.Widgets.Add(row);
             body.Widgets.Add(message);
             uint serial = 0;
@@ -352,7 +338,7 @@ internal static class WeaponSwitchListContent
         HorizontalStackPanel SerialRow(string label, MyraInputBox input, Func<Item, bool> accepts, MyraLabel? message = null)
         {
             var row = Row(label, input);
-            row.Widgets.Add(MockupButton("Target", () => interaction.SelectTarget(selected =>
+            row.Widgets.Add(ActionButton("Target", () => interaction.SelectTarget(selected =>
             {
                 if (selected is Item item && accepts(item))
                     input.Text = SerialText(item.Serial);

@@ -1,5 +1,7 @@
 #nullable enable
 using System;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using Myra.Graphics2D;
 using Microsoft.Xna.Framework;
 using Myra.Events;
 using Myra.Graphics2D.UI;
@@ -10,6 +12,8 @@ public class LabeledHorizontalSlider : Grid
 {
     private readonly OverlayLabel _valueLabel = new();
     private readonly MyraHorizontalSlider _slider = new();
+    private readonly bool _desktop = DesktopAssistantTheme.Current != null;
+    private string _valueSuffix = "";
 
     public bool RoundValues { get; set; } = true;
 
@@ -72,11 +76,25 @@ public class LabeledHorizontalSlider : Grid
     {
         ColumnsProportions.Add(new Proportion(ProportionType.Auto));
         RowsProportions.Add(new Proportion(ProportionType.Auto));
+        if (_desktop)
+        {
+            ColumnsProportions.Add(new Proportion(ProportionType.Auto));
+            ColumnSpacing = 6;
+        }
 
         _valueLabel.Text = "0";
         _valueLabel.HorizontalAlignment = HorizontalAlignment.Center;
         _valueLabel.VerticalAlignment = VerticalAlignment.Center;
-        _valueLabel.Font = MyraStyle.GetUiFont(-2);
+        _valueLabel.Font = _desktop ? DesktopAssistantTheme.Font(-1, bold: true) : MyraStyle.GetUiFont(-2);
+        if (_desktop)
+        {
+            _valueLabel.MinWidth = 44;
+            _valueLabel.Padding = new Thickness(5, 3);
+            _valueLabel.Background = DesktopAssistantTheme.Canvas;
+            _valueLabel.Border = DesktopAssistantTheme.Divider;
+            _valueLabel.BorderThickness = new Thickness(1);
+            _valueLabel.TextColor = DesktopAssistantTheme.Text;
+        }
 
         _slider.WheelAdjustment = true;
         _slider.WheelStep = 1f;
@@ -93,7 +111,7 @@ public class LabeledHorizontalSlider : Grid
 
         Widgets.Add(_valueLabel);
         SetRow(_valueLabel, 0);
-        SetColumn(_valueLabel, 0);
+        SetColumn(_valueLabel, _desktop ? 1 : 0);
     }
 
     /// <param name="decimalPlaces">Precision to round to. Zero keeps the slider on whole numbers;
@@ -133,11 +151,18 @@ public class LabeledHorizontalSlider : Grid
         float max = 100f,
         float value = 0f,
         bool labelOnLeft = false,
-        int decimalPlaces = 0
+        int decimalPlaces = 0,
+        string valueSuffix = ""
     )
     {
         HorizontalStackPanel stack = new() { VerticalAlignment = VerticalAlignment.Center, Spacing = MyraStyle.STANDARD_SPACING };
         LabeledHorizontalSlider s = slider = CreateSliderWithCallback(min, max, value, onChanged, decimalPlaces);
+        if (s._desktop)
+        {
+            s._valueSuffix = valueSuffix;
+            s._valueLabel.Text = s.FormatValue(s.Value);
+        }
+
         if (labelOnLeft)
         {
             stack.Widgets.Add(new MyraLabel(label, MyraLabel.TextStyle.P));
@@ -153,7 +178,7 @@ public class LabeledHorizontalSlider : Grid
     }
 
     private string FormatValue(float v) =>
-        v == (int)v ? ((int)v).ToString() : v.ToString($"F{Math.Max(DecimalPlaces, 1)}");
+        (v == (int)v ? ((int)v).ToString() : v.ToString($"F{Math.Max(DecimalPlaces, 1)}")) + _valueSuffix;
 
     private sealed class OverlayLabel : Label
     {

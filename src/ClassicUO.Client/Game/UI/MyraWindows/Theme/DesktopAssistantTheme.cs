@@ -115,11 +115,19 @@ internal sealed class DesktopAssistantTheme
         scroll.VerticalScrollKnob = new FlatImage(10, 20, ControlBorder.Color);
 
         var slider = _stylesheet.HorizontalSliderStyle;
-        slider.Height = 22;
-        slider.Background = Sidebar;
-        slider.OverBackground = Hover;
-        slider.DisabledBackground = Disabled;
-        slider.KnobStyle.ImageStyle = new PressableImageStyle { Image = new FlatImage(9, 22, new Color(134, 169, 198)) };
+        slider.Height = 28;
+        slider.Background = null;
+        slider.OverBackground = null;
+        slider.DisabledBackground = null;
+        slider.KnobStyle.Background = null;
+        slider.KnobStyle.OverBackground = null;
+        slider.KnobStyle.PressedBackground = null;
+        slider.KnobStyle.ImageStyle = new PressableImageStyle
+        {
+            Image = new FlatImage(16, 22, Accent),
+            OverImage = new FlatImage(16, 22, PrimaryActionHover.Color),
+            PressedImage = new FlatImage(16, 22, PrimaryActionHover.Color)
+        };
 
         var tabs = _stylesheet.TabControlStyle;
         tabs.CloseButtonStyle = game.TabControlStyle.CloseButtonStyle;
@@ -158,18 +166,39 @@ internal sealed class DesktopAssistantTheme
         _stylesheet.ColorPickerDialogStyle = game.ColorPickerDialogStyle;
     }
 
-    internal static MyraButton ActionButton(string text, Action? click = null) => new(text, click)
+    internal static MyraButton ActionButton(string text, Action? click = null, bool primary = false)
     {
-        Background = GroupFill,
-        OverBackground = Hover,
-        PressedBackground = Selected,
-        DisabledBackground = Disabled,
-        Border = ControlBorder,
-        FocusedBorder = Focus,
-        BorderThickness = new Thickness(1),
-        Padding = new Thickness(7, 3),
-        MinHeight = 24
-    };
+        var button = new MyraButton(text, click);
+        if (Current == null || primary)
+            ApplyActionButtonStyle(button, primary);
+        return button;
+    }
+
+    private static readonly SolidBrush PrimaryAction = new(new Color(31, 95, 145));
+    private static readonly SolidBrush PrimaryActionHover = new(new Color(27, 83, 127));
+    private static readonly SolidBrush SecondaryAction = new(new Color(237, 243, 249));
+    private static readonly SolidBrush SecondaryActionHover = new(new Color(222, 234, 246));
+    private static readonly SolidBrush SecondaryActionBorder = new(new Color(170, 186, 204));
+
+    internal static void ApplyActionButtonStyle(MyraButton button, bool primary = false)
+    {
+        button.Background = primary ? PrimaryAction : SecondaryAction;
+        button.OverBackground = primary ? PrimaryActionHover : SecondaryActionHover;
+        button.PressedBackground = button.OverBackground;
+        button.DisabledBackground = Disabled;
+        button.Border = primary ? PrimaryAction : SecondaryActionBorder;
+        button.FocusedBorder = Focus;
+        button.BorderThickness = new Thickness(1);
+        button.Padding = new Thickness(9, 5);
+        button.Margin = new Thickness(0);
+        button.MinHeight = 30;
+        if (button.Content is Label caption)
+        {
+            caption.Font = Font(bold: true);
+            caption.TextColor = primary ? Color.White : Text;
+            caption.DisabledTextColor = DisabledText;
+        }
+    }
 
     internal static MyraButton NavigationButton(string text, bool tab = false) => new(text)
     {

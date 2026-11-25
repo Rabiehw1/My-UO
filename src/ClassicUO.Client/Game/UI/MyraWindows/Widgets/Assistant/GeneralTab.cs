@@ -46,28 +46,37 @@ public static class GeneralTab
         var root = new MyraGrid { ColumnSpacing = 12 };
         root.AddColumn();
         root.AddColumn(new Proportion(ProportionType.Fill));
-        var picker = new ListView
+        var navigation = new VerticalStackPanel
         {
             Width = DesktopAssistantTheme.SidebarWidth - 14,
             Background = DesktopAssistantTheme.Sidebar,
             VerticalAlignment = VerticalAlignment.Top,
-            Padding = new Thickness(3)
+            Padding = new Thickness(3),
+            Spacing = 2
         };
-        foreach (var section in sections)
-            picker.Widgets.Add(new Label { Text = section.Label });
-
         var content = new Panel();
-        picker.SelectedIndexChanged += (_, _) =>
+        var buttons = new MyraButton[sections.Length];
+        for (int i = 0; i < sections.Length; i++)
         {
-            if (picker.SelectedIndex is int index)
-            {
-                content.Widgets.Clear();
-                content.Widgets.Add(sections[index].Build());
-            }
-        };
-        root.AddWidget(picker, 0, 0);
+            int index = i;
+            var button = DesktopAssistantTheme.NavigationButton(sections[i].Label);
+            button.OnClick = () => Select(index);
+            buttons[i] = button;
+            navigation.Widgets.Add(button);
+        }
+
+        root.AddWidget(navigation, 0, 0);
         root.AddWidget(content, 0, 1);
-        picker.SelectedIndex = 0;
+        Select(0);
+
+        void Select(int index)
+        {
+            for (int i = 0; i < buttons.Length; i++)
+                DesktopAssistantTheme.SelectNavigation(buttons[i], i == index);
+
+            content.Widgets.Clear();
+            content.Widgets.Add(sections[index].Build());
+        }
         return root;
     }
 }

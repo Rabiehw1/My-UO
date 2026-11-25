@@ -2,6 +2,7 @@
 
 using System;
 using System.Collections.Generic;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using FontStashSharp;
 using Myra.Events;
 using Myra.Graphics2D;
@@ -52,10 +53,13 @@ public class MyraButton : Button
 
         OnClick = onClick;
         Margin = new Thickness(2);
-        DisabledBackground = Background;
         VerticalAlignment = VerticalAlignment.Center;
-
         Build();
+
+        if (DesktopAssistantTheme.Current != null)
+            DesktopAssistantTheme.ApplyActionButtonStyle(this);
+        else
+            DisabledBackground = Background;
     }
 
     public override void OnTouchDown(TouchEventArgs args)

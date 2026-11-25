@@ -55,19 +55,23 @@ public static class GeneralTabContent
         leftSide.Widgets.Add(LabeledHorizontalSlider.SliderWithLabel(TazLang.Get("assistant_gamescale"), out LabeledHorizontalSlider gsSlider, v =>
         {
             gameScale = Math.Clamp(v / 100, Constants.MIN_GAME_SCALE, Constants.MAX_GAME_SCALE);
-        }, Constants.MIN_GAME_SCALE * 100, Constants.MAX_GAME_SCALE * 100, Client.Game.RenderScale * 100));
+        }, Constants.MIN_GAME_SCALE * 100, Constants.MAX_GAME_SCALE * 100, Client.Game.RenderScale * 100, valueSuffix: "%"));
         gsSlider.Tooltip = TazLang.Get("assistant_gamescale_tooltip");
 
-        leftSide.Widgets.Add(new MyraButton("Apply scale", () =>
+        void ApplyScale()
         {
             Client.Game.SetScale(gameScale);
             ProfileManager.GlobalSettings.GlobalScale = gameScale;
-        }));
+        }
+
+        leftSide.Widgets.Add(interaction.IsDesktop
+            ? DesktopAssistantTheme.ActionButton("Apply scale", ApplyScale, primary: true)
+            : new MyraButton("Apply scale", ApplyScale));
 
 
         //Right side
         rightSide.Widgets.Add(LabeledHorizontalSlider.SliderWithLabel(TazLang.Get("assistant_objectdelay"), out LabeledHorizontalSlider obDelaySlider,
-            v => profile.MoveMultiObjectDelay = (int)v, 0, 3000, profile.MoveMultiObjectDelay));
+            v => profile.MoveMultiObjectDelay = (int)v, 0, 3000, profile.MoveMultiObjectDelay, valueSuffix: " ms"));
 
         rightSide.Widgets.Add(new MyraButton(TazLang.Get("assistant_autodelaychecker"), () => interaction.RunInGame(() => AutomatedObjectDelay.Begin(() =>
         {
@@ -119,17 +123,18 @@ public static class GeneralTabContent
 
         var grid = new MyraGrid { ColumnSpacing = 10, RowSpacing = 8, MaxWidth = 900 };
         grid.AddColumn(new Proportion(ProportionType.Part, 1), count: 2);
+        grid.AddRow(count: 3);
         Widget[] visuals = leftSide.Widgets.Skip(1).ToArray();
         Widget[] actions = rightSide.Widgets.Skip(1).Take(2).ToArray();
         Widget[] gameplay = rightSide.Widgets.Skip(5).ToArray();
         leftSide.Widgets.Clear();
         rightSide.Widgets.Clear();
-        grid.AddWidget(ScriptExecutorTab.BuildAutorun(), 0, 0, colspan: 2);
+        grid.AddWidget(ScriptExecutorTab.BuildAutorun(), 0, 0);
+        grid.AddWidget(DesktopAssistantTheme.Group("World Map",
+            DesktopAssistantTheme.ActionButton("Open detached map", DetachedWorldMapWindow.Show, primary: true)), 0, 1);
         grid.AddWidget(DesktopAssistantTheme.Group("Visuals", visuals), 1, 0);
         grid.AddWidget(DesktopAssistantTheme.Group("Object timing", actions), 1, 1);
         grid.AddWidget(DesktopAssistantTheme.Group("Game interaction", gameplay), 2, 0, colspan: 2);
-        grid.AddWidget(DesktopAssistantTheme.Group("World Map",
-            new MyraButton("Open detached map", DetachedWorldMapWindow.Show)), 3, 0, colspan: 2);
         return grid;
     }
 
