@@ -197,7 +197,7 @@ internal static class SharedItemListPicker
         }
     }
 
-    private static (ComboView Picker, Action Refresh) CreateSelector(ItemListLibrary library, Guid? selectedId,
+    internal static (ComboView Picker, Action Refresh) CreateSelector(ItemListLibrary library, Guid? selectedId,
         string emptyLabel, bool desktop, Action<Guid?> select)
     {
         var picker = new ComboView { MinWidth = desktop ? 115 : 185, VerticalAlignment = VerticalAlignment.Center };

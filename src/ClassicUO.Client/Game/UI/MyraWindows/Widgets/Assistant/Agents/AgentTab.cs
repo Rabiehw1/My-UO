@@ -26,7 +26,7 @@ public static class AgentTab
 
     internal static AgentPage[] GetPages() =>
     [
-        new(TazLang.Get("assistant_agent_tab_autoloot", "Auto Loot"), AgentGroup.LootAndScavenge, AutoLootAgentTabContent.Build, true),
+        new(AutoLootAgentTabContent.Title, AgentGroup.LootAndScavenge, AutoLootAgentTabContent.Build, true),
         new(TazLang.Get("assistant_agent_tab_scavenger", "Scavenger"), AgentGroup.LootAndScavenge, ScavengerAgentTabContent.Build, true),
         new(TazLang.Get("assistant_agent_tab_dress", "Dress Agent"), AgentGroup.GearAndInventory, DressAgentTabContent.Build),
         new(TazLang.Get("assistant_agent_tab_autobuy", "Auto Buy"), AgentGroup.Vendors, AutoBuyAgentTabContent.Build, true),

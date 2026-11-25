@@ -13,7 +13,7 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
 public static class AutoLootAgentTabContent
 {
-
+    internal static string Title => TazLang.Get("assistant_agent_tab_autoloot");
     public static Widget Build() => Build(AgentPageInteraction.InGame);
 
     internal static Widget Build(AgentPageInteraction interaction)
@@ -26,12 +26,7 @@ public static class AutoLootAgentTabContent
             return new MyraLabel("Auto Loot settings could not be loaded.", MyraLabel.TextStyle.P);
 
         var root = new VerticalStackPanel { Spacing = 8 };
-        root.Widgets.Add(AgentPresetPanel.Build(
-            interaction, "Auto Loot presets", loot.Lists, loot.CurrentList, preset => preset.Name,
-            name => loot.AddPreset(name), loot.RenameList,
-            preset => loot.AddPreset(preset.Name + " Copy", preset), loot.DeleteList,
-            BuildPreset, minimumCount: 1, display: preset =>
-                loot.IsEnabled && ReferenceEquals(preset, loot.CurrentList) ? $"{preset.Name} (running)" : preset.Name));
+        Widget? desktopOptions = null;
 
         // Options
         var showProgress = MyraCheckButton.CreateWithCallback(
@@ -107,7 +102,7 @@ public static class AutoLootAgentTabContent
                 DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(retryLabel, retrySpinner)), disableRetry);
             var skinning = DesktopAssistantTheme.Group(skinningTitle, enableSkinning, skinHumans, targetKnife,
                 DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(skinGraphicsLabel, skinGraphicsBox)));
-            root.Widgets.Add(new DesktopAssistantForm.SectionPair(corpseOptions, skinning));
+            desktopOptions = new DesktopAssistantForm.SectionPair(corpseOptions, skinning);
         }
         else
         {
@@ -125,7 +120,19 @@ public static class AutoLootAgentTabContent
                 skinChecks, GameFieldRow(skinGraphicsLabel, skinGraphicsBox)));
         }
 
+        var presets = AgentPresetPanel.Build(
+            interaction, TazLang.Get(interaction.IsDesktop ? "agent_preset_title" : "autoloot_presets"),
+            loot.Lists, loot.CurrentList, preset => preset.Name,
+            name => loot.AddPreset(name), loot.RenameList,
+            preset => loot.AddPreset(preset.Name + " Copy", preset), loot.DeleteList,
+            BuildPreset, minimumCount: 1, isRunning: IsRunning, desktopOptions: desktopOptions);
+        if (interaction.IsDesktop)
+            return presets;
+
+        root.Widgets.Insert(0, presets);
         return root;
+
+        bool IsRunning(AutoLootManager.AutoLootList preset) => loot.IsEnabled && ReferenceEquals(preset, loot.CurrentList);
 
         Widget BuildPreset(AutoLootManager.AutoLootList? preset, Action<AutoLootManager.AutoLootList?> refresh)
         {
@@ -133,51 +140,27 @@ public static class AutoLootAgentTabContent
             if (preset == null)
                 return details;
 
-            bool running = loot.IsEnabled && ReferenceEquals(preset, loot.CurrentList);
-            string status = running ? "Running" : loot.IsEnabled ? $"Running: {loot.CurrentList.Name}" : "Auto Loot stopped";
-            var controls = AgentPresetPanel.Actions();
-            var start = new MyraButton(running ? "Stop Auto Loot" : "Start Selected", () =>
+            bool running = IsRunning(preset);
+            var start = new MyraButton(TazLang.Get("autoloot_start"), () =>
             {
-                if (running)
-                    loot.SetEnabled(false);
-                else
-                    loot.StartPreset(preset);
+                loot.StartPreset(preset);
                 refresh(preset);
             });
-            if (interaction.IsDesktop && !running)
-                DesktopAssistantTheme.ApplyActionButtonStyle(start, primary: true);
-            controls.Widgets.Add(start);
-            if (!running && loot.IsEnabled)
+            var stop = new MyraButton(TazLang.Get("autoloot_stop"), () =>
             {
-                controls.Widgets.Add(new MyraButton("Stop Auto Loot", () =>
-                {
-                    loot.SetEnabled(false);
-                    refresh(preset);
-                }));
-            }
-
-            details.Widgets.Add(ItemListsTabContent.Section(interaction, preset.Name,
-                new MyraLabel(status, MyraLabel.TextStyle.P), controls));
-            details.Widgets.Add(SharedItemListPicker.BuildGathering(interaction, preset.MainItemListId,
-                id =>
-                {
-                    preset.MainItemListId = id;
-                    loot.SavePreset(preset);
-                },
-                (preset.IgnoreItemListId, id =>
-                {
-                    preset.IgnoreItemListId = id;
-                    loot.SavePreset(preset);
-                })));
+                loot.SetEnabled(false);
+                refresh(preset);
+            });
 
             string bag = preset.GrabBagSerial switch
             {
-                null => profile.GrabBagSerial == 0 ? "Shared grab bag (backpack)" : $"Shared grab bag (0x{profile.GrabBagSerial:X8})",
-                0 => "Backpack",
+                null => TazLang.Get("autoloot_shared_bag_value",
+                    [profile.GrabBagSerial == 0 ? TazLang.Get("autoloot_backpack") : $"0x{profile.GrabBagSerial:X8}"]),
+                0 => TazLang.Get("autoloot_backpack"),
                 uint serial => $"0x{serial:X8}"
             };
             var bagActions = interaction.IsDesktop ? DesktopAssistantForm.Actions() : AgentPresetPanel.Actions();
-            bagActions.Widgets.Add(new MyraButton("Set Grab Bag", () =>
+            var setBag = new MyraButton(TazLang.Get("autoloot_set_grab_bag"), () =>
             {
                 GameActions.Print("Target the loot bag for this preset.");
                 interaction.SelectTarget(target =>
@@ -187,21 +170,79 @@ public static class AutoLootAgentTabContent
                     else
                         GameActions.Print("Select a container in the game.", Constants.HUE_ERROR);
                 });
-            }));
-            bagActions.Widgets.Add(new MyraButton("Use Backpack", () => SetBag(0)) { Enabled = preset.GrabBagSerial != 0 });
-            bagActions.Widgets.Add(new MyraButton("Use Shared Bag", () => SetBag(null)) { Enabled = preset.GrabBagSerial.HasValue });
+            });
+            bagActions.Widgets.Add(new MyraButton(TazLang.Get("autoloot_use_backpack"), () => SetBag(0)) { Enabled = preset.GrabBagSerial != 0 });
+            bagActions.Widgets.Add(new MyraButton(TazLang.Get("autoloot_use_shared_bag"), () => SetBag(null)) { Enabled = preset.GrabBagSerial.HasValue });
             var lootHumans = MyraCheckButton.CreateWithCallback(preset.LootHumanCorpses, value =>
             {
                 preset.LootHumanCorpses = value;
                 loot.SavePreset(preset);
-            }, "Auto Loot Human Corpses");
+            }, TazLang.Get("autoloot_human_corpses"));
             var bagValue = new MyraLabel(bag, MyraLabel.TextStyle.P);
-            Widget bagField = interaction.IsDesktop
-                ? DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("autoloot_grab_bag"), bagValue))
-                : bagValue;
-            details.Widgets.Add(ItemListsTabContent.Section(interaction, TazLang.Get("autoloot_loot_destination"),
-                bagField, bagActions, lootHumans));
+            if (interaction.IsDesktop)
+            {
+                var title = MyraGrid.TableText(preset.Name);
+                title.Font = DesktopAssistantTheme.Font(1, bold: true);
+                title.VerticalAlignment = VerticalAlignment.Center;
+                var controls = DesktopAssistantForm.Actions();
+                controls.HorizontalAlignment = HorizontalAlignment.Right;
+                if (loot.IsEnabled)
+                    controls.Widgets.Add(stop);
+                if (!running)
+                {
+                    DesktopAssistantTheme.ApplyActionButtonStyle(start, primary: true);
+                    controls.Widgets.Add(start);
+                }
+                var header = new MyraGrid { ColumnSpacing = 8 };
+                header.AddColumn(new Proportion(ProportionType.Fill));
+                header.AddColumn();
+                header.AddWidget(title, 0, 0);
+                header.AddWidget(controls, 0, 1);
+                details.Widgets.Add(header);
+
+                var library = ItemListLibrary.Instance;
+                string none = TazLang.Get("autoloot_no_list");
+                var main = SharedItemListPicker.CreateSelector(library, preset.MainItemListId, none, true, SetMainList).Picker;
+                var ignore = SharedItemListPicker.CreateSelector(library, preset.IgnoreItemListId, none, true, SetIgnoreList).Picker;
+                main.MinWidth = ignore.MinWidth = 170;
+                main.MaxWidth = ignore.MaxWidth = 205;
+                var manage = new MyraButton(TazLang.Get("autoloot_manage_lists"), interaction.OpenItemLists);
+                details.Widgets.Add(DesktopAssistantForm.Fields(
+                    new DesktopAssistantForm.Field(TazLang.Get("autoloot_main_list"), main),
+                    new DesktopAssistantForm.Field(TazLang.Get("autoloot_ignore_list"), ignore, manage),
+                    new DesktopAssistantForm.Field(TazLang.Get("autoloot_grab_bag"), bagValue, setBag)));
+                details.Widgets.Add(bagActions);
+                details.Widgets.Add(lootHumans);
+            }
+            else
+            {
+                string status = running ? TazLang.Get("agent_preset_running")
+                    : loot.IsEnabled ? TazLang.Get("autoloot_running_preset", [loot.CurrentList.Name]) : TazLang.Get("autoloot_stopped");
+                var controls = AgentPresetPanel.Actions();
+                controls.Widgets.Add(running ? stop : start);
+                if (!running && loot.IsEnabled)
+                    controls.Widgets.Add(stop);
+                details.Widgets.Add(ItemListsTabContent.Section(interaction, preset.Name,
+                    new MyraLabel(status, MyraLabel.TextStyle.P), controls));
+                details.Widgets.Add(SharedItemListPicker.BuildGathering(interaction, preset.MainItemListId,
+                    SetMainList, (preset.IgnoreItemListId, SetIgnoreList)));
+                bagActions.Widgets.Insert(0, setBag);
+                details.Widgets.Add(ItemListsTabContent.Section(interaction, TazLang.Get("autoloot_loot_destination"),
+                    bagValue, bagActions, lootHumans));
+            }
             return details;
+
+            void SetMainList(Guid? id)
+            {
+                preset.MainItemListId = id;
+                loot.SavePreset(preset);
+            }
+
+            void SetIgnoreList(Guid? id)
+            {
+                preset.IgnoreItemListId = id;
+                loot.SavePreset(preset);
+            }
 
             void SetBag(uint? serial)
             {

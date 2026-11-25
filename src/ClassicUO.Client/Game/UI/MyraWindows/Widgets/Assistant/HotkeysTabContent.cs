@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ClassicUO.Configuration;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -58,9 +59,11 @@ public static class HotkeysTabContent
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
+        if (interaction.IsDesktop)
+            return BuildDesktop(interaction);
+
         var root = new VerticalStackPanel { Spacing = 6 };
-        if (!interaction.IsDesktop)
-            root.Widgets.Add(new MyraLabel(Title, MyraLabel.TextStyle.H2));
+        root.Widgets.Add(new MyraLabel(Title, MyraLabel.TextStyle.H2));
 
         var listPanel = new VerticalStackPanel { Spacing = 1 };
         var filter = new MyraInputBox { HintText = TazLang.Get("hotkeys_filter", "Search hotkeys"), Width = 220 };
@@ -81,32 +84,19 @@ public static class HotkeysTabContent
             List<(HotkeyRow Row, HotkeyBinding Binding)> snapshots =
                 rows.Select(r => (Row: r, Binding: r.GetBinding())).ToList();
 
-            var grid = new MyraGrid { MaxWidth = interaction.IsDesktop ? null : 800 };
+            var grid = new MyraGrid { MaxWidth = 800 };
             string categoryTitle = TazLang.Get("assistant_hotkeys_category");
             string nameTitle = TazLang.Get("mog_kw_name");
             string bindingTitle = TazLang.Get("assistant_hotkeys_binding");
             string conflictTitle = TazLang.Get("assistant_hotkeys_conflicts");
-            if (interaction.IsDesktop)
-            {
-                grid.SetupWithHeaders(
-                    GridColumnInfo.Fill(categoryTitle),
-                    GridColumnInfo.Fill(nameTitle, 2),
-                    GridColumnInfo.Fill(bindingTitle),
-                    GridColumnInfo.Auto(conflictTitle),
-                    GridColumnInfo.Auto(TazLang.Get("agent_col_enabled")),
-                    GridColumnInfo.Auto(TazLang.Get("agent_col_actions")));
-            }
-            else
-            {
-                grid.SetupWithHeaders(
-                    GridColumnInfo.Auto(categoryTitle),
-                    GridColumnInfo.Auto(nameTitle),
-                    GridColumnInfo.Auto(bindingTitle),
-                    GridColumnInfo.Auto(conflictTitle),
-                    GridColumnInfo.Auto(""),
-                    GridColumnInfo.Auto(""),
-                    GridColumnInfo.Auto("On"));
-            }
+            grid.SetupWithHeaders(
+                GridColumnInfo.Auto(categoryTitle),
+                GridColumnInfo.Auto(nameTitle),
+                GridColumnInfo.Auto(bindingTitle),
+                GridColumnInfo.Auto(conflictTitle),
+                GridColumnInfo.Auto(""),
+                GridColumnInfo.Auto(""),
+                GridColumnInfo.Auto("On"));
 
             int row = 1;
             string query = filter.Text?.Trim() ?? "";
@@ -153,38 +143,21 @@ public static class HotkeysTabContent
                     }
                     ShowRowMenu(menuButton, items.ToArray());
                 }) { Tooltip = TazLang.Get("assistant_hotkeys_actions_tooltip") };
-                if (interaction.IsDesktop)
-                {
-                    var actions = new HorizontalStackPanel { Spacing = 4 };
-                    actions.Widgets.Add(setButton);
-                    actions.Widgets.Add(menuButton);
-                    grid.AddWidget(actions, row, 5);
-                }
-                else
-                {
-                    grid.AddWidget(setButton, row, 4);
-                    grid.AddWidget(menuButton, row, 5);
-                }
+                grid.AddWidget(setButton, row, 4);
+                grid.AddWidget(menuButton, row, 5);
 
                 if (localRow.SupportsEnable)
                 {
                     var enabled = MyraCheckButton.CreateWithCallback(
                         localRow.GetEnabled(),
-                        b =>
-                        {
-                            localRow.SetEnabled(b);
-                            if (interaction.IsDesktop)
-                                HotKeys.Save();
-                        },
+                        localRow.SetEnabled,
                         null,
                         "Enable or disable this hotkey");
-                    if (interaction.IsDesktop)
-                        enabled.HorizontalAlignment = HorizontalAlignment.Center;
-                    grid.AddWidget(enabled, row, interaction.IsDesktop ? 4 : 6);
+                    grid.AddWidget(enabled, row, 6);
                 }
                 else
                 {
-                    grid.AddWidget(new MyraLabel(string.Empty, MyraLabel.TextStyle.P), row, interaction.IsDesktop ? 4 : 6);
+                    grid.AddWidget(new MyraLabel(string.Empty, MyraLabel.TextStyle.P), row, 6);
                 }
 
                 row++;
@@ -196,19 +169,11 @@ public static class HotkeysTabContent
 
         void SaveAndRefresh()
         {
-            if (interaction.IsDesktop)
-                HotKeys.Save();
             BuildList();
         }
 
         void StartCapture(Widget anchor, HotkeyRow row)
         {
-            if (interaction.IsDesktop)
-            {
-                CaptureDesktopBinding(interaction, anchor, row, BuildList);
-                return;
-            }
-
             if (_captureWindow is { IsDisposed: false })
             {
                 _captureWindow.BringOnTop();
@@ -232,19 +197,11 @@ public static class HotkeysTabContent
         filter.TextChangedByUser += (_, _) => BuildList();
         topBar.Widgets.Add(filter);
         var resetAll = new MyraButton(TazLang.Get("hotkeys_reset_all", "Reset all"));
-        resetAll.Click += (_, _) =>
-        {
-            if (interaction.IsDesktop)
-                interaction.Confirm(resetAll, resetAll.Text,
-                    TazLang.Get("hotkeys_reset_confirm", "Restore all registered hotkeys to their defaults?"), ResetAll,
-                    confirmText: TazLang.Get("hotkeycapture_reset"));
-            else
-                ResetAll();
-        };
+        resetAll.Click += (_, _) => ResetAll();
         topBar.Widgets.Add(resetAll);
         root.Widgets.Add(topBar);
 
-        root.Widgets.Add(interaction.IsDesktop ? listPanel : new ScrollViewer { Height = 360, Content = listPanel });
+        root.Widgets.Add(new ScrollViewer { Height = 360, Content = listPanel });
 
         return root;
 
@@ -253,6 +210,139 @@ public static class HotkeysTabContent
             foreach (HotKeyEntry entry in HotKeys.AllRegistered())
                 entry.ResetToDefault();
             SaveAndRefresh();
+        }
+    }
+
+    private static Widget BuildDesktop(AgentPageInteraction interaction)
+    {
+        var search = new MyraInputBox { HintText = TazLang.Get("hotkeys_filter"), MinWidth = 180 };
+        var categories = new VerticalStackPanel { Spacing = 2, Background = DesktopAssistantTheme.Sidebar };
+        var results = new VerticalStackPanel { Spacing = 1 };
+        var inspector = new VerticalStackPanel { Spacing = 3, Padding = new Thickness(6), Background = DesktopAssistantTheme.Sidebar };
+        var scroll = new ScrollViewer { Content = results, ShowHorizontalScrollBar = false };
+        string? category = null;
+        object? selection = null;
+        var categoryButtons = new List<(string? Category, MyraButton Button)>();
+        var bindingFilter = new ComboView { MinWidth = 130 };
+        foreach (string key in new[] { "hotkeys_all_bindings", "hotkeys_assigned", "hotkeys_unassigned" })
+            bindingFilter.ListView.Widgets.Add(new Label { Text = TazLang.Get(key) });
+        bindingFilter.ListView.SelectedIndex = 0;
+        GridColumnInfo[] columns =
+        [
+            GridColumnInfo.Fill(TazLang.Get("mog_kw_name"), 3),
+            GridColumnInfo.Fill(TazLang.Get("assistant_hotkeys_binding"), 2),
+            GridColumnInfo.Fill(TazLang.Get("assistant_hotkeys_conflicts"))
+        ];
+        var heading = new MyraGrid { Margin = new Thickness(0, 0, 10, 0) };
+        heading.SetupWithHeaders(columns);
+        var bindings = new MyraGrid { RowSpacing = 0 };
+        bindings.AddRow();
+        bindings.AddRow(new Proportion(ProportionType.Fill));
+        bindings.AddWidget(heading, 0, 0);
+        bindings.AddWidget(scroll, 1, 0);
+
+        var reset = DesktopAssistantTheme.ActionButton(TazLang.Get("hotkeys_reset_all"));
+        reset.Click += (_, _) => interaction.Confirm(reset, reset.Text, TazLang.Get("hotkeys_reset_confirm"), () =>
+        {
+            foreach (HotKeyEntry entry in HotKeys.AllRegistered())
+                entry.ResetToDefault();
+            Save();
+        });
+        bindingFilter.ListView.SelectedIndexChanged += (_, _) => Refresh(resetScroll: true);
+        search.TextChangedByUser += (_, _) => Refresh(resetScroll: true);
+        var toolbar = DesktopAssistantForm.Actions(search, bindingFilter, reset);
+
+        var layout = new MyraGrid { ColumnSpacing = 8, RowSpacing = 5 };
+        layout.AddColumn(new Proportion(ProportionType.Pixels, DesktopAssistantTheme.SidebarWidth));
+        layout.AddColumn(new Proportion(ProportionType.Fill));
+        layout.AddRow();
+        layout.AddRow(new Proportion(ProportionType.Fill));
+        layout.AddRow();
+        layout.AddWidget(new ScrollViewer { Content = categories, ShowHorizontalScrollBar = false }, 0, 0, rowspan: 3);
+        layout.AddWidget(toolbar, 0, 1);
+        layout.AddWidget(bindings, 1, 1);
+        layout.AddWidget(inspector, 2, 1);
+        foreach (string? name in new string?[] { null }.Concat(BuildRows().Select(row => row.Category).Distinct()))
+        {
+            var button = DesktopAssistantTheme.NavigationButton(name ?? TazLang.Get("hotkeys_all_categories"));
+            button.Click += (_, _) =>
+            {
+                category = name;
+                selection = null;
+                Refresh(resetScroll: true);
+            };
+            categories.Widgets.Add(button);
+            categoryButtons.Add((name, button));
+        }
+
+        Refresh();
+        return layout;
+
+        void Save()
+        {
+            HotKeys.Save();
+            Refresh();
+        }
+
+        void Refresh(bool resetScroll = false)
+        {
+            foreach (var entry in categoryButtons)
+                DesktopAssistantTheme.SelectNavigation(entry.Button, entry.Category == category);
+
+            string query = search.Text?.Trim() ?? "";
+            var all = BuildRows().Select(row => (Row: row, Binding: row.GetBinding())).ToList();
+            int mode = bindingFilter.ListView.SelectedIndex ?? 0;
+            var visible = all.Where(entry => (category == null || category == entry.Row.Category)
+                && (mode == 0 || entry.Binding.IsEmpty == (mode == 2))
+                && (entry.Row.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || entry.Row.Category.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || entry.Binding.Describe().Contains(query, StringComparison.OrdinalIgnoreCase))).ToList();
+            HotkeyRow? selected = visible.FirstOrDefault(entry => ReferenceEquals(entry.Row.Source, selection)).Row;
+            selected ??= visible.FirstOrDefault().Row;
+            selection = selected?.Source;
+            results.Widgets.Clear();
+            var grid = new MyraGrid();
+            MyraStyle.ApplyStandardGridStyling(grid);
+            grid.AddTableColumns(columns);
+            int index = 0;
+            foreach (var (row, binding) in visible)
+            {
+                var name = DesktopAssistantTheme.NavigationButton(row.Name);
+                name.Tooltip = row.Category;
+                name.Click += (_, _) => { selection = row.Source; Refresh(); };
+                DesktopAssistantTheme.SelectNavigation(name, ReferenceEquals(row, selected));
+                string description = binding.IsEmpty ? TazLang.Get("hotkeys_unassigned") : binding.Describe();
+                if (!binding.IsEmpty && row.SupportsEnable && !row.GetEnabled())
+                    description = TazLang.Get("hotkeys_disabled_binding", [description]);
+                var conflicts = all.Where(other => !ReferenceEquals(row, other.Row) && row.CheckConflicts
+                    && other.Row.CheckConflicts && !binding.IsEmpty && binding.Matches(other.Binding))
+                    .Select(other => other.Row.Name).ToArray();
+                grid.AddWidget(name, index, 0);
+                grid.AddWidget(MyraGrid.TableText(description), index, 1);
+                grid.AddWidget(MyraGrid.TableText(string.Join(", ", conflicts)), index++, 2);
+            }
+            results.Widgets.Add(index > 0 ? grid : new MyraLabel(TazLang.Get("hotkeys_no_matches"), MyraLabel.TextStyle.P));
+            if (resetScroll)
+                scroll.ResetScroll();
+
+            inspector.Widgets.Clear();
+            inspector.Visible = selected != null;
+            if (selected == null)
+                return;
+
+            var bindingValue = selected.GetBinding();
+            inspector.Widgets.Add(new MyraLabel($"{selected.Name} · {bindingValue.Describe()}", MyraLabel.TextStyle.P));
+            var set = DesktopAssistantTheme.ActionButton(TazLang.Get("hotkeys_set_shortcut"), primary: true);
+            set.Click += (_, _) => CaptureDesktopBinding(interaction, set, selected, () => Refresh());
+            var clear = DesktopAssistantTheme.ActionButton(TazLang.Get("mog_kw_clear"), () => { selected.ClearBinding(); Save(); });
+            clear.Enabled = !bindingValue.IsEmpty;
+            var actions = DesktopAssistantForm.Actions(set, clear);
+            if (selected.ResetBinding is Action restore)
+                actions.Widgets.Add(DesktopAssistantTheme.ActionButton(TazLang.Get("hotkeycapture_reset"), () => { restore(); Save(); }));
+            if (selected.SupportsEnable && !bindingValue.IsEmpty)
+                actions.Widgets.Add(MyraCheckButton.CreateWithCallback(selected.GetEnabled(),
+                    enabled => { selected.SetEnabled(enabled); Save(); }, TazLang.Get("hotkeys_enable_shortcut")));
+            inspector.Widgets.Add(actions);
         }
     }
 

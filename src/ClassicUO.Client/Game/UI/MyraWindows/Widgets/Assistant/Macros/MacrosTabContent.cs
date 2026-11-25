@@ -63,8 +63,15 @@ public static class MacrosTabContent
         // ── Panel references ─────────────────────────────────────────────────
         var macroListPanel = new VerticalStackPanel { Spacing = 1 };
         var editorPanel    = new VerticalStackPanel { Spacing = 4 };
+        var editorLayout = new MyraGrid { RowSpacing = 4 };
+        editorLayout.AddRow();
+        editorLayout.AddRow(new Proportion(ProportionType.Fill));
+        editorLayout.AddRow();
         var hotkeyRow      = new HorizontalStackPanel { Spacing = 4 };
         var actionsPanel   = new VerticalStackPanel { Spacing = 2 };
+        var actionScroll = new ScrollViewer();
+        if (interaction.IsDesktop)
+            actionScroll.Content = actionsPanel;
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false, Wrap = true };
 
         // ── Helpers ──────────────────────────────────────────────────────────
@@ -102,10 +109,14 @@ public static class MacrosTabContent
             }
 
             var grid = new MyraGrid();
-            grid.SetupWithHeaders(
+            if (interaction.IsDesktop)
+                grid.SetupWithHeaders(GridColumnInfo.Fill(TazLang.Get("macrostab_col_name")),
+                    GridColumnInfo.Auto(TazLang.Get("macrostab_col_hotkey")));
+            else
+                grid.SetupWithHeaders(
                 GridColumnInfo.Fill(TazLang.Get("macrostab_col_name")),
                 GridColumnInfo.Auto(TazLang.Get("macrostab_col_hotkey")),
-                GridColumnInfo.Auto(TazLang.Get(interaction.IsDesktop ? "agent_col_actions" : "macrostab_col_edit"))
+                GridColumnInfo.Auto(TazLang.Get("macrostab_col_edit"))
             );
 
             int dataRow = 1;
@@ -113,28 +124,43 @@ public static class MacrosTabContent
             {
                 Macro captured = macro;
 
-                grid.AddWidget(MyraGrid.TableText(macro.Name), dataRow, 0);
-                grid.AddWidget(MyraGrid.TableText(macro.GetBinding().Describe()), dataRow, 1);
-                grid.AddWidget(new MyraButton(TazLang.Get("macrostab_col_edit"), () =>
+                if (interaction.IsDesktop)
                 {
-                    selectedMacro = captured;
-                    BuildMacroList();
-                    BuildEditor();
-                }), dataRow, 2);
+                    var select = DesktopAssistantTheme.NavigationButton(macro.Name);
+                    select.Click += (_, _) => SelectMacro(captured);
+                    DesktopAssistantTheme.SelectNavigation(select, ReferenceEquals(macro, selectedMacro));
+                    grid.AddWidget(select, dataRow, 0);
+                }
+                else
+                    grid.AddWidget(MyraGrid.TableText(macro.Name), dataRow, 0);
+                grid.AddWidget(MyraGrid.TableText(macro.GetBinding().Describe()), dataRow, 1);
+                if (!interaction.IsDesktop)
+                    grid.AddWidget(new MyraButton(TazLang.Get("macrostab_col_edit"), () => SelectMacro(captured)), dataRow, 2);
                 dataRow++;
             }
 
             macroListPanel.Widgets.Add(grid);
         }
 
+        void SelectMacro(Macro macro)
+        {
+            selectedMacro = macro;
+            actionScroll.ResetScroll();
+            BuildMacroList();
+            BuildEditor();
+        }
+
         // ── BuildEditor ───────────────────────────────────────────────────────
         void BuildEditor()
         {
             editorPanel.Widgets.Clear();
+            editorLayout.Widgets.Clear();
 
             if (selectedMacro == null)
             {
                 editorPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_selectmacro"), MyraLabel.TextStyle.H3));
+                if (interaction.IsDesktop)
+                    editorLayout.AddWidget(editorPanel, 0, 0);
                 return;
             }
 
@@ -204,12 +230,11 @@ public static class MacrosTabContent
             editorPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_actions"), MyraLabel.TextStyle.P));
 
             BuildActionsPanel();
-            editorPanel.Widgets.Add(interaction.IsDesktop ? actionsPanel : new ScrollViewer { MaxHeight = 250, Content = actionsPanel });
-
-            editorPanel.Widgets.Add(new MyraSpacer(10, 1));
+            if (!interaction.IsDesktop)
+                editorPanel.Widgets.Add(new ScrollViewer { MaxHeight = 250, Content = actionsPanel });
 
             var bottomRow = new HorizontalStackPanel { Spacing = 2 };
-            bottomRow.Widgets.Add(new MyraButton(TazLang.Get("macrostab_addaction"), () =>
+            var addAction = new MyraButton(TazLang.Get("macrostab_addaction"), () =>
             {
                 MacroObject newAction = Macro.Create(MacroType.Say);
                 var scanAction = (MacroObject)macro.Items;
@@ -228,7 +253,10 @@ public static class MacrosTabContent
                 }
                 MarkDirty();
                 BuildActionsPanel();
-            }));
+            });
+            if (interaction.IsDesktop)
+                DesktopAssistantTheme.ApplyActionButtonStyle(addAction, primary: true);
+            bottomRow.Widgets.Add(addAction);
 
             bottomRow.Widgets.Add(new MyraButton(TazLang.Get("macrostab_addloop"), () =>
             {
@@ -267,7 +295,14 @@ public static class MacrosTabContent
             };
             bottomRow.Widgets.Add(delete);
 
-            editorPanel.Widgets.Add(bottomRow);
+            if (interaction.IsDesktop)
+            {
+                editorLayout.AddWidget(editorPanel, 0, 0);
+                editorLayout.AddWidget(actionScroll, 1, 0);
+                editorLayout.AddWidget(bottomRow, 2, 0);
+            }
+            else
+                editorPanel.Widgets.Add(bottomRow);
         }
 
         // ── BuildHotkeyRow ────────────────────────────────────────────────────
@@ -362,7 +397,7 @@ public static class MacrosTabContent
                     MacroObject capturedAction = action;
                     int capturedIndex = actionIndex;
 
-                    HorizontalStackPanel row = BuildActionRow(
+                    Container row = BuildActionRow(
                         capturedAction,
                         $"{capturedIndex + 1}.",
                         onTypeReplace: newAction =>
@@ -401,14 +436,16 @@ public static class MacrosTabContent
                     MyraLabel.TextStyle.P) { Wrap = true });
         }
 
-        HorizontalStackPanel BuildActionRow(
+        Container BuildActionRow(
             MacroObject action,
             string indexLabel,
             Action<MacroObject> onTypeReplace,   // combo changed -> swap + rebuild
             Action<MacroObject> onTextReplace,   // text typed on non-string action -> swap silently
             Action onRemove)
         {
-            var row = new HorizontalStackPanel { Spacing = 2 };
+            Container row = interaction.IsDesktop
+                ? new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 3, UniformSizing = false }
+                : new HorizontalStackPanel { Spacing = 2 };
             row.Widgets.Add(new MyraLabel(indexLabel, MyraLabel.TextStyle.P));
 
             MacroObject capturedAction = action;
@@ -529,7 +566,7 @@ public static class MacrosTabContent
             return row;
         }
 
-        void AddSpellSelectors(HorizontalStackPanel row, MacroObject action, Action<MacroObject> replace)
+        void AddSpellSelectors(Container row, MacroObject action, Action<MacroObject> replace)
         {
             string selectSpell = TazLang.Get("macrostab_select_spell", "Select spell");
             var bookPicker = new ContainsLevenshteinComboBox
@@ -651,7 +688,7 @@ public static class MacrosTabContent
                 MacroObject capturedInnerAction = innerAction.Value;
                 int capturedInnerIndex = innerIndex;
 
-                HorizontalStackPanel row = BuildActionRow(
+                Container row = BuildActionRow(
                     capturedInnerAction,
                     $"  {loopIndex + 1}.{capturedInnerIndex + 1}.",
                     onTypeReplace: newAction =>
@@ -716,6 +753,8 @@ public static class MacrosTabContent
         });
         if (interaction.IsDesktop)
             DesktopAssistantTheme.ApplyActionButtonStyle(addMacroButton, primary: true);
+        if (interaction.IsDesktop)
+            DesktopAssistantTheme.ApplyActionButtonStyle(addMacroButton, primary: true);
         toolbar.Widgets.Add(addMacroButton);
 
         toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_moveup"), () =>
@@ -762,17 +801,33 @@ public static class MacrosTabContent
         toolbar.Widgets.Add(filterBox);
 
         // ── Main layout ───────────────────────────────────────────────────────
-        StackPanel mainArea = interaction.IsDesktop
-            ? new VerticalStackPanel { Spacing = 4 }
-            : new HorizontalStackPanel { Spacing = 4 };
-
-        var listScroll = new ScrollViewer { MaxHeight = interaction.IsDesktop ? 160 : 450, Content = macroListPanel };
-        mainArea.Widgets.Add(listScroll);
-        mainArea.Widgets.Add(editorPanel);
-
         BuildMacroList();
         BuildEditor();
 
+        if (interaction.IsDesktop)
+        {
+            var layout = new MyraGrid { RowSpacing = 4, ColumnSpacing = 8 };
+            layout.AddColumn(new Proportion(ProportionType.Part, 1));
+            layout.AddColumn(new Proportion(ProportionType.Part, 2));
+            layout.AddRow();
+            layout.AddRow();
+            layout.AddRow(new Proportion(ProportionType.Fill));
+            toolbar.Widgets.Remove(filterBox);
+            layout.AddWidget(filterBox, 0, 0, colspan: 2);
+            layout.AddWidget(status, 1, 0, colspan: 2);
+            var library = new MyraGrid { RowSpacing = 4 };
+            library.AddRow(new Proportion(ProportionType.Fill));
+            library.AddRow();
+            library.AddWidget(new ScrollViewer { Content = macroListPanel }, 0, 0);
+            library.AddWidget(toolbar, 1, 0);
+            layout.AddWidget(library, 2, 0);
+            layout.AddWidget(editorLayout, 2, 1);
+            return layout;
+        }
+
+        var mainArea = new HorizontalStackPanel { Spacing = 4 };
+        mainArea.Widgets.Add(new ScrollViewer { MaxHeight = 450, Content = macroListPanel });
+        mainArea.Widgets.Add(editorPanel);
         var root = new VerticalStackPanel { Spacing = 2 };
         root.Widgets.Add(toolbar);
         root.Widgets.Add(status);
