@@ -37,6 +37,11 @@ namespace ClassicUO.Game.Managers
 
         private List<BuySellItemConfig> sellItems;
         private List<BuySellItemConfig> buyItems;
+        private ShopListSave shopLists;
+
+        /// <summary>The character's buy and sell lists; each agent uses its side's active list.</summary>
+        public ShopListSave ShopLists =>
+            shopLists ??= ShopListSave.LoadOrMigrate(ProfileManager.CurrentProfile, buyItems, sellItems);
 
         private readonly Dictionary<uint, VendorSellInfo> sellPackets = new Dictionary<uint, VendorSellInfo>();
         public static void Load()
@@ -156,6 +161,8 @@ namespace ClassicUO.Game.Managers
                     FileSystemHelper.WriteAllTextSafe(savePath, JsonSerializer.Serialize(Instance.sellItems, BuySellAgentJsonContext.Default.ListBuySellItemConfig));
                 }
 
+                Instance.shopLists?.Save();
+
                 if (Instance.buyItems != null)
                 {
                     string savePath = Path.Combine(ProfileManager.ProfilePath, "BuyAgentConfig.json");
@@ -170,8 +177,8 @@ namespace ClassicUO.Game.Managers
         {
             if (!ProfileManager.CurrentProfile.BuyAgentEnabled) return;
 
-            Profile profile = ProfileManager.CurrentProfile;
-            if (buyItems == null && profile.AutoBuySharedItemListId == null) return;
+            // Only the active buy list is used.
+            if (ShopLists.Buy.GetActive() is not { } activeList) return;
 
             var buyList = new List<Tuple<uint, ushort>>();
             long val = 0;
@@ -182,13 +189,12 @@ namespace ClassicUO.Game.Managers
             int max_unique_items = ProfileManager.CurrentProfile.BuyAgentMaxUniques;
             bool limit_unique_items = max_unique_items > 0;
 
-            // A list item without a buy rule yet takes as many as the vendor has.
-            foreach (BuySellItemConfig buyConfigEntry in GetRules(profile.AutoBuySharedItemListId, buyItems, ushort.MaxValue))
+            foreach (BuySellItemConfig buyConfigEntry in activeList.SyncRules())
             {
                 if (!buyConfigEntry.Enabled) continue;
 
                 ushort current_count = 0;
-                ushort maxToBuy = profile.BuyAgentBuyAll ? ushort.MaxValue : buyConfigEntry.MaxAmount;
+                ushort maxToBuy = activeList.TakeAll ? ushort.MaxValue : buyConfigEntry.MaxAmount;
 
                 // Check restock functionality
                 if (buyConfigEntry.RestockUpTo > 0)
@@ -241,10 +247,6 @@ namespace ClassicUO.Game.Managers
             UIManager.GetGump(shopSerial)?.Dispose();
         }
 
-        private static IEnumerable<BuySellItemConfig> GetRules(Guid? id, List<BuySellItemConfig> local, ushort defaultAmount) =>
-            ItemListLibrary.Rules(id, local, static rule => (rule.Graphic, rule.Hue),
-                item => new BuySellItemConfig { Graphic = item.Graphic, Hue = item.Hue, MaxAmount = defaultAmount });
-
         private ushort GetItemCount(ushort graphic, ushort hue, Item container = null)
         {
             Item searchContainer = container ?? World.Instance.Player?.Backpack;
@@ -284,8 +286,8 @@ namespace ClassicUO.Game.Managers
         {
             if (!ProfileManager.CurrentProfile.SellAgentEnabled) return;
 
-            Profile profile = ProfileManager.CurrentProfile;
-            if (sellItems == null && profile.AutoSellSharedItemListId == null)
+            // Only the active sell list is used.
+            if (ShopLists.Sell.GetActive() is not { } activeList)
             {
                 sellPackets.Remove(vendorSerial);
                 return;
@@ -300,11 +302,12 @@ namespace ClassicUO.Game.Managers
             int max_unique_items = ProfileManager.CurrentProfile.SellAgentMaxUniques;
             bool limit_unique_items = max_unique_items > 0;
 
-            foreach (BuySellItemConfig sellConfig in GetRules(profile.AutoSellSharedItemListId, sellItems, profile.AutoSellSharedItemMaxAmount))
+            foreach (BuySellItemConfig sellConfig in activeList.SyncRules())
             {
                 if (!sellConfig.Enabled) continue;
 
                 ushort current_count = 0;
+                ushort maxToSell = activeList.TakeAll ? ushort.MaxValue : sellConfig.MaxAmount;
 
                 // Check minimum on hand logic
                 ushort backpackTotal = 0;
@@ -321,13 +324,13 @@ namespace ClassicUO.Game.Managers
                 {
                     if (!sellConfig.IsMatch(item.Graphic, item.Hue)) continue;
 
-                    if (current_count >= sellConfig.MaxAmount) continue;
+                    if (current_count >= maxToSell) continue;
 
                     if (limit_unique_items && unique_items >= max_unique_items) break;
 
                     if (limit_total_items && current_count + total_count >= max_total_items) break;
 
-                    int amount_sellable = Math.Min(item.Amount, sellConfig.MaxAmount - current_count);
+                    int amount_sellable = Math.Min(item.Amount, maxToSell - current_count);
                     if (limit_total_items)
                     {
                         amount_sellable = Math.Min(amount_sellable, max_total_items - total_count - current_count);

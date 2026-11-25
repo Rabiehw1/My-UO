@@ -37,7 +37,7 @@ internal static class SharedItemListPicker
 
     public static Widget Build(AgentPageInteraction interaction, string agentName, Guid? selectedId, Action<Guid?> select,
         Func<IEnumerable<SharedItem>> localItems, Func<SharedItem, bool> createLocalRule, Action refreshLocal, Widget? defaults = null,
-        (Guid? SelectedId, Action<Guid?> Select)? ignoreList = null, string? includedAction = null, bool autoCopy = false)
+        (Guid? SelectedId, Action<Guid?> Select)? ignoreList = null, string? includedAction = null)
     {
         var root = new VerticalStackPanel { Spacing = 4 };
         var settings = new VerticalStackPanel { Spacing = 4 };
@@ -66,9 +66,7 @@ internal static class SharedItemListPicker
                 TazLang.Get("shopping_existing_local"));
         });
         copy.Tooltip = TazLang.Get("shopping_copy_local_tooltip");
-        // With autoCopy the list's items become rules as soon as it's picked, so there's nothing to copy by hand.
-        if (!autoCopy)
-            actions.Widgets.Add(copy);
+        actions.Widgets.Add(copy);
 
         var (picker, refreshMainChoices) = CreateSelector(library, selectedId, TazLang.Get("shopping_local_entries"), interaction.IsDesktop, id =>
         {
@@ -138,15 +136,12 @@ internal static class SharedItemListPicker
         {
             var list = selectedId.HasValue ? library.Find(selectedId.Value) : null;
             copy.Enabled = list?.Items is { Count: > 0 };
-            if (autoCopy && list?.Items is { Count: > 0 } listItems
-                && listItems.Count(item => item != null && createLocalRule(item)) > 0)
-                refreshLocal();
             if (defaults != null)
                 defaults.Visible = list != null;
             help.Visible = selectedId.HasValue;
             help.Text = list == null
                 ? TazLang.Get("shopping_missing_list")
-                : TazLang.Get(autoCopy ? "shopping_autocopy_help" : "shopping_shared_help");
+                : TazLang.Get("shopping_shared_help");
 
             if (preview != null)
             {

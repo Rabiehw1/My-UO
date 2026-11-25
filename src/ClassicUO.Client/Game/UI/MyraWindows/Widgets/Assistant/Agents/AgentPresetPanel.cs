@@ -18,7 +18,7 @@ internal static class AgentPresetPanel
         AgentPageInteraction interaction, string title, IReadOnlyList<T> presets, T? initial,
         Func<T, string> name, Func<string, T?> create, Action<T, string> rename, Func<T, T?> copy,
         Func<T, bool> remove, Func<T?, Action<T?>, Widget> buildDetails, int minimumCount = 0,
-        Func<T, bool>? isRunning = null, Widget? desktopOptions = null) where T : class
+        Func<T, bool>? isRunning = null, Widget? desktopOptions = null, string? runningText = null) where T : class
     {
         bool fullHeight = interaction.IsDesktop && desktopOptions != null;
         T? selected = null;
@@ -144,7 +144,7 @@ internal static class AgentPresetPanel
                     label.VerticalAlignment = VerticalAlignment.Center;
                     row.AddWidget(label, 0, 0);
                     if (running)
-                        row.AddWidget(new MyraLabel(TazLang.Get("agent_preset_running"), MyraLabel.TextStyle.P)
+                        row.AddWidget(new MyraLabel(runningText ?? TazLang.Get("agent_preset_running"), MyraLabel.TextStyle.P)
                         {
                             TextColor = new Color(43, 108, 73), VerticalAlignment = VerticalAlignment.Center
                         }, 0, 1);
@@ -152,7 +152,9 @@ internal static class AgentPresetPanel
                 }
                 else
                 {
-                    string caption = running ? TazLang.Get("agent_preset_running_name", [name(preset)]) : name(preset);
+                    string caption = !running ? name(preset)
+                        : runningText != null ? $"{name(preset)} ({runningText})"
+                        : TazLang.Get("agent_preset_running_name", [name(preset)]);
                     picker.Widgets.Add(new Label { Text = caption });
                 }
             }
