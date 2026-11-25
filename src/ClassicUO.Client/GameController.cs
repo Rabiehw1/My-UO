@@ -270,6 +270,11 @@ namespace ClassicUO
                 SDL.SDL_HideWindow(Window.Handle);
                 DesktopAgentsWindow.ShowLauncher();
             }
+            else if (LauncherSave.Current.OpenAssistantWithClient)
+            {
+                // Each game window brings its own Assistant; it switches to the character once logged in.
+                DesktopAgentsWindow.Show(Game.UI.MyraWindows.Widgets.Assistant.GeneralTab.Title);
+            }
 
             Console.WriteLine("|--------------------------------------------------------------|");
             Console.WriteLine("                             READY");
