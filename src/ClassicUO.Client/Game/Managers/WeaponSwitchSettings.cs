@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -131,6 +132,7 @@ internal sealed class WeaponSwitchSettings : JsonSave<WeaponSwitchSettings>, INo
     public uint WeaponBag { get; set; }
     public WeaponLoadout DefaultLoadout { get; set; } = WeaponLoadout.Sword;
     public Dictionary<WeaponLoadout, WeaponSet> Loadouts { get; set; } = new();
+    public Dictionary<WeaponLoadout, string> CustomLoadouts { get; set; } = [];
     public List<WeaponSwitchMonster> CustomMonsters { get; set; } = [];
     public Dictionary<string, MonsterLoadouts> Assignments { get; set; } = new();
 
@@ -159,6 +161,23 @@ internal sealed class WeaponSwitchSettings : JsonSave<WeaponSwitchSettings>, INo
         CustomMonsters.Add(new(graphic, hue, name.Trim(), DefaultLoadout));
         Save();
         return true;
+    }
+
+    public IEnumerable<WeaponLoadout> GetLoadouts() => Enum.GetValues<WeaponLoadout>().Concat(CustomLoadouts.Keys);
+
+    public string GetLoadoutLabel(WeaponLoadout loadout) =>
+        CustomLoadouts.GetValueOrDefault(loadout) ?? WeaponSwitchCatalog.Label(loadout);
+
+    public bool CanAddLoadout(string name) => !string.IsNullOrWhiteSpace(name)
+        && !name.Trim().Equals("None", StringComparison.OrdinalIgnoreCase)
+        && !GetLoadouts().Any(loadout => GetLoadoutLabel(loadout).Equals(name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public WeaponLoadout AddLoadout(string name)
+    {
+        var id = (WeaponLoadout)(Math.Max(999, GetLoadouts().Max(loadout => (int)loadout)) + 1);
+        CustomLoadouts.Add(id, name.Trim());
+        Save();
+        return id;
     }
 
     public WeaponSet GetSet(WeaponLoadout loadout) => Loadouts.GetValueOrDefault(loadout) ?? new();

@@ -5,6 +5,7 @@ using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
@@ -23,13 +24,31 @@ internal static class ItemListsTabContent
         tabs.AddTab(TazLang.Get("assistant_general_tab_friends", "Friends"), () => FriendsListTabContent.Build(interaction), rebuildOnSelect: true);
         tabs.AddTab("Weapon Switch", () => WeaponSwitchListContent.Build(interaction), rebuildOnSelect: true);
         tabs.SelectFirst();
+        UpdateTabColors();
         tabs.SelectedIndexChanged += (_, _) =>
         {
             interaction.CancelDialog();
             interaction.CancelTarget();
+            UpdateTabColors();
         };
         return interaction.IsDesktop ? tabs
             : new ScrollViewer { Content = tabs, MaxHeight = Math.Max(180, ScaleHelper.LogicalWindowHeight - 140) };
+
+        void UpdateTabColors()
+        {
+            if (!interaction.IsDesktop)
+                return;
+
+            foreach (var item in tabs.Items)
+            {
+                bool selected = ReferenceEquals(item, tabs.SelectedItem);
+                if (tabs.FindChild<Widget>(widget => ReferenceEquals(widget.Tag, item))?.FindChild<Label>() is { } caption)
+                {
+                    caption.TextColor = selected ? DesktopAssistantTheme.Accent : DesktopAssistantTheme.Text;
+                    caption.Font = DesktopAssistantTheme.Font(bold: selected);
+                }
+            }
+        }
     }
 
     private static Widget BuildItems(AgentPageInteraction interaction)

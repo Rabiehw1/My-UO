@@ -10,6 +10,7 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
 using Microsoft.Xna.Framework;
 using Myra.Graphics2D;
+using Myra.Graphics2D.Brushes;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
@@ -21,8 +22,8 @@ internal static class WeaponSwitchListContent
         if (GameScene.Instance?.WeaponSwitch.Settings is not { } settings)
             return new MyraLabel("Log in to configure weapon switching.", MyraLabel.TextStyle.P);
 
-        WeaponLoadout[] loadouts = Enum.GetValues<WeaponLoadout>();
-        string[] labels = loadouts.Select(WeaponSwitchCatalog.Label).ToArray();
+        WeaponLoadout[] loadouts = settings.GetLoadouts().ToArray();
+        string[] labels = loadouts.Select(settings.GetLoadoutLabel).ToArray();
         WeaponSwitchMonster[] monsters = [];
 
         var root = new VerticalStackPanel { Spacing = 8 };
@@ -44,15 +45,19 @@ internal static class WeaponSwitchListContent
         var weapon = new MyraInputBox { Width = 125 };
         var shield = new MyraInputBox { Width = 125 };
         var bagSummary = Help(DescribeBag());
-        var addMonster = new MyraButton("Add Monster");
-        var setBag = new MyraButton("Set Weapon Bag");
+        var addMonster = MockupButton("Add Monster", emphasized: true);
+        var addLoadout = MockupButton("Add Loadout", emphasized: true);
+        var setBag = MockupButton("Set Weapon Bag");
         bool refreshing = false;
 
         var names = new MyraGrid { RowSpacing = 6, Padding = new Thickness(10) };
         names.AddColumn(new Proportion(ProportionType.Fill));
         names.AddRow(count: 3);
         names.AddRow(new Proportion(ProportionType.Fill));
-        names.AddWidget(new MyraLabel("Monsters", MyraLabel.TextStyle.H3), 0, 0);
+        var monsterTitle = new MyraLabel("Monsters", MyraLabel.TextStyle.H3);
+        if (interaction.IsDesktop)
+            monsterTitle.Font = DesktopAssistantTheme.Font(1, bold: true);
+        names.AddWidget(monsterTitle, 0, 0);
         names.AddWidget(Help("Choose a monster to edit its assignments."), 1, 0);
         names.AddWidget(addMonster, 2, 0);
         names.AddWidget(monsterList, 3, 0);
@@ -75,12 +80,15 @@ internal static class WeaponSwitchListContent
             selectedMonster,
             Row("Primary", primary),
             Row("Alternate", alternate)));
+        var loadoutActions = new HorizontalStackPanel { Spacing = 6 };
+        loadoutActions.Widgets.Add(MockupButton("Save Loadout", SaveLoadout, emphasized: true));
+        loadoutActions.Widgets.Add(addLoadout);
         sections.Widgets.Add(Section("Shared loadouts",
             Help("Set the weapon and optional shield serials used by every monster assigned to this loadout."),
             Row("Loadout to edit", editor),
             SerialRow("Weapon serial", weapon, item => (Layer)item.ItemData.Layer is Layer.OneHanded or Layer.TwoHanded),
             SerialRow("Shield serial (optional)", shield, item => (Layer)item.ItemData.Layer == Layer.TwoHanded),
-            new MyraButton("Save Loadout", SaveLoadout),
+            loadoutActions,
             status));
 
         var defaults = new MyraGrid { ColumnSpacing = 8 };
@@ -95,12 +103,13 @@ internal static class WeaponSwitchListContent
         root.Widgets.Add(Help("Bind Auto Switch Weapon under Hotkeys & Macros → Hotkeys."));
 
         addMonster.OnClick = ShowAddMonster;
+        addLoadout.OnClick = ShowAddLoadout;
         setBag.OnClick = ShowWeaponBag;
 
         fallback.ListView.SelectedIndex = Array.IndexOf(loadouts, settings.DefaultLoadout);
         fallback.ListView.SelectedIndexChanged += (_, _) =>
         {
-            if (fallback.ListView.SelectedIndex is not int index)
+            if (refreshing || fallback.ListView.SelectedIndex is not int index)
                 return;
 
             settings.DefaultLoadout = loadouts[index];
@@ -126,6 +135,62 @@ internal static class WeaponSwitchListContent
             monsterList.SelectedIndex = index < 0 ? 0 : index;
         }
 
+        MyraButton MockupButton(string label, Action? click = null, bool emphasized = false)
+        {
+            var button = new MyraButton(label, click) { HorizontalAlignment = HorizontalAlignment.Left };
+            if (!interaction.IsDesktop)
+                return button;
+
+            button.Background = new SolidBrush(emphasized ? new Color(31, 95, 145) : new Color(237, 243, 249));
+            button.OverBackground = new SolidBrush(emphasized ? new Color(27, 83, 127) : new Color(222, 234, 246));
+            button.PressedBackground = button.OverBackground;
+            button.Border = new SolidBrush(emphasized ? new Color(31, 95, 145) : new Color(170, 186, 204));
+            button.Padding = new Thickness(9, 5);
+            button.Margin = new Thickness(0);
+            if (button.Content is Label caption)
+            {
+                caption.Font = DesktopAssistantTheme.Font(bold: true);
+                if (emphasized)
+                    caption.TextColor = Color.White;
+            }
+
+            return button;
+        }
+
+        void ShowAddLoadout()
+        {
+            var name = new MyraInputBox { Width = 245, HintText = "Loadout name" };
+            var message = Help("");
+            var body = new VerticalStackPanel { Spacing = 6, Width = 285 };
+            body.Widgets.Add(name);
+            body.Widgets.Add(message);
+            interaction.ShowDialog(addLoadout, "Add Loadout", body, confirmed =>
+            {
+                if (!confirmed)
+                    return;
+
+                WeaponLoadout created = settings.AddLoadout(name.Text);
+                loadouts = settings.GetLoadouts().ToArray();
+                labels = loadouts.Select(settings.GetLoadoutLabel).ToArray();
+                int? primaryIndex = primary.ListView.SelectedIndex;
+                int? alternateIndex = alternate.ListView.SelectedIndex;
+
+                refreshing = true;
+                Populate(fallback, labels, Array.IndexOf(loadouts, settings.DefaultLoadout));
+                Populate(primary, labels, primaryIndex);
+                Populate(alternate, ["None", .. labels], alternateIndex);
+                Populate(editor, labels, Array.IndexOf(loadouts, created));
+                refreshing = false;
+                RefreshSerials();
+            }, () =>
+            {
+                if (settings.CanAddLoadout(name.Text))
+                    return true;
+                message.Text = "Enter a unique loadout name.";
+                return false;
+            });
+        }
+
         void ShowAddMonster()
         {
             var name = new MyraInputBox { Width = 215 };
@@ -137,7 +202,7 @@ internal static class WeaponSwitchListContent
             body.Widgets.Add(Row("Name", name));
             body.Widgets.Add(Row("Body graphic", graphic));
             body.Widgets.Add(Row("Hue", hue));
-            body.Widgets.Add(new MyraButton("Target Monster", () => interaction.SelectTarget(selected =>
+            body.Widgets.Add(MockupButton("Target Monster", () => interaction.SelectTarget(selected =>
             {
                 if (selected is not Mobile mobile || mobile.Serial == World.Instance.Player?.Serial)
                 {
@@ -200,7 +265,7 @@ internal static class WeaponSwitchListContent
             var body = new VerticalStackPanel { Spacing = 6, Width = 385 };
             body.Widgets.Add(Help("Target a container in your backpack or enter its serial. Clear the bag to use your backpack."));
             var row = SerialRow("Bag serial", bag, item => item.ItemData.IsContainer, message);
-            row.Widgets.Add(new MyraButton("Clear", () => bag.Text = "0"));
+            row.Widgets.Add(MockupButton("Clear", () => bag.Text = "0"));
             body.Widgets.Add(row);
             body.Widgets.Add(message);
             uint serial = 0;
@@ -287,7 +352,7 @@ internal static class WeaponSwitchListContent
         HorizontalStackPanel SerialRow(string label, MyraInputBox input, Func<Item, bool> accepts, MyraLabel? message = null)
         {
             var row = Row(label, input);
-            row.Widgets.Add(new MyraButton("Target", () => interaction.SelectTarget(selected =>
+            row.Widgets.Add(MockupButton("Target", () => interaction.SelectTarget(selected =>
             {
                 if (selected is Item item && accepts(item))
                     input.Text = SerialText(item.Serial);
@@ -328,9 +393,16 @@ internal static class WeaponSwitchListContent
     private static ComboView Combo(string[] labels)
     {
         var combo = new ComboView { MinWidth = 155 };
+        Populate(combo, labels, null);
+        return combo;
+    }
+
+    private static void Populate(ComboView combo, string[] labels, int? selectedIndex)
+    {
+        combo.ListView.Widgets.Clear();
         foreach (string label in labels)
             combo.ListView.Widgets.Add(new Label { Text = label });
-        return combo;
+        combo.ListView.SelectedIndex = selectedIndex;
     }
 
     private static string MonsterLabel(WeaponSwitchMonster monster) =>

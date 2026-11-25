@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Text.Json;
 using ClassicUO.Game.Managers;
 using Xunit;
 
@@ -6,6 +7,27 @@ namespace ClassicUO.UnitTests.Game.Managers;
 
 public class WeaponSwitchCatalogTests
 {
+    [Fact]
+    public void PreservesCustomLoadoutNamesAndAssignmentsThroughSerialization()
+    {
+        var custom = (WeaponLoadout)1000;
+        var settings = new WeaponSwitchSettings
+        {
+            DefaultLoadout = custom,
+            CustomLoadouts = { [custom] = "Silver Sword" },
+            Loadouts = { [custom] = new WeaponSet(0x40000001) },
+            Assignments = { ["0310:0000"] = new MonsterLoadouts(WeaponLoadout.Staff, custom) }
+        };
+
+        var typeInfo = WeaponSwitchJsonContext.Default.WeaponSwitchSettings;
+        var saved = JsonSerializer.Deserialize(JsonSerializer.Serialize(settings, typeInfo), typeInfo)!;
+        Assert.Equal("Silver Sword", saved.GetLoadoutLabel(saved.DefaultLoadout));
+        Assert.Contains(custom, saved.GetLoadouts());
+        Assert.Equal(0x40000001u, saved.GetSet(custom).Weapon);
+        Assert.Equal(custom, saved.Assignments["0310:0000"].Alternate);
+        Assert.False(saved.CanAddLoadout(" silver sword "));
+    }
+
     [Fact]
     public void SeparatesMonstersWithTheSameGraphicByHue()
     {

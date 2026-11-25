@@ -1,15 +1,17 @@
 #nullable enable
 using System;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.Managers.Structs;
+using ClassicUO.Network;
 
 namespace ClassicUO.Game.Managers;
 
 internal sealed class WeaponSwitchManager
 {
-    private const int DisarmDelay = 600;
+    private const int DisarmTimeout = 600;
     private const int MoveDelay = 200;
     private const int MoveTimeout = 3000;
 
@@ -20,6 +22,8 @@ internal sealed class WeaponSwitchManager
     private (uint Target, bool Alternate)? _lastSwitch;
     private uint _moving;
     private bool _equipping;
+    private long _disarmUntil;
+    private bool _waitingForServerEquip;
     private long _nextAction;
     private long _deadline;
 
@@ -39,7 +43,7 @@ internal sealed class WeaponSwitchManager
         bool alternate = assignment.Alternate.HasValue && _lastSwitch == (target, false);
         WeaponLoadout loadout = alternate ? assignment.Alternate.GetValueOrDefault() : assignment.Primary;
         WeaponSet set = Settings.GetSet(loadout);
-        string label = $"{monster?.Name ?? "Default"} - {WeaponSwitchCatalog.Label(loadout)}";
+        string label = $"{monster?.Name ?? "Default"} - {Settings.GetLoadoutLabel(loadout)}";
         uint bag = Settings.WeaponBag == 0 ? backpack.Serial : Settings.WeaponBag;
 
         if (!TryGetEquipment(world, player, set.Weapon, out Layer weaponLayer))
@@ -68,9 +72,20 @@ internal sealed class WeaponSwitchManager
         }
 
         _request = request;
-        _nextAction = Time.Ticks + DisarmDelay;
-        _deadline = _nextAction + Math.Max(0, GlobalActionCooldown.CooldownDuration) + MoveTimeout;
-        GameActions.Say(".disarm");
+        long now = Time.Ticks;
+        _disarmUntil = 0;
+        _waitingForServerEquip = false;
+        _nextAction = now;
+
+        uint right = player.FindItemByLayer(Layer.OneHanded)?.Serial ?? 0;
+        uint left = player.FindItemByLayer(Layer.TwoHanded)?.Serial ?? 0;
+        if (IsExtra(right, set) || IsExtra(left, set))
+        {
+            _disarmUntil = now + DisarmTimeout;
+            GameActions.Say(".disarm");
+        }
+
+        _deadline = now + DisarmTimeout + Math.Max(0, GlobalActionCooldown.CooldownDuration) + MoveTimeout;
     }
 
     public void Update(World world)
@@ -98,6 +113,11 @@ internal sealed class WeaponSwitchManager
 
         uint right = player.FindItemByLayer(Layer.OneHanded)?.Serial ?? 0;
         uint left = player.FindItemByLayer(Layer.TwoHanded)?.Serial ?? 0;
+        // .disarm may clear both hands in separate updates. Wait for both or fall back to moving what's left.
+        if (now < _disarmUntil && (right != 0 || left != 0))
+            return;
+
+        _disarmUntil = 0;
         if (_moving != 0)
         {
             bool inHand = _moving == right || _moving == left;
@@ -113,13 +133,40 @@ internal sealed class WeaponSwitchManager
             return;
         }
 
-        if (GlobalActionCooldown.IsOnCooldown || Client.Game.UO.GameCursor.ItemHold.Enabled)
+        if (_waitingForServerEquip || GlobalActionCooldown.IsOnCooldown || Client.Game.UO.GameCursor.ItemHold.Enabled)
             return;
 
         uint extra = IsExtra(right, request.Set) ? right : IsExtra(left, request.Set) ? left : 0;
         if (extra != 0)
         {
             Send(new MoveRequest(extra, request.Bag), extra, false);
+            return;
+        }
+
+        if (ProfileManager.ServerSettings?.UseKrEquipSwap == true)
+        {
+            Span<uint> missing = stackalloc uint[2];
+            int count = 0;
+            uint shieldSerial = request.Set.Shield;
+            uint weaponSerial = request.Set.Weapon;
+            if (shieldSerial != 0 && shieldSerial != right && shieldSerial != left)
+                missing[count++] = shieldSerial;
+            if (weaponSerial != right && weaponSerial != left)
+                missing[count++] = weaponSerial;
+
+            for (int i = 0; i < count; i++)
+            {
+                if (!TryGetEquipment(world, player, missing[i], out _))
+                {
+                    Fail(request);
+                    return;
+                }
+            }
+
+            AsyncNetClient.Socket.Send_EquipMacroKR(missing[..count]);
+            _waitingForServerEquip = true;
+            _deadline = now + MoveTimeout;
+            GlobalActionCooldown.BeginCooldown();
             return;
         }
 
