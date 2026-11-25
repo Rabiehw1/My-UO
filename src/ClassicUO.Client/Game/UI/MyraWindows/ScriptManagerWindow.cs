@@ -348,21 +348,8 @@ public class ScriptManagerWindow : MyraControl
 
         row.Widgets.Add(playStopBtn);
 
-        bool hasGlobal = LegionScripting.LegionScripting.AutoLoadEnabled(script, true);
-        bool hasChar = LegionScripting.LegionScripting.AutoLoadEnabled(script, false);
-
-        if (hasGlobal || hasChar)
-        {
-            string autostartTooltip = hasGlobal
-                ? TazLang.Get("scriptmanager_autostart_global_tooltip", "Autostart: All characters")
-                : TazLang.Get("scriptmanager_autostart_char_tooltip", "Autostart: This character");
-
-            row.Widgets.Add(new MyraLabel(hasGlobal ? "[G]" : "[C]", MyraLabel.TextStyle.P)
-            {
-                TextColor = hasGlobal ? Color.Gold : new Color(0, 204, 255, 255),
-                Tooltip = autostartTooltip
-            });
-        }
+        if (LegionScripting.LegionScripting.AutoRunPath == script.RelativePath)
+            row.Widgets.Add(new MyraLabel("Autorun", MyraLabel.TextStyle.P));
 
         string displayName = script.FileName;
         int dot = displayName.LastIndexOf('.');
@@ -384,8 +371,7 @@ public class ScriptManagerWindow : MyraControl
 
     private void ShowScriptContextMenu(ScriptFile script)
     {
-        bool globalAuto = LegionScripting.LegionScripting.AutoLoadEnabled(script, true);
-        bool charAuto   = LegionScripting.LegionScripting.AutoLoadEnabled(script, false);
+        bool autoRun = LegionScripting.LegionScripting.AutoRunPath == script.RelativePath;
         bool isZip      = script is ZipScriptFile;
 
         var items = new List<(string, Action)>
@@ -414,14 +400,9 @@ public class ScriptManagerWindow : MyraControl
             }));
         }
 
-        items.Add((ContextMenuLabelToggle(globalAuto, TazLang.Get("scriptmanager_autostartall", "Autostart on all chars")), () =>
+        items.Add((ContextMenuLabelToggle(autoRun, "Autorun for this character"), () =>
         {
-            LegionScripting.LegionScripting.SetAutoPlay(script, true, !globalAuto);
-            RebuildScriptList();
-        }));
-        items.Add((ContextMenuLabelToggle(charAuto, TazLang.Get("scriptmanager_autostartchar", "Autostart for this char")), () =>
-        {
-            LegionScripting.LegionScripting.SetAutoPlay(script, false, !charAuto);
+            LegionScripting.LegionScripting.SetAutoRun(autoRun ? null : script);
             RebuildScriptList();
         }));
 

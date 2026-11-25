@@ -1169,6 +1169,7 @@ namespace ClassicUO.Game.Scenes
             ScavengerManager.Instance.Update();
             BandageManager.Instance.Update();
             SupportAgentManager.Instance.Update();
+            LegionScripting.ScriptSequence.Update();
             ShardSpellCaster.Instance.Update();
             EnhancedMapManager.Instance.Update();
             GridHighlightData.ProcessQueue(_world);

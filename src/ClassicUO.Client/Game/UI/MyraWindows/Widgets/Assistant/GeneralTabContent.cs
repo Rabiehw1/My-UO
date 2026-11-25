@@ -6,6 +6,8 @@ using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Processes;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using System.Linq;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
@@ -112,7 +114,21 @@ public static class GeneralTabContent
                 profile.SingleClickMobileSetsLastTarget = b;
             }, TazLang.Get("assistant_singleclicklasttarg")));
 
-        return mainContent;
+        if (!interaction.IsDesktop)
+            return mainContent;
+
+        var grid = new MyraGrid { ColumnSpacing = 10, RowSpacing = 8, MaxWidth = 900 };
+        grid.AddColumn(new Proportion(ProportionType.Part, 1), count: 2);
+        Widget[] visuals = leftSide.Widgets.Skip(1).ToArray();
+        Widget[] actions = rightSide.Widgets.Skip(1).Take(2).ToArray();
+        Widget[] gameplay = rightSide.Widgets.Skip(5).ToArray();
+        leftSide.Widgets.Clear();
+        rightSide.Widgets.Clear();
+        grid.AddWidget(ScriptExecutorTab.BuildAutorun(), 0, 0, colspan: 2);
+        grid.AddWidget(DesktopAssistantTheme.Group("Visuals", visuals), 1, 0);
+        grid.AddWidget(DesktopAssistantTheme.Group("Object timing", actions), 1, 1);
+        grid.AddWidget(DesktopAssistantTheme.Group("Game interaction", gameplay), 2, 0, colspan: 2);
+        return grid;
     }
 
     private static Widget BuildQuickActionCombo(string label, HealthBarQuickAction current, Action<HealthBarQuickAction> onChanged)

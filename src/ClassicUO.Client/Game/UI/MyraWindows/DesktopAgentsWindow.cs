@@ -40,6 +40,7 @@ internal sealed class DesktopAgentsWindow
         ..AgentTab.GetPages(),
         new(ItemListsTabContent.Title, AgentTab.AgentGroup.ItemLists, ItemListsTabContent.Build),
         new(HotkeysMacrosTabContent.Title, AgentTab.AgentGroup.Controls, HotkeysMacrosTabContent.Build),
+        new(ScriptsTabContent.Title, AgentTab.AgentGroup.Controls, ScriptsTabContent.Build),
         new(ShardSpellBooksTabContent.Title, AgentTab.AgentGroup.Controls, ShardSpellBooksTabContent.Build),
         new(FiltersTab.Title, AgentTab.AgentGroup.Settings, FiltersTab.Build),
         new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
@@ -213,7 +214,7 @@ internal sealed class DesktopAgentsWindow
             VerticalSpacing = 2,
             UniformSizing = false
         };
-        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysMacrosTabContent.Title, ShardSpellBooksTabContent.Title, FiltersTab.Title })
+        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysMacrosTabContent.Title, ShardSpellBooksTabContent.Title, ScriptsTabContent.Title, FiltersTab.Title })
         {
             var tab = DesktopAssistantTheme.NavigationButton(name, tab: true);
             tab.Click += (_, _) => SelectPage(name);
@@ -382,6 +383,14 @@ internal sealed class DesktopAgentsWindow
 
         if (!SDL_GetWindowSize(_window, out int width, out int height) || width <= 0 || height <= 0)
             return;
+
+        if (_content.Content is MyraTabControl scriptsTabs)
+        {
+            if (scriptsTabs.SelectedContent is ScriptExecutorTab executor)
+                executor.Refresh();
+            else if (scriptsTabs.SelectedContent is ScriptLibraryTab library)
+                library.RefreshRunning();
+        }
 
         EnsureFrame(device, width, height);
         _nextFrame = now + ((flags & SDL_WindowFlags.SDL_WINDOW_INPUT_FOCUS) != 0 ? 33UL : 200UL);

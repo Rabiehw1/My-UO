@@ -16,6 +16,8 @@ namespace ClassicUO.LegionScripting
 
         public List<string> GlobalAutoStartScripts { get; set; } = new List<string>();
         public Dictionary<string, List<string>> CharAutoStartScripts { get; set; } = new Dictionary<string, List<string>>();
+        public Dictionary<string, string> AutoRunScriptPaths { get; set; } = new();
+        public Dictionary<string, List<string>> ScriptSequences { get; set; } = new();
         public Dictionary<string, bool> GroupCollapsed { get; set; } = new Dictionary<string, bool>();
         public bool DisableModuleCache { get; set; }
 

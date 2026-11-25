@@ -33,7 +33,7 @@ namespace ClassicUO.LegionScripting
         public static event EventHandler<ScriptFile> ScriptStarted;
         public static event EventHandler<ScriptFile> ScriptStopped;
 
-        private static bool _enabled, _loaded;
+        private static bool _loaded;
         private static World _world;
 
         private const int STOP_THREAD_DETACH_TIMEOUT_MS = 2000;
@@ -53,9 +53,7 @@ namespace ClassicUO.LegionScripting
 
             LoadScriptsFromFile();
             LoadLScriptSettings();
-            AutoPlayGlobal();
-            AutoPlayChar();
-            _enabled = true;
+            StartAutoRun();
 
             world.CommandManager.Register
             (
@@ -332,75 +330,52 @@ namespace ClassicUO.LegionScripting
             }
         }
 
-        public static void SetAutoPlay(ScriptFile script, bool global, bool enabled)
+        public static string AutoRunPath =>
+            LScriptSettings?.AutoRunScriptPaths.GetValueOrDefault(CharacterKey()) ?? "";
+
+        public static void SetAutoRun(ScriptFile script)
         {
-            if (global)
+            LScriptSettings.AutoRunScriptPaths[CharacterKey()] = script?.RelativePath ?? "";
+            SaveScriptSettings();
+        }
+
+        public static List<string> GetSequence()
+        {
+            string key = CharacterKey();
+            if (!LScriptSettings.ScriptSequences.TryGetValue(key, out var paths))
+                LScriptSettings.ScriptSequences[key] = paths = [];
+
+            return paths;
+        }
+
+        internal static void SaveSequence() => SaveScriptSettings();
+
+        private static void StartAutoRun()
+        {
+            string key = CharacterKey();
+            if (!LScriptSettings.AutoRunScriptPaths.TryGetValue(key, out string path))
             {
-                if (enabled)
-                {
-                    if (!LScriptSettings.GlobalAutoStartScripts.Contains(script.FileName))
-                        LScriptSettings.GlobalAutoStartScripts.Add(script.FileName);
-                }
-                else
-                    LScriptSettings.GlobalAutoStartScripts.Remove(script.FileName);
+                Profile profile = ProfileManager.CurrentProfile;
+                var characterLegacy = LScriptSettings.CharAutoStartScripts.GetValueOrDefault(profile.Username + profile.CharacterName);
+                var legacy = LScriptSettings.GlobalAutoStartScripts.Concat(characterLegacy ?? []).ToHashSet(StringComparer.Ordinal);
+                var candidates = LoadedScripts.Where(script => legacy.Contains(script.FileName)).ToArray();
+                path = legacy.Count == 1 && candidates.Length == 1 ? candidates[0].RelativePath : "";
+                LScriptSettings.AutoRunScriptPaths[key] = path;
+                SaveScriptSettings();
+
+                if (legacy.Count != 0 && path.Length == 0)
+                    GameActions.Print(_world, "Choose one startup script in Script Executor.", Constants.HUE_WARN);
             }
-            else
-            {
-                if (LScriptSettings.CharAutoStartScripts.ContainsKey(GetAccountCharName()))
-                {
-                    if (enabled)
-                    {
-                        if (!LScriptSettings.CharAutoStartScripts[GetAccountCharName()].Contains(script.FileName))
-                            LScriptSettings.CharAutoStartScripts[GetAccountCharName()].Add(script.FileName);
-                    }
-                    else
-                        LScriptSettings.CharAutoStartScripts[GetAccountCharName()].Remove(script.FileName);
-                }
-                else
-                {
-                    if (enabled)
-                        LScriptSettings.CharAutoStartScripts.Add
-                        (
-                            GetAccountCharName(), [script.FileName]
-                        );
-                }
-            }
+
+            if (path.Length > 0 && LoadedScripts.FirstOrDefault(script => script.RelativePath == path) is { } startup)
+                PlayScript(startup);
         }
 
-        public static bool AutoLoadEnabled(ScriptFile script, bool global)
+        private static string CharacterKey()
         {
-            if (!_enabled)
-                return false;
-
-            if (global)
-                return LScriptSettings.GlobalAutoStartScripts.Contains(script.FileName);
-
-            if (LScriptSettings.CharAutoStartScripts.TryGetValue(GetAccountCharName(), out List<string> scripts)) return scripts.Contains(script.FileName);
-
-            return false;
+            Profile profile = ProfileManager.CurrentProfile;
+            return $"{profile.Username}/{profile.ServerName}/{profile.CharacterName}";
         }
-
-        private static void AutoPlayGlobal()
-        {
-            foreach (string script in LScriptSettings.GlobalAutoStartScripts)
-                foreach (ScriptFile f in LoadedScripts)
-                    if (f.FileName == script)
-                        PlayScript(f);
-        }
-
-        private static void AutoPlayChar()
-        {
-            if (_world.Player == null)
-                return;
-
-            if (!LScriptSettings.CharAutoStartScripts.TryGetValue(GetAccountCharName(), out List<string> scripts)) return;
-
-            foreach (ScriptFile f in LoadedScripts)
-                if (scripts.Contains(f.FileName))
-                    PlayScript(f);
-        }
-
-        private static string GetAccountCharName() => ProfileManager.CurrentProfile.Username + ProfileManager.CurrentProfile.CharacterName;
 
         public static bool IsGroupCollapsed(string group, string subgroup = "")
         {
@@ -422,23 +397,13 @@ namespace ClassicUO.LegionScripting
             LScriptSettings.GroupCollapsed[path] = expanded;
         }
 
-        private static void LoadLScriptSettings()
-        {
-            LScriptSettings = JsonSave<LScriptSettings>.Load();
-
-            for (int i = 0; i < LScriptSettings.CharAutoStartScripts.Count; i++)
-            {
-                KeyValuePair<string, List<string>> val = LScriptSettings.CharAutoStartScripts.ElementAt(i);
-                val.Value.RemoveAll(script => LoadedScripts.All(s => s.FileName != script));
-            }
-
-            LScriptSettings.GlobalAutoStartScripts.RemoveAll(script => LoadedScripts.All(s => s.FileName != script));
-        }
+        private static void LoadLScriptSettings() => LScriptSettings = JsonSave<LScriptSettings>.Load();
 
         private static void SaveScriptSettings() => LScriptSettings?.Save();
 
         public static void Unload()
         {
+            ScriptSequence.Reset();
             while (RunningScripts.Count > 0)
                 StopScript(RunningScripts[0], force: true);
 
@@ -446,7 +411,6 @@ namespace ClassicUO.LegionScripting
 
             SaveScriptSettings();
 
-            _enabled = false;
         }
 
         public static void PlayScript(ScriptFile script)
@@ -519,20 +483,31 @@ namespace ClassicUO.LegionScripting
         /// consumed by the throw, so a single retry cannot be interrupted again.
         /// </summary>
         /// <param name="script">Script whose thread has finished.</param>
-        private static void EnqueueThreadFinishedStop(ScriptFile script)
+        private static void EnqueueThreadFinishedStop(ScriptFile script, bool completed)
         {
+            Thread thread = Thread.CurrentThread;
+            void Finish()
+            {
+                if (script.ScriptThread != thread)
+                    return;
+
+                ScriptSequence.ThreadFinished(script, thread, completed);
+                StopScriptCore(script, force: false, finished: true);
+            }
+
             try
             {
-                MainThreadQueue.EnqueueAction(() => StopScript(script));
+                MainThreadQueue.EnqueueAction(Finish);
             }
             catch (ThreadInterruptedException)
             {
-                MainThreadQueue.EnqueueAction(() => StopScript(script));
+                MainThreadQueue.EnqueueAction(Finish);
             }
         }
 
         private static void ExecutePythonScript(ScriptFile script)
         {
+            bool completed = false;
             try
             {
                 script.SetupPythonEngine();
@@ -540,6 +515,7 @@ namespace ClassicUO.LegionScripting
 
                 ScriptSource source = script.PythonEngine.CreateScriptSourceFromString(script.FileContentsJoined, script.FullPath, SourceCodeKind.File);
                 source?.Execute(script.PythonScope);
+                completed = true;
             }
             catch (ThreadInterruptedException) { }
             catch (ThreadAbortException) { }
@@ -558,11 +534,12 @@ namespace ClassicUO.LegionScripting
                 catch (ThreadAbortException) { }
             }
 
-            EnqueueThreadFinishedStop(script);
+            EnqueueThreadFinishedStop(script, completed);
         }
 
         private static void ExecuteCSharpScript(ScriptFile script)
         {
+            bool completed = false;
             try
             {
                 script.SetupCSharpScript();
@@ -580,6 +557,7 @@ namespace ClassicUO.LegionScripting
 
                 // Block thread until the script completes or is canceled
                 task.Wait(script.ScopedApi.CancellationToken.Token);
+                completed = true;
             }
             catch (CompilationErrorException e)
             {
@@ -600,7 +578,7 @@ namespace ClassicUO.LegionScripting
                 ShowCSharpRuntimeError(script, e);
             }
 
-            EnqueueThreadFinishedStop(script);
+            EnqueueThreadFinishedStop(script, completed);
         }
 
         /// <summary>
@@ -799,8 +777,15 @@ namespace ClassicUO.LegionScripting
 
         public static void StopScript(ScriptFile script, bool force = false)
         {
-            if (script == null) return;
+            if (script == null)
+                return;
 
+            ScriptSequence.StopRequested(script);
+            StopScriptCore(script, force);
+        }
+
+        private static void StopScriptCore(ScriptFile script, bool force, bool finished = false)
+        {
             LegionAPI api = script.ScopedApi;
 
             // If the script registered an OnStop callback, give it a chance to run before we
@@ -808,7 +793,7 @@ namespace ClassicUO.LegionScripting
             // API.ProcessCallbacks, so we can't force it - we wait for it to complete or for a
             // maximum of 5 seconds, whichever comes first. Skipped when force is requested
             // (e.g. during client shutdown).
-            if (!force && script.ScriptThread is { IsAlive: true } && api is { StopRequested: false } && api.HasPendingStopCallback)
+            if (!force && !finished && script.ScriptThread is { IsAlive: true } && api is { StopRequested: false } && api.HasPendingStopCallback)
             {
                 if (api.BeginStopCallback())
                     WaitForStopCallbackThenStop(script);
@@ -820,6 +805,12 @@ namespace ClassicUO.LegionScripting
 
             if (script.ScriptThread is { IsAlive: true })
             {
+                if (finished)
+                {
+                    ScheduleDetachCheck(script);
+                    return;
+                }
+
                 if (api != null)
                 {
                     api.StopRequested = true;
@@ -868,10 +859,13 @@ namespace ClassicUO.LegionScripting
                 {
                     // A newer run may have replaced this thread (see PlayScript), or the thread
                     // already exited and was cleaned up by its follow-up stop.
-                    if (!ReferenceEquals(script.ScriptThread, stoppedThread) || !stoppedThread.IsAlive)
+                    if (!ReferenceEquals(script.ScriptThread, stoppedThread))
                         return;
 
-                    DetachScript(script, stoppedThread, warn: true);
+                    if (stoppedThread.IsAlive)
+                        DetachScript(script, stoppedThread, warn: true);
+                    else
+                        DetachScript(script, null, warn: false);
                 });
             };
 

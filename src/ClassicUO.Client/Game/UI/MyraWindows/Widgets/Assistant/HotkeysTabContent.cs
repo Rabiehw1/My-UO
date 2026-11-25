@@ -302,6 +302,24 @@ public static class HotkeysTabContent
     internal static void CaptureMacroBinding(AgentPageInteraction interaction, Widget anchor, MacroManager manager,
         Macro macro, Action refresh) => CaptureDesktopBinding(interaction, anchor, BuildMacroRow(manager, macro), refresh);
 
+    internal static void CaptureScriptBinding(AgentPageInteraction interaction, Widget anchor,
+        ClassicUO.LegionScripting.ScriptFile script, Action refresh)
+    {
+        var source = HotKeys.Get("lscript:" + script.RelativePath);
+        CaptureDesktopBinding(interaction, anchor, new HotkeyRow
+        {
+            Name = script.FileName,
+            Category = "Legion Scripts",
+            Source = (object?)source ?? script,
+            GetBinding = () => ClassicUO.LegionScripting.ScriptHotkeysManager.GetBinding(script),
+            Apply = binding =>
+            {
+                ClassicUO.LegionScripting.ScriptHotkeysManager.SetBinding(script, binding);
+                HotKeys.Save();
+            }
+        }, refresh);
+    }
+
     private static void CaptureDesktopBinding(AgentPageInteraction interaction, Widget anchor, HotkeyRow row, Action refresh)
     {
         HotkeyBinding original = row.GetBinding().Clone();
@@ -338,17 +356,20 @@ public static class HotkeysTabContent
                 ? BuildRows().Where(other => !ReferenceEquals(other.Source, row.Source)
                     && other.CheckConflicts && binding.Matches(other.GetBinding())).ToArray()
                 : [];
+            bool invalidScriptBinding = row.Category == "Legion Scripts" && !binding.IsEmpty && !binding.IsTriggerable;
             bool modifierOnlyMacro = row.Source is Macro && !binding.IsEmpty && !binding.IsTriggerable && !binding.WheelScroll;
-            conflictLabel.Text = modifierOnlyMacro
+            conflictLabel.Text = invalidScriptBinding
+                ? "Use a keyboard, mouse button, or controller button combination."
+                : modifierOnlyMacro
                 ? TazLang.Get("macrostab_hotkey_modifiersonly", "Macros cannot be bound to modifiers alone.")
                 : conflicts.Length == 0
                     ? ""
                     : TazLang.GetEx("hotkeys_assigned_to", "Already assigned to {0}. Replacing will clear those bindings.",
                         [string.Join(", ", conflicts.Select(other => $"{other.Category} · {other.Name}"))]);
             conflictLabel.Visible = conflictLabel.Text.Length > 0;
-            replace.Visible = !modifierOnlyMacro && conflicts.Length > 0;
+            replace.Visible = !invalidScriptBinding && !modifierOnlyMacro && conflicts.Length > 0;
             save.Visible = !replace.Visible;
-            save.Enabled = !modifierOnlyMacro;
+            save.Enabled = !invalidScriptBinding && !modifierOnlyMacro;
         }
 
         void Commit()
