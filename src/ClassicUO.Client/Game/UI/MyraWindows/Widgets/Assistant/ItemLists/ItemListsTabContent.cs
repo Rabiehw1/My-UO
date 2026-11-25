@@ -74,9 +74,11 @@ internal static partial class ItemListsTabContent
         var grid = new MyraGrid { ColumnSpacing = 12, MaxWidth = interaction.IsDesktop ? 1040 : 700 };
         grid.AddColumn(new Proportion(ProportionType.Pixels, interaction.IsDesktop ? 202 : 175));
         grid.AddColumn(new Proportion(ProportionType.Fill));
-        var listActions = new MyraGrid { ColumnSpacing = 4, RowSpacing = 4 };
-        // Same layout as the Auto Loot preset buttons: two equal parts, rows added as needed.
-        listActions.AddColumn(new Proportion(ProportionType.Part, 1), count: LIST_BUTTON_COLUMNS);
+        // Uniform sizing gives every list button the same size; the narrow sidebar fits two per row.
+        var listActions = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal, HorizontalSpacing = 4, VerticalSpacing = 4, UniformSizing = true
+        };
         var addActions = Toolbar();
         var transferActions = Toolbar();
         var itemActions = Toolbar();
@@ -125,12 +127,10 @@ internal static partial class ItemListsTabContent
                 Select(copy);
             }
         };
-        // Two equal columns, so the four list buttons line up as a tidy block under the list.
-        MyraButton[] listButtons = [create, rename, duplicate, delete];
-        for (int i = 0; i < listButtons.Length; i++)
+        foreach (MyraButton button in new[] { create, rename, duplicate, delete })
         {
-            listButtons[i].HorizontalAlignment = HorizontalAlignment.Stretch;
-            listActions.AddWidget(listButtons[i], i / LIST_BUTTON_COLUMNS, i % LIST_BUTTON_COLUMNS);
+            button.HorizontalAlignment = HorizontalAlignment.Stretch;
+            listActions.Widgets.Add(button);
         }
 
         delete.OnClick = () =>
@@ -694,7 +694,6 @@ internal static partial class ItemListsTabContent
     }
 
     private static readonly int[] ItemColumns = [34, 66, 58, 132, 125, 65, 49, 100];
-    private const int LIST_BUTTON_COLUMNS = 2;
     private const int CompactRowHeight = 34;
     private const int CompactVisibleRows = 8;
     private const int ExpandedTableWidth = 790;
