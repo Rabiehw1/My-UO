@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Generic;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Game.UI.MyraWindows.Theme;

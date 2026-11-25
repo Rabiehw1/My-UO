@@ -2,6 +2,7 @@
 
 using System;
 using System.Threading.Tasks;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Managers.Updates;
 using ClassicUO.Utility.Logging;
 
