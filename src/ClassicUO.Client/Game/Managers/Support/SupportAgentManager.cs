@@ -16,7 +16,8 @@ namespace ClassicUO.Game.Managers.Support;
 /// <remarks>
 /// Each tick takes the first matching step, in priority order:
 /// emergency → recovery → spoken commands → cure → heal → buff → catch up with leader → fight → follow.
-/// An ability marks the helper busy for its cast and recovery time, during which nothing else is started.
+/// While an ability is being cast the helper stands still and only an emergency can interrupt. During the
+/// ability's recovery no other ability starts, but the helper keeps following, fighting and listening.
 /// Driven from GameScene.Update() on the game thread; settings are read every tick, so tab edits apply at once.
 /// </remarks>
 internal sealed class SupportAgentManager : IDisposable
@@ -41,8 +42,11 @@ internal sealed class SupportAgentManager : IDisposable
 
     #region Private members
 
-    /// <summary>Decision cadence; matches the sample script's check interval.</summary>
-    private const int TICK_MS = 250;
+    /// <summary>Decision cadence. Decisions only read state the client already holds, so this costs no traffic.</summary>
+    private const int TICK_MS = 100;
+
+    /// <summary>When the leader moves this far from where the helper is walking to, the walk is redirected.</summary>
+    private const int FOLLOW_REPATH_TILES = 2;
 
     /// <summary>Bandages only reach patients this close.</summary>
     private const int BANDAGE_RANGE = 2;
@@ -53,7 +57,13 @@ internal sealed class SupportAgentManager : IDisposable
 
     private SupportAgentSave? _settings;
     private long _nextTick;
-    private long _busyUntil;
+    // Stand still and start nothing (except an emergency) until _castUntil; start no ability until _abilityReadyAt.
+    private long _castUntil;
+    private long _abilityReadyAt;
+
+    // Where the current follow walk is heading, to notice when the leader has moved on.
+    private int _followTargetX;
+    private int _followTargetY;
     private long _lastAttack;
     private long _followOverrideUntil;
     private uint _currentEnemy;
@@ -107,9 +117,7 @@ internal sealed class SupportAgentManager : IDisposable
         }
 
         _wasEnabled = true;
-
-        if (now >= _busyUntil)
-            Tick(player, settings, now);
+        Tick(player, settings, now);
     }
 
     /// <summary>Makes <paramref name="leader" /> the character to follow, protect and obey, and saves.</summary>
@@ -143,6 +151,10 @@ internal sealed class SupportAgentManager : IDisposable
             leader = null;
 
         if (HandleEmergency(player, settings, classSettings, leader, now))
+            return;
+
+        // Mid-cast: hold still so the song or spell isn't interrupted. Commands wait for the next tick.
+        if (now < _castUntil)
             return;
 
         if (HandleCommands(player, settings, classSettings, leader, now))
@@ -247,6 +259,10 @@ internal sealed class SupportAgentManager : IDisposable
         if (!_healRequested)
             return false;
 
+        // Still recovering from the last ability: keep the request and heal as soon as possible.
+        if (now < _abilityReadyAt)
+            return false;
+
         _healRequested = false;
         _currentEnemy = 0;
         _lastAttack = 0;
@@ -301,7 +317,10 @@ internal sealed class SupportAgentManager : IDisposable
     private bool TryBuff(PlayerMobile player, SupportClassSettings classSettings, Mobile? leader, long now) =>
         TryUseRole(classSettings, SupportRole.Buff, player, leader, null, now);
 
-    /// <summary>Uses the first enabled, ready ability of <paramref name="role" /> that has a valid target.</summary>
+    /// <summary>
+    /// Uses the first enabled, ready ability of <paramref name="role" /> that has a valid target. Waits for the
+    /// previous ability's recovery, except in an emergency.
+    /// </summary>
     private bool TryUseRole(
         SupportClassSettings classSettings,
         SupportRole role,
@@ -311,6 +330,9 @@ internal sealed class SupportAgentManager : IDisposable
         long now
     )
     {
+        if (role != SupportRole.Emergency && now < _abilityReadyAt)
+            return false;
+
         foreach (SupportAbility ability in classSettings.Abilities)
         {
             if (!ability.Enabled || ability.Role != role)
@@ -328,7 +350,8 @@ internal sealed class SupportAgentManager : IDisposable
 
             if (_runner.TryUse(ability, target, now))
             {
-                _busyUntil = now + ability.CastTimeMs + ability.RecoveryMs;
+                _castUntil = now + ability.CastTimeMs;
+                _abilityReadyAt = _castUntil + ability.RecoveryMs;
                 return true;
             }
         }
@@ -490,13 +513,31 @@ internal sealed class SupportAgentManager : IDisposable
         player.Pathfinder.WalkTo(targetX, targetY, player.Z, 1);
     }
 
-    private static void FollowLeader(PlayerMobile player, Mobile leader, SupportAgentSave settings)
+    /// <summary>
+    /// Walks toward the leader. A walk already under way is redirected once the leader has moved on from where it
+    /// was heading, instead of finishing at the leader's old spot first.
+    /// </summary>
+    private void FollowLeader(PlayerMobile player, Mobile leader, SupportAgentSave settings)
     {
-        if (!settings.Follow.Enabled || player.Pathfinder.AutoWalking)
+        if (!settings.Follow.Enabled)
             return;
 
-        if (leader.Distance > settings.Follow.FollowDistance)
-            player.Pathfinder.WalkTo(leader.X, leader.Y, leader.Z, settings.Follow.FollowDistance);
+        if (player.Pathfinder.AutoWalking)
+        {
+            int moved = Math.Max(Math.Abs(leader.X - _followTargetX), Math.Abs(leader.Y - _followTargetY));
+
+            if (moved <= FOLLOW_REPATH_TILES)
+                return;
+
+            player.Pathfinder.StopAutoWalk();
+        }
+
+        if (leader.Distance > settings.Follow.FollowDistance
+            && player.Pathfinder.WalkTo(leader.X, leader.Y, leader.Z, settings.Follow.FollowDistance))
+        {
+            _followTargetX = leader.X;
+            _followTargetY = leader.Y;
+        }
     }
 
     private static void StopMoving(PlayerMobile player)
@@ -534,7 +575,8 @@ internal sealed class SupportAgentManager : IDisposable
         _retreating = false;
         _followRequested = false;
         _healRequested = false;
-        _busyUntil = 0;
+        _castUntil = 0;
+        _abilityReadyAt = 0;
         _wasEnabled = false;
     }
 
