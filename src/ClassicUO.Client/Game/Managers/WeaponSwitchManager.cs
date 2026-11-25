@@ -5,7 +5,9 @@ using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.Managers.Structs;
+using ClassicUO.Game.UI.Controls;
 using ClassicUO.Network;
+using Microsoft.Xna.Framework;
 
 namespace ClassicUO.Game.Managers;
 
@@ -14,11 +16,13 @@ internal sealed class WeaponSwitchManager
     private const int DisarmTimeout = 600;
     private const int MoveDelay = 200;
     private const int MoveTimeout = 3000;
+    private const int NoteDuration = 3500;
 
-    private sealed record SwitchRequest(uint Target, bool Alternate, string Label, WeaponSet Set, uint Bag);
+    private sealed record SwitchRequest(uint Target, bool Alternate, string Label, string LoadoutName, string TargetName, WeaponSet Set, uint Bag);
 
     private WeaponSwitchSettings? _settings;
     private SwitchRequest? _request;
+    private TextObject? _loadoutNote;
     private (uint Target, bool Alternate)? _lastSwitch;
     private uint _moving;
     private bool _equipping;
@@ -36,14 +40,14 @@ internal sealed class WeaponSwitchManager
             return;
 
         uint target = world.TargetManager.LastAttack;
-        Mobile? mobile = world.Mobiles.Get(target);
-        var monster = mobile is { IsDestroyed: false, IsDead: false }
-            ? Settings.FindMonster(mobile.Graphic, mobile.Hue) : null;
+        Mobile? mobile = world.Mobiles.Get(target) is { IsDestroyed: false, IsDead: false } livingTarget ? livingTarget : null;
+        var monster = mobile != null ? Settings.FindMonster(mobile.Graphic, mobile.Hue) : null;
         var assignment = monster != null ? Settings.GetAssignment(monster) : new(Settings.DefaultLoadout, null);
         bool alternate = assignment.Alternate.HasValue && _lastSwitch == (target, false);
         WeaponLoadout loadout = alternate ? assignment.Alternate.GetValueOrDefault() : assignment.Primary;
         WeaponSet set = Settings.GetSet(loadout);
-        string label = $"{monster?.Name ?? "Default"} - {Settings.GetLoadoutLabel(loadout)}";
+        string loadoutName = Settings.GetLoadoutLabel(loadout);
+        string label = $"{monster?.Name ?? "Default"} - {loadoutName}";
         uint bag = Settings.WeaponBag == 0 ? backpack.Serial : Settings.WeaponBag;
 
         if (!TryGetEquipment(world, player, set.Weapon, out Layer weaponLayer))
@@ -64,10 +68,14 @@ internal sealed class WeaponSwitchManager
             return;
         }
 
-        var request = new SwitchRequest(target, alternate, label, set, bag);
+        string targetName = mobile == null ? TazLang.Get("weaponswitch_note_no_target")
+            : !string.IsNullOrWhiteSpace(mobile.Name) ? mobile.Name
+            : monster?.Name ?? TazLang.Get("weaponswitch_note_unknown_target");
+
+        var request = new SwitchRequest(target, alternate, label, loadoutName, targetName, set, bag);
         if (IsEquipped(player, set))
         {
-            Complete(request);
+            Complete(player, request);
             return;
         }
 
@@ -129,7 +137,7 @@ internal sealed class WeaponSwitchManager
 
         if (IsEquipped(player, request.Set))
         {
-            Complete(request);
+            Complete(player, request);
             return;
         }
 
@@ -193,12 +201,28 @@ internal sealed class WeaponSwitchManager
         }
     }
 
-    private void Complete(SwitchRequest request)
+    private void Complete(PlayerMobile player, SwitchRequest request)
     {
         _lastSwitch = (request.Target, request.Alternate);
         _request = null;
         GameActions.Print(request.Label);
+
+        string loadoutLine = TazLang.Get("weaponswitch_note_loadout", [request.LoadoutName]);
+        string targetLine = TazLang.Get("weaponswitch_note_target", [request.TargetName]);
+        string text = $"/c[#8FE8FF]{EscapeNoteLine(loadoutLine)}\n/c[#D4B9FF]{EscapeNoteLine(targetLine)}";
+        Profile profile = ProfileManager.CurrentProfile;
+        var options = TextBox.RTLOptions.DefaultCenterStroked(profile.OverheadChatWidth);
+        options.ConvertHtmlColors = false;
+
+        _loadoutNote?.Destroy();
+        _loadoutNote = TextObject.Create(player.World);
+        _loadoutNote.TextBox = TextBox.GetOne(text, profile.OverheadChatFont, profile.OverheadChatFontSize, Color.White, options);
+        _loadoutNote.Time = Time.Ticks + NoteDuration;
+        player.AddMessage(_loadoutNote);
     }
+
+    // FontStashSharp uses slashes for formatting commands. Names are shown as literal text.
+    private static string EscapeNoteLine(string text) => text.ReplaceLineEndings(" ").Replace("/", "//");
 
     private void Fail(SwitchRequest request)
     {
