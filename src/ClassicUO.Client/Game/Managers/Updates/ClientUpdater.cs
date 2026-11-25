@@ -5,12 +5,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using ClassicUO.Configuration;
+using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers.Updates;
@@ -143,18 +143,7 @@ internal static class ClientUpdater
     /// <exception cref="InvalidOperationException">The executable path is unknown.</exception>
     public static void RestartClient()
     {
-        string processPath = Environment.ProcessPath ?? throw new InvalidOperationException("Executable path unknown.");
-
-        var startInfo = new ProcessStartInfo(processPath)
-        {
-            UseShellExecute = false,
-            WorkingDirectory = CUOEnviroment.ExecutablePath
-        };
-
-        // Started as "dotnet LordBritishKW.dll": the host needs the dll path back as its first argument.
-        if (Path.GetFileNameWithoutExtension(processPath).Equals("dotnet", StringComparison.OrdinalIgnoreCase))
-            startInfo.ArgumentList.Add(Assembly.GetEntryAssembly()!.Location);
-
+        ProcessStartInfo startInfo = ClientProcess.CreateStartInfo();
         string[] arguments = Environment.GetCommandLineArgs();
 
         for (int i = 1; i < arguments.Length; i++)

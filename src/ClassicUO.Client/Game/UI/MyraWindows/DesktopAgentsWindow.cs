@@ -5,12 +5,15 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Launcher;
+using ClassicUO.Game.Managers.Updates;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Launcher;
 using ClassicUO.Utility.Logging;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -26,6 +29,8 @@ namespace ClassicUO.Game.UI.MyraWindows;
 internal sealed class DesktopAgentsWindow
 {
     private static volatile DesktopAgentsWindow? _instance;
+
+    private const ulong RUNNING_CHECK_MS = 2000;
 
     internal static bool HasInputFocus => _instance?._hasInputFocus == true;
 
@@ -52,6 +57,8 @@ internal sealed class DesktopAgentsWindow
     private readonly ScrollViewer _content;
     private readonly Panel _fullPage = new();
     private readonly WrapPanel _agentTabs;
+    private readonly LauncherBar _launcherBar;
+    private readonly bool _launcherOnly;
     // SDL may invoke the event filter off-thread. Copy text while SDL still owns its buffer.
     private readonly ConcurrentQueue<(SDL_Event Event, string? Text)> _events = new();
     private readonly bool[] _keys = new bool[256];
@@ -68,6 +75,8 @@ internal sealed class DesktopAgentsWindow
     private volatile bool _hasInputFocus;
     private bool? _priorCursorVisibility;
     private ulong _nextFrame;
+    private ulong _nextRunningCheck;
+    private volatile bool _launcherListChanged;
 
     private DesktopAgentsWindow(nint window)
     {
@@ -84,6 +93,10 @@ internal sealed class DesktopAgentsWindow
         };
         _content = new ScrollViewer { Padding = new Thickness(14, 0, 14, 12) };
         _agentTabs = CreateTabStrip();
+        _launcherOnly = ClientLauncher.IsLauncherOnly;
+        _launcherBar = new LauncherBar();
+        LauncherSave.ListChanged += OnLauncherListChanged;
+        LauncherSave.ViewChanged += OnLauncherViewChanged;
         _desktop = new Desktop { BoundsFetcher = () => _bounds };
         // Game text is broadcast globally by FNA. Feed this desktop only its own SDL text events.
         TextInputEXT.TextInput -= _desktop.OnChar;
@@ -92,6 +105,9 @@ internal sealed class DesktopAgentsWindow
     }
 
     public static void Show() => Show(null);
+
+    /// <summary>Opens the window as the launcher: only launcher settings, and closing it closes the program.</summary>
+    internal static void ShowLauncher() => Show(LauncherTabContent.Title);
 
     internal static void Show(string? page) => MainThreadQueue.EnqueueAction(() => Open(page));
 
@@ -106,7 +122,10 @@ internal sealed class DesktopAgentsWindow
             return;
         }
 
-        nint window = SDL_CreateWindow(TazLang.Get("assistantwindow_title", "Legion Assistant"), 1120, 750,
+        string title = ClientLauncher.IsLauncherOnly
+            ? TazLang.Get("launcher_window_title", [ClientBranding.SHORT_NAME])
+            : TazLang.Get("assistantwindow_title", "Legion Assistant");
+        nint window = SDL_CreateWindow(title, 1120, 750,
             SDL_WindowFlags.SDL_WINDOW_RESIZABLE | SDL_WindowFlags.SDL_WINDOW_HIDDEN);
 
         if (window == 0)
@@ -175,6 +194,8 @@ internal sealed class DesktopAgentsWindow
         if (_instance is not { } assistant)
             return;
 
+        LauncherSave.ListChanged -= assistant.OnLauncherListChanged;
+        LauncherSave.ViewChanged -= assistant.OnLauncherViewChanged;
         assistant._interaction.CancelTarget();
         assistant._interaction.CancelKeyCapture();
         assistant._interaction.CancelDialog();
@@ -184,6 +205,10 @@ internal sealed class DesktopAgentsWindow
         SDL_DestroyWindow(assistant._window);
         _instance = null;
         Client.Game?.Audio?.RefreshWindowFocus();
+
+        // The launcher's game window is hidden, so nothing would be left to close the program with.
+        if (ClientLauncher.IsLauncherOnly)
+            Client.Game?.Exit();
     }
 
     private static void ReportFailure(string error)
@@ -235,15 +260,19 @@ internal sealed class DesktopAgentsWindow
         footer.AddWidget(_session, 0, 0);
         footer.AddWidget(_status, 0, 1);
 
+        topTabs.Visible = !_launcherOnly;
+
         var layout = new MyraGrid { RowSpacing = 0, ColumnSpacing = 0 };
+        layout.AddRow();
         layout.AddRow();
         layout.AddRow();
         layout.AddRow(new Proportion(ProportionType.Fill));
         layout.AddRow();
-        layout.AddWidget(topTabs, 0, 0);
-        layout.AddWidget(_agentTabs, 1, 0);
-        layout.AddWidget(panel, 2, 0);
-        layout.AddWidget(footer, 3, 0);
+        layout.AddWidget(_launcherBar, 0, 0);
+        layout.AddWidget(topTabs, 1, 0);
+        layout.AddWidget(_agentTabs, 2, 0);
+        layout.AddWidget(panel, 3, 0);
+        layout.AddWidget(footer, 4, 0);
         return layout;
     }
 
@@ -261,6 +290,12 @@ internal sealed class DesktopAgentsWindow
 
     private void SelectPage(string? name)
     {
+        if (_launcherOnly || name == LauncherTabContent.Title)
+        {
+            SelectLauncherPage();
+            return;
+        }
+
         if (name == _agentsTitle)
         {
             SelectPage(_selectedAgent);
@@ -274,6 +309,12 @@ internal sealed class DesktopAgentsWindow
 
     private void SelectPage(int index)
     {
+        if (_launcherOnly)
+        {
+            SelectLauncherPage();
+            return;
+        }
+
         using var styles = _theme.Use();
         _interaction.CancelTarget();
         _interaction.CancelKeyCapture();
@@ -299,9 +340,10 @@ internal sealed class DesktopAgentsWindow
         _session.Text = _profile == null
             ? TazLang.Get("assistant_agents_disconnected", "No character connected")
             : $"{_profile.CharacterName} · {_profile.ServerName}";
-        Widget page = _profile == null
-            ? new MyraLabel(TazLang.Get("assistant_agents_sign_in", "Log in to a character to edit agent settings."), MyraLabel.TextStyle.P)
-            : _pages[index].Build(_interaction);
+        // Launcher settings don't need a character, so General still offers them before logging in.
+        Widget page = _profile != null ? _pages[index].Build(_interaction)
+            : _pages[index].Name == GeneralTab.Title ? LauncherTabContent.Build(_interaction)
+            : new MyraLabel(TazLang.Get("assistant_agents_sign_in", "Log in to a character to edit agent settings."), MyraLabel.TextStyle.P);
         bool fullHeight = _profile != null && (isAutoLoot || _pages[index].Name == HotkeysMacrosTabContent.Title);
         _content.Visible = !fullHeight;
         _content.Content = fullHeight ? null : page;
@@ -313,6 +355,34 @@ internal sealed class DesktopAgentsWindow
             _fullPage.Widgets.Add(page);
         }
         _content.ResetScroll();
+    }
+
+    /// <summary>The launcher's only page; it needs no character.</summary>
+    private void SelectLauncherPage()
+    {
+        using var styles = _theme.Use();
+        _interaction.CancelDialog();
+        _desktop.FocusedKeyboardWidget = null;
+        _desktop.HideContextMenu();
+        _agentTabs.Visible = false;
+        _pageTitle.Text = LauncherTabContent.Title;
+        _pageTitle.Visible = true;
+        _session.Text = TazLang.Get("launcher_session", [ClientBranding.NAME, ClientUpdater.CurrentVersion.ToString()]);
+        _status.Visible = false;
+        _fullPage.Widgets.Clear();
+        _fullPage.Visible = false;
+        _content.Visible = true;
+        _content.Content = LauncherTabContent.Build(_interaction);
+        _content.ResetScroll();
+    }
+
+    private void OnLauncherListChanged() => _launcherListChanged = true;
+
+    // Raised from Myra click handlers and update callbacks; rebuild on the next frame, not inside the handler.
+    private void OnLauncherViewChanged()
+    {
+        _launcherListChanged = true;
+        _refreshRequested = true;
     }
 
     private void SetTargetStatus(string text, bool waiting, bool returnToWindow)
@@ -330,6 +400,21 @@ internal sealed class DesktopAgentsWindow
     {
         using var styles = _theme.Use();
         Profile? profile = World.Instance?.InGame == true ? ProfileManager.CurrentProfile : null;
+        if (_launcherListChanged)
+        {
+            _launcherListChanged = false;
+            _launcherBar.Rebuild();
+            _nextFrame = 0;
+        }
+
+        ulong ticks = SDL_GetTicks();
+        if (ticks >= _nextRunningCheck)
+        {
+            _nextRunningCheck = ticks + RUNNING_CHECK_MS;
+            _launcherBar.RefreshRunning();
+            _nextFrame = 0;
+        }
+
         if (_refreshRequested || !ReferenceEquals(_profile, profile))
         {
             _refreshRequested = false;

@@ -37,6 +37,7 @@ using SDL3;
 using static SDL3.SDL;
 using Keyboard = ClassicUO.Input.Keyboard;
 using Mouse = ClassicUO.Input.Mouse;
+using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.Utility.Debounce;
 
@@ -262,6 +263,13 @@ namespace ClassicUO
             UIManager.World = UO.World;
 
             SetScene(new LoginScene(UO.World));
+
+            // As the launcher, only the launcher window shows; the game window waits hidden.
+            if (ClientLauncher.IsLauncherOnly)
+            {
+                SDL.SDL_HideWindow(Window.Handle);
+                DesktopAgentsWindow.ShowLauncher();
+            }
 
             Console.WriteLine("|--------------------------------------------------------------|");
             Console.WriteLine("                             READY");

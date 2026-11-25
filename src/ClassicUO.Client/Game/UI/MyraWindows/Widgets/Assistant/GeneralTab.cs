@@ -3,6 +3,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.UI.MyraWindows.Options.Tabs;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Launcher;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 
@@ -10,6 +11,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 public static class GeneralTab
 {
+    // Launcher comes first in the list, but General opens on Options, which players use most in game.
+    private const int OPTIONS_SECTION = 1;
+
     internal static string Title => TazLang.Get("assistantwindow_tab_general", "General");
 
     public static Widget Build()
@@ -29,6 +33,7 @@ public static class GeneralTab
     {
         (string Label, Func<Widget> Build)[] sections =
         [
+            (LauncherTabContent.Title, () => LauncherTabContent.Build(interaction)),
             (TazLang.Get("assistant_general_tab_options", "Options"), () => GeneralTabContent.Build(interaction)),
             (TazLang.Get("mog_gameplaytab_gameplaylabel", "Gameplay"), () => GameplayTab.GetContent().Render()),
             (TazLang.Get("mog_kw_interface", "Interface"), () => InterfaceTab.GetContent().Render()),
@@ -68,14 +73,14 @@ public static class GeneralTab
 
         root.AddWidget(navigation, 0, 0);
         root.AddWidget(content, 0, 1);
-        Select(0);
+        Select(OPTIONS_SECTION);
 
         void Select(int index)
         {
             for (int i = 0; i < buttons.Length; i++)
                 DesktopAssistantTheme.SelectNavigation(buttons[i], i == index);
 
-            root.FitContent = index == 0;
+            root.FitContent = index == OPTIONS_SECTION;
             content.Widgets.Clear();
             content.Widgets.Add(sections[index].Build());
         }
