@@ -34,5 +34,11 @@ namespace ClassicUO
 
         /// <summary>Changelog opened from the version history window.</summary>
         public const string CHANGELOG_URL = REPOSITORY_URL + "/blob/main/CHANGELOG.md";
+
+        /// <summary>Shard a new launcher profile points at; empty leaves the address for the player to enter.</summary>
+        public const string DEFAULT_SHARD_ADDRESS = "";
+
+        /// <summary>Port that goes with <see cref="DEFAULT_SHARD_ADDRESS" />.</summary>
+        public const ushort DEFAULT_SHARD_PORT = 2593;
     }
 }

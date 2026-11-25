@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Game.UI.MyraWindows.Theme;
@@ -38,9 +39,22 @@ internal static class LauncherTabContent
         root.Widgets.Add(new MyraLabel(TazLang.Get("launcher_intro"), MyraLabel.TextStyle.P) { Wrap = true });
 
         LauncherProfile? profile = save.GetSelected();
-        root.Widgets.Add(BuildProfileActions(save, profile, interaction));
-        if (profile != null)
-            root.Widgets.Add(BuildProfileFields(save, profile));
+        if (profile == null)
+        {
+            root.Widgets.Add(BuildProfileActions(save, profile, interaction));
+        }
+        else
+        {
+            var fields = new Dictionary<LauncherSetupStep, Widget[]>();
+            LauncherChecklist? checklist = null;
+            Widget profileFields = BuildProfileFields(save, profile, fields, () => checklist?.Refresh());
+            checklist = new LauncherChecklist(profile, fields);
+
+            // New players see the steps first; once the profile is ready the box hides itself.
+            root.Widgets.Add(checklist.View);
+            root.Widgets.Add(BuildProfileActions(save, profile, interaction));
+            root.Widgets.Add(profileFields);
+        }
 
         root.Widgets.Add(new DesktopAssistantForm.SectionPair(BuildOptions(save), BuildUpdates(save)));
         return root;
@@ -57,6 +71,12 @@ internal static class LauncherTabContent
             {
                 Name = TazLang.Get("launcher_new_profile_name")
             };
+            if (string.IsNullOrWhiteSpace(created.Address))
+            {
+                created.Address = ClientBranding.DEFAULT_SHARD_ADDRESS;
+                created.Port = ClientBranding.DEFAULT_SHARD_PORT;
+            }
+
             created.Account = "";
             created.EncryptedPassword = "";
             created.Character = "";
@@ -92,7 +112,14 @@ internal static class LauncherTabContent
         return DesktopAssistantTheme.Group(TazLang.Get("launcher_profiles"), DesktopAssistantForm.Actions(add, duplicate, delete));
     }
 
-    private static Widget BuildProfileFields(LauncherSave save, LauncherProfile profile)
+    /// <param name="stepFields">Filled with the boxes each setup step needs, for the checklist.</param>
+    /// <param name="committed">Called after any field is committed.</param>
+    private static Widget BuildProfileFields(
+        LauncherSave save,
+        LauncherProfile profile,
+        Dictionary<LauncherSetupStep, Widget[]> stepFields,
+        Action committed
+    )
     {
         var folderWarning = new MyraLabel("", MyraLabel.TextStyle.P) { Wrap = true, TextColor = DesktopAssistantTheme.SecondaryText };
         ShowFolderWarning(folderWarning, profile.UltimaOnlineDirectory);
@@ -101,7 +128,7 @@ internal static class LauncherTabContent
         {
             profile.UltimaOnlineDirectory = value.Trim();
             ShowFolderWarning(folderWarning, profile.UltimaOnlineDirectory);
-        }, save);
+        }, save, committed);
         MyraButton browse = DesktopAssistantTheme.ActionButton(TazLang.Get("launcher_browse"), () =>
         {
             if (NativeDialogs.PickFolder(profile.UltimaOnlineDirectory, out string? picked) != FolderPickResult.Picked || picked == null)
@@ -111,36 +138,44 @@ internal static class LauncherTabContent
             folder.Text = picked;
             ShowFolderWarning(folderWarning, picked);
             save.Save();
+            committed();
         });
 
         MyraInputBox port = Input(profile.Port.ToString(), value =>
         {
             if (ushort.TryParse(value, out ushort parsed))
                 profile.Port = parsed;
-        }, save, SHORT_INPUT_WIDTH);
+        }, save, committed, SHORT_INPUT_WIDTH);
         port.InputFilter = MyraInputBox.DigitInputFilter;
 
         MyraInputBox password = Input(Crypter.Decrypt(profile.EncryptedPassword), value =>
-            profile.EncryptedPassword = Crypter.Encrypt(value), save);
+            profile.EncryptedPassword = Crypter.Encrypt(value), save, committed);
         password.PasswordField = true;
 
         MyraInputBox name = Input(profile.Name, value =>
         {
             if (!string.IsNullOrWhiteSpace(value))
                 profile.Name = value.Trim();
-        }, save, notifyList: true);
+        }, save, committed, notifyList: true);
+
+        MyraInputBox address = Input(profile.Address, value => profile.Address = value.Trim(), save, committed);
+        MyraInputBox account = Input(profile.Account, value => profile.Account = value.Trim(), save, committed);
 
         Widget fields = DesktopAssistantForm.Fields(
             new(TazLang.Get("launcher_field_name"), name),
             new(TazLang.Get("launcher_field_folder"), folder, browse),
-            new(TazLang.Get("launcher_field_clientversion"), Input(profile.ClientVersion, value => profile.ClientVersion = value.Trim(), save, SHORT_INPUT_WIDTH)),
-            new(TazLang.Get("launcher_field_shard"), Input(profile.ShardName, value => profile.ShardName = value.Trim(), save)),
-            new(TazLang.Get("launcher_field_address"), Input(profile.Address, value => profile.Address = value.Trim(), save)),
+            new(TazLang.Get("launcher_field_clientversion"), Input(profile.ClientVersion, value => profile.ClientVersion = value.Trim(), save, committed, SHORT_INPUT_WIDTH)),
+            new(TazLang.Get("launcher_field_shard"), Input(profile.ShardName, value => profile.ShardName = value.Trim(), save, committed)),
+            new(TazLang.Get("launcher_field_address"), address),
             new(TazLang.Get("launcher_field_port"), port),
-            new(TazLang.Get("launcher_field_account"), Input(profile.Account, value => profile.Account = value.Trim(), save)),
+            new(TazLang.Get("launcher_field_account"), account),
             new(TazLang.Get("launcher_field_password"), password),
-            new(TazLang.Get("launcher_field_character"), Input(profile.Character, value => profile.Character = value.Trim(), save))
+            new(TazLang.Get("launcher_field_character"), Input(profile.Character, value => profile.Character = value.Trim(), save, committed))
         );
+
+        stepFields[LauncherSetupStep.Folder] = [folder];
+        stepFields[LauncherSetupStep.Address] = [address, port];
+        stepFields[LauncherSetupStep.Account] = [account, password];
 
         Widget playAll = MyraCheckButton.CreateWithCallback(profile.IncludeInPlayAll, value =>
         {
@@ -211,6 +246,7 @@ internal static class LauncherTabContent
         string value,
         Action<string> commit,
         LauncherSave save,
+        Action committed,
         int width = TEXT_INPUT_WIDTH,
         bool notifyList = false
     )
@@ -223,6 +259,8 @@ internal static class LauncherTabContent
                 save.SaveAndNotify();
             else
                 save.Save();
+
+            committed();
         };
         return box;
     }

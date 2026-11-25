@@ -8,9 +8,19 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using ClassicUO.Configuration;
+using ClassicUO.Setup;
 using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers.Launcher;
+
+/// <summary>First thing a profile still needs before it can play, in the order a new player fills them in.</summary>
+internal enum LauncherSetupStep
+{
+    Folder,
+    Address,
+    Account,
+    Ready
+}
 
 /// <summary>
 /// Starts clients for launcher profiles and tracks how this process was started.
@@ -100,8 +110,16 @@ internal static class ClientLauncher
     /// <returns>Null when started; otherwise why it couldn't start, ready to show.</returns>
     public static string? Play(LauncherProfile profile)
     {
-        if (string.IsNullOrWhiteSpace(profile.Account))
-            return TazLang.Get("launcher_error_noaccount", [profile.Name]);
+        // Say what's missing here rather than open a game window that then asks for it.
+        switch (FindMissingStep(profile))
+        {
+            case LauncherSetupStep.Folder:
+                return TazLang.Get("launcher_error_nofolder", [profile.Name]);
+            case LauncherSetupStep.Address:
+                return TazLang.Get("launcher_error_noaddress", [profile.Name]);
+            case LauncherSetupStep.Account:
+                return TazLang.Get("launcher_error_noaccount", [profile.Name]);
+        }
 
         try
         {
@@ -126,6 +144,23 @@ internal static class ClientLauncher
             Log.Error($"Launcher: could not start '{profile.Name}' - {e}");
             return TazLang.Get("launcher_error_start", [profile.Name, e.Message]);
         }
+    }
+
+    /// <summary>The first setup step <paramref name="profile" /> still needs.</summary>
+    /// <param name="profile">Profile to check.</param>
+    /// <returns><see cref="LauncherSetupStep.Ready" /> when it can play.</returns>
+    public static LauncherSetupStep FindMissingStep(LauncherProfile profile)
+    {
+        if (!FirstRunSetup.IsUltimaOnlineFolder(profile.UltimaOnlineDirectory))
+            return LauncherSetupStep.Folder;
+
+        if (string.IsNullOrWhiteSpace(profile.Address) || profile.Port == 0)
+            return LauncherSetupStep.Address;
+
+        if (string.IsNullOrWhiteSpace(profile.Account) || string.IsNullOrEmpty(profile.EncryptedPassword))
+            return LauncherSetupStep.Account;
+
+        return LauncherSetupStep.Ready;
     }
 
     #endregion
