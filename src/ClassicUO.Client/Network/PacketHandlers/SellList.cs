@@ -24,6 +24,8 @@ internal static class SellList
         if (countItems <= 0)
             return;
 
+        world.MapSightings.RecordVendor(vendor);
+
         ShopGump gump = UIManager.GetGump<ShopGump>(vendor);
         gump?.Dispose();
         ModernShopGump modernGump = UIManager.GetGump<ModernShopGump>(vendor);

@@ -509,6 +509,10 @@ namespace ClassicUO.Configuration
         public bool WorldMapShowGroupName { get; set => SetProperty(ref field, value); } = true;
         public bool WorldMapShowGroupBar { get; set => SetProperty(ref field, value); } = true;
         public bool WorldMapShowMarkers { get; set => SetProperty(ref field, value); } = true;
+        public bool WorldMapRecordSightings { get; set => SetProperty(ref field, value); }
+        public MapSightingLayers WorldMapSightingLayers { get; set => SetProperty(ref field, value); }
+        public bool WorldMapVendorsCurrentTownOnly { get; set => SetProperty(ref field, value); } = true;
+        public bool WorldMapShowMarkerIcons { get; set => SetProperty(ref field, value); } = true;
         public bool WorldMapShowMarkersNames { get; set => SetProperty(ref field, value); } = true;
         public bool WorldMapShowMultis { get; set => SetProperty(ref field, value); } = true;
         public string WorldMapHiddenMarkerFiles { get; set => SetProperty(ref field, value); } = string.Empty;

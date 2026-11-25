@@ -383,6 +383,9 @@ internal static class GameActions
     /// <returns>False if no world map is open</returns>
     internal static bool CloseWorldMap()
     {
+        if (DetachedWorldMapWindow.Close())
+            return true;
+
         Gump g = UIManager.GetGump<WorldMapGump>();
 
         if (g != null)
@@ -397,6 +400,9 @@ internal static class GameActions
 
     internal static void OpenWorldMap(World world)
     {
+        if (DetachedWorldMapWindow.TryRaise())
+            return;
+
         WorldMapGump worldMap = UIManager.GetGump<WorldMapGump>();
 
         if (worldMap == null || worldMap.IsDisposed)

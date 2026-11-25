@@ -12,6 +12,7 @@ using ClassicUO.Game.Managers.EnhancedMap;
 using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.UI;
 using ClassicUO.Game.UI.Gumps;
+using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.Input;
 using ClassicUO.Network;
 using ClassicUO.Renderer;
@@ -406,6 +407,8 @@ namespace ClassicUO.Game.Scenes
             }
 
             Instance = null;
+            DetachedWorldMapWindow.Close(restoreMap: false);
+            _world.MapSightings.Flush();
 
             GridHighlightsConfig.Unload();
             CooldownBarsConfig.Unload();

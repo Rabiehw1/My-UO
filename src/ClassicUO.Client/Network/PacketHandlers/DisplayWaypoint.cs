@@ -21,7 +21,7 @@ internal static class DisplayWaypoint
 
         Log.Info($"Waypoint received: {type} - {name}");
 
-        if (type == WaypointsType.Resurrection)
+        if (type is WaypointsType.Resurrection or WaypointsType.Shop)
         {
             if (cliloc != 0)
             {
@@ -66,6 +66,7 @@ internal static class DisplayWaypoint
             case WaypointsType.Moongate:
                 break;
             case WaypointsType.Shop:
+                world.MapSightings.RecordShop(map, x, y, name);
                 break;
             case WaypointsType.Player:
                 break;

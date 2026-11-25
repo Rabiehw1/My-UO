@@ -462,53 +462,7 @@ internal sealed class DesktopAgentsWindow
         _desktop.Render();
     }
 
-    private unsafe void Present()
-    {
-        nint surface = GetWindowSurface();
-        if (surface == 0)
-            throw new InvalidOperationException(SDL_GetError());
-
-        _frame!.GetData(_pixels);
-        fixed (Color* pixels = _pixels)
-        {
-            nint source = SDL_CreateSurfaceFrom(_bounds.Width, _bounds.Height, SDL_PixelFormat.SDL_PIXELFORMAT_RGBA32,
-                (nint)pixels, _bounds.Width * sizeof(Color));
-            if (source == 0)
-                throw new InvalidOperationException(SDL_GetError());
-
-            try
-            {
-                // These pixels already contain the final opaque desktop.
-                SDL_SetSurfaceBlendMode(source, 0);
-                if (!SDL_BlitSurfaceScaled(source, 0, surface, 0, SDL_ScaleMode.SDL_SCALEMODE_LINEAR)
-                    || !SDL_UpdateWindowSurface(_window))
-                    throw new InvalidOperationException(SDL_GetError());
-            }
-            finally
-            {
-                SDL_DestroySurface(source);
-            }
-        }
-    }
-
-    private nint GetWindowSurface()
-    {
-        // Avoid creating an SDL GL renderer that could take over the game's context.
-        string? originalHint = SDL_GetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION);
-        SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "0");
-
-        try
-        {
-            return SDL_GetWindowSurface(_window);
-        }
-        finally
-        {
-            if (originalHint == null)
-                SDL_ResetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION);
-            else
-                SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, originalHint);
-        }
-    }
+    private void Present() => DesktopWindowSurface.Present(_window, _frame!, _pixels);
 
     private bool ApplyWindowEvent(SDL_EventType type)
     {
@@ -606,40 +560,40 @@ internal sealed class DesktopAgentsWindow
         if (down && _interaction.HandleKeyDown(e))
             return;
 
-        var keycode = (SDL_Keycode)e.key;
-        Keys key = keycode switch
-        {
-            >= SDL_Keycode.SDLK_A and <= SDL_Keycode.SDLK_Z => Keys.A + (int)(keycode - SDL_Keycode.SDLK_A),
-            >= SDL_Keycode.SDLK_0 and <= SDL_Keycode.SDLK_9 => Keys.D0 + (int)(keycode - SDL_Keycode.SDLK_0),
-            SDL_Keycode.SDLK_TAB => Keys.Tab,
-            SDL_Keycode.SDLK_BACKSPACE => Keys.Back,
-            SDL_Keycode.SDLK_DELETE => Keys.Delete,
-            SDL_Keycode.SDLK_LEFT => Keys.Left,
-            SDL_Keycode.SDLK_RIGHT => Keys.Right,
-            SDL_Keycode.SDLK_UP => Keys.Up,
-            SDL_Keycode.SDLK_DOWN => Keys.Down,
-            SDL_Keycode.SDLK_HOME => Keys.Home,
-            SDL_Keycode.SDLK_END => Keys.End,
-            SDL_Keycode.SDLK_PAGEUP => Keys.PageUp,
-            SDL_Keycode.SDLK_PAGEDOWN => Keys.PageDown,
-            SDL_Keycode.SDLK_ESCAPE => Keys.Escape,
-            SDL_Keycode.SDLK_RETURN or SDL_Keycode.SDLK_KP_ENTER => Keys.Enter,
-            SDL_Keycode.SDLK_SPACE => Keys.Space,
-            SDL_Keycode.SDLK_LSHIFT => Keys.LeftShift,
-            SDL_Keycode.SDLK_RSHIFT => Keys.RightShift,
-            SDL_Keycode.SDLK_LCTRL => Keys.LeftControl,
-            SDL_Keycode.SDLK_RCTRL => Keys.RightControl,
-            SDL_Keycode.SDLK_LALT => Keys.LeftAlt,
-            SDL_Keycode.SDLK_RALT => Keys.RightAlt,
-            SDL_Keycode.SDLK_LGUI => Keys.LeftWindows,
-            SDL_Keycode.SDLK_RGUI => Keys.RightWindows,
-            _ => Keys.None
-        };
-
+        Keys key = MapKey((SDL_Keycode)e.key);
         if (key != Keys.None)
         {
             _keys[(int)key] = down;
             _desktop.UpdateKeyboardInput();
         }
     }
+
+    internal static Keys MapKey(SDL_Keycode keycode) => keycode switch
+    {
+        >= SDL_Keycode.SDLK_A and <= SDL_Keycode.SDLK_Z => Keys.A + (int)(keycode - SDL_Keycode.SDLK_A),
+        >= SDL_Keycode.SDLK_0 and <= SDL_Keycode.SDLK_9 => Keys.D0 + (int)(keycode - SDL_Keycode.SDLK_0),
+        SDL_Keycode.SDLK_TAB => Keys.Tab,
+        SDL_Keycode.SDLK_BACKSPACE => Keys.Back,
+        SDL_Keycode.SDLK_DELETE => Keys.Delete,
+        SDL_Keycode.SDLK_LEFT => Keys.Left,
+        SDL_Keycode.SDLK_RIGHT => Keys.Right,
+        SDL_Keycode.SDLK_UP => Keys.Up,
+        SDL_Keycode.SDLK_DOWN => Keys.Down,
+        SDL_Keycode.SDLK_HOME => Keys.Home,
+        SDL_Keycode.SDLK_END => Keys.End,
+        SDL_Keycode.SDLK_PAGEUP => Keys.PageUp,
+        SDL_Keycode.SDLK_PAGEDOWN => Keys.PageDown,
+        SDL_Keycode.SDLK_ESCAPE => Keys.Escape,
+        SDL_Keycode.SDLK_RETURN or SDL_Keycode.SDLK_KP_ENTER => Keys.Enter,
+        SDL_Keycode.SDLK_SPACE => Keys.Space,
+        SDL_Keycode.SDLK_LSHIFT => Keys.LeftShift,
+        SDL_Keycode.SDLK_RSHIFT => Keys.RightShift,
+        SDL_Keycode.SDLK_LCTRL => Keys.LeftControl,
+        SDL_Keycode.SDLK_RCTRL => Keys.RightControl,
+        SDL_Keycode.SDLK_LALT => Keys.LeftAlt,
+        SDL_Keycode.SDLK_RALT => Keys.RightAlt,
+        SDL_Keycode.SDLK_LGUI => Keys.LeftWindows,
+        SDL_Keycode.SDLK_RGUI => Keys.RightWindows,
+        _ => Keys.None
+    };
 }

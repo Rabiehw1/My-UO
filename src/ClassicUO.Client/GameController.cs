@@ -595,6 +595,7 @@ namespace ClassicUO
             Profiler.ExitContext("MainThreadQueue");
 
             DesktopAgentsWindow.Update(GraphicsDevice);
+            DetachedWorldMapWindow.Update(GraphicsDevice, _uoSpriteBatch);
 
             Profiler.EnterContext("FpsTiming");
             _totalElapsed += gameTime.ElapsedGameTime.TotalMilliseconds;
@@ -894,7 +895,7 @@ namespace ClassicUO
                 return true;
             }
 
-            if (DesktopAgentsWindow.TryHandleEvent(ref *sdlEvent))
+            if (DetachedWorldMapWindow.TryHandleEvent(ref *sdlEvent) || DesktopAgentsWindow.TryHandleEvent(ref *sdlEvent))
                 return false;
 
             switch ((SDL_EventType)sdlEvent->type)
@@ -1323,6 +1324,7 @@ namespace ClassicUO
             // profile may already be unloaded, and game input is no longer actionable.
             _isExiting = true;
             DesktopAgentsWindow.Close();
+            DetachedWorldMapWindow.Close(restoreMap: false);
 
             Scene?.Dispose();
 

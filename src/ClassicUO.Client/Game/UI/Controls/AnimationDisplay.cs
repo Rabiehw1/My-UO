@@ -46,7 +46,7 @@ public class AnimationDisplay : Control
         _hueVector = ShaderHueTranslator.GetHueVector(hue2, Client.Game.UO.FileManager.TileData.StaticData[_graphic].IsPartialHue, 1f);
     }
 
-    private static byte GetAnimGroup(ushort graphic)
+    internal static byte GetAnimGroup(ushort graphic)
     {
         AnimationGroupsType groupType = Client.Game.UO.Animations.GetAnimType(graphic);
 

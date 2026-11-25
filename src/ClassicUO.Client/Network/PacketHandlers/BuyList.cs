@@ -25,6 +25,8 @@ internal static class BuyList
         if (vendor == null)
             return;
 
+        world.MapSightings.RecordVendor(vendor);
+
         ShopGump gump = UIManager.GetGump<ShopGump>();
         ModernShopGump modernGump = UIManager.GetGump<ModernShopGump>();
 

@@ -5,6 +5,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.UI.Gumps;
+using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.Network;
 
 namespace ClassicUO.Game.Managers
@@ -61,8 +62,11 @@ namespace ClassicUO.Game.Managers
 
         internal bool CanUseLegacyTracking => !UsesNewMovement && !IsEncrypted;
 
-        public bool Enabled => ProfileManager.CurrentProfile?.WorldMapShowParty == true
-                        && UIManager.GetGump<WorldMapGump>() is { IsDisposed: false };
+        private static bool InGameMapTrackingEnabled => ProfileManager.CurrentProfile?.WorldMapShowParty == true
+            && UIManager.GetGump<WorldMapGump>() is { IsDisposed: false, IsDetached: false };
+
+        public bool Enabled => InGameMapTrackingEnabled || (ProfileManager.CurrentProfile?.WorldMapShowParty == true
+            && DetachedWorldMapWindow.IsOpenFor(_world));
 
         internal bool SupportsServerQueries => CanQueryServer(_ackReceived,
             ProfileManager.ServerSettings?.UseLegacyWorldMapTracking == true, UsesNewMovement, IsEncrypted);
@@ -209,7 +213,7 @@ namespace ClassicUO.Game.Managers
 
         public void RequestServerPartyGuildInfo()
         {
-            if (!_world.InGame || !SupportsServerQueries || !Enabled || _lastPacketSend >= Time.Ticks)
+            if (!_world.InGame || !SupportsServerQueries || !InGameMapTrackingEnabled || _lastPacketSend >= Time.Ticks)
             {
                 return;
             }

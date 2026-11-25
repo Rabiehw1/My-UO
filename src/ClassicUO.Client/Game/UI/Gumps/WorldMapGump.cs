@@ -48,12 +48,15 @@ public enum WorldMapDoubleClickAction
 [JsonSerializable(typeof(List<int>), GenerationMode = JsonSourceGenerationMode.Metadata)]
 sealed partial class ZonesJsonContext : JsonSerializerContext { }
 
-public class WorldMapGump : ResizableGump
+public partial class WorldMapGump : ResizableGump
 {
     public const string USER_MARKERS_FILE = "userMarkers";
 
-    private static readonly string[] _mapFilesPath = [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client"), Path.Combine(Settings.GlobalSettings.ResolvedUltimaOnlineDirectory, "MapMarkers"), Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapMarkers")];
-    private static readonly string[] _mapIconsPath = [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", "MapIcons"), Path.Combine(Settings.GlobalSettings.ResolvedUltimaOnlineDirectory, "MapIcons"), Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapIcons")];
+    private string ShardMapDirectory => Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.ServerName));
+    private string[] MapFilesPaths => [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client"),
+        Path.Combine(Settings.GlobalSettings.ResolvedUltimaOnlineDirectory, "MapMarkers"), Path.Combine(ShardMapDirectory, "MapMarkers")];
+    private string[] MapIconPaths => [Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", "MapIcons"),
+        Path.Combine(Settings.GlobalSettings.ResolvedUltimaOnlineDirectory, "MapIcons"), Path.Combine(ShardMapDirectory, "MapIcons")];
 
     private static readonly string _mapsCachePath = Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", "MapsCache");
     private static readonly string UserMarkersFilePath = Path.Combine(CUOEnviroment.ExecutablePath, "Data", "Client", $"{USER_MARKERS_FILE}.usr");
@@ -152,10 +155,14 @@ public class WorldMapGump : ResizableGump
         : MAX_NAV_REPLANS;
 
     private static int _mapLoading;
-    private Task _loadingTask;
+    private static Task _loadingTask;
     private World _world;
 
-    public WorldMapGump(World world) : base
+    public WorldMapGump(World world) : this(world, desktopOnly: false)
+    {
+    }
+
+    internal WorldMapGump(World world, bool desktopOnly) : base
     (
         world,
         400,
@@ -167,6 +174,7 @@ public class WorldMapGump : ResizableGump
     )
     {
         _world = world;
+        _desktopOnly = desktopOnly;
         CanMove = true;
         AcceptMouseInput = true;
         CanCloseWithRightClick = false;
@@ -190,7 +198,119 @@ public class WorldMapGump : ResizableGump
         LoadMarkers();
         LoadZones();
 
-        BuildGump();
+        if (!desktopOnly)
+            BuildGump();
+    }
+
+    private readonly bool _desktopOnly;
+    internal bool IsDetached { get; set; }
+    internal World MapWorld => _world;
+    internal int DesktopZoomIndex => _zoomIndex;
+    internal int DesktopFacet => _map.Index;
+
+    internal int ChangeDesktopZoom(int index, int delta) => Math.Clamp(index + delta, 0, _zooms.Length - 1);
+
+    internal Vector2 PanDesktop(Vector2? center, int zoomIndex, Vector2 delta)
+    {
+        Vector2 from = center ?? new Vector2(World.Player.X, World.Player.Y);
+        if (_flipMap)
+        {
+            const float diagonal = .70710678f;
+            delta = new Vector2((delta.X + delta.Y) * diagonal, (delta.Y - delta.X) * diagonal);
+        }
+        return Vector2.Clamp(from - delta / _zooms[zoomIndex], Vector2.Zero, new Vector2(ushort.MaxValue));
+    }
+
+    internal bool TryGetDesktopPosition(Vector2 center, int zoomIndex, Vector2 offset, out Point location)
+    {
+        location = default;
+        if (_mapLoading != 0 || _desktopTextureFacet != _map.Index || _mapTexture is not { IsDisposed: false } texture)
+            return false;
+
+        if (_flipMap)
+        {
+            const float diagonal = .70710678f;
+            offset = new Vector2((offset.X + offset.Y) * diagonal, (offset.Y - offset.X) * diagonal);
+        }
+
+        Vector2 position = center + offset / _zooms[zoomIndex];
+        location = new Point((int)MathF.Round(position.X), (int)MathF.Round(position.Y));
+        return location.X >= 0 && location.Y >= 0 && location.X < texture.Width - 2 && location.Y < texture.Height - 2;
+    }
+
+    internal IReadOnlyList<WMapMarker> DesktopUserMarkers =>
+        _markerFiles.FirstOrDefault(file => file.FullPath == UserMarkersFilePath)?.Markers;
+
+    internal bool TryChangeDesktopMarker(WMapMarker previous, WMapMarker replacement)
+    {
+        var file = _markerFiles.FirstOrDefault(file => file.FullPath == UserMarkersFilePath);
+        if (file is not { IsEditable: true })
+            return false;
+
+        var updated = file.Markers.ToList();
+        int index = previous == null ? updated.Count : updated.IndexOf(previous);
+        if (index < 0)
+            return false;
+
+        if (previous != null)
+            updated.RemoveAt(index);
+        if (replacement != null)
+        {
+            replacement.Color = GetColor(replacement.ColorName);
+            replacement.MarkerIcon = ResolveMarkerIcon(replacement.MarkerIconName);
+            updated.Insert(index, replacement);
+        }
+
+        string temporaryPath = UserMarkersFilePath + ".tmp";
+        try
+        {
+            File.WriteAllLines(temporaryPath, updated.Select(MarkerToCsvLine));
+            File.Move(temporaryPath, UserMarkersFilePath, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Error($"Error saving map markers: {ex}");
+            return false;
+        }
+
+        file.Markers.Clear();
+        file.Markers.AddRange(updated);
+        return true;
+    }
+
+    internal void UpdateDetachedMap(int facet)
+    {
+        if (_map.Index != facet)
+            ChangeMap(facet);
+
+        if (_ttfTextBoxes.Count > 0)
+            PurgeTtfTextBoxes();
+    }
+
+    internal void DrawDetached(UltimaBatcher2D batcher, int width, int height, int zoomIndex, Vector2? center)
+    {
+        var previousSize = new Point(Width, Height);
+        Point previousCenter = _center;
+        int previousZoom = _zoomIndex;
+        bool previousFreeView = _freeView;
+        try
+        {
+            Width = width;
+            Height = height;
+            _zoomIndex = zoomIndex;
+            _freeView = true;
+            Vector2 position = center ?? new Vector2(World.Player.X, World.Player.Y);
+            _center = new Point((int)position.X, (int)position.Y);
+            DrawMap(batcher, 0, 0);
+        }
+        finally
+        {
+            Width = previousSize.X;
+            Height = previousSize.Y;
+            _center = previousCenter;
+            _zoomIndex = previousZoom;
+            _freeView = previousFreeView;
+        }
     }
 
     public override GumpType GumpType => GumpType.WorldMap;
@@ -265,6 +385,7 @@ public class WorldMapGump : ResizableGump
         _showGroupName = ProfileManager.CurrentProfile.WorldMapShowGroupName;
         _showGroupBar = ProfileManager.CurrentProfile.WorldMapShowGroupBar;
         _showMarkers = ProfileManager.CurrentProfile.WorldMapShowMarkers;
+        _showMarkerIcons = ProfileManager.CurrentProfile.WorldMapShowMarkerIcons;
         _showMultis = ProfileManager.CurrentProfile.WorldMapShowMultis;
         _showMarkerNames = ProfileManager.CurrentProfile.WorldMapShowMarkersNames;
         _alwaysShowMarkers = ProfileManager.GlobalSettings?.AlwaysShowWorldMapMarkers ?? false;
@@ -276,7 +397,10 @@ public class WorldMapGump : ResizableGump
         _showGridIfZoomed = ProfileManager.CurrentProfile.WorldMapShowGridIfZoomed;
         _allowPositionalTarget = ProfileManager.CurrentProfile.WorldMapAllowPositionalTarget;
         _doubleClickAction = ProfileManager.CurrentProfile.WorldMapDoubleClickAction;
-        FreeView = ProfileManager.CurrentProfile.WorldMapFreeView;
+        if (_desktopOnly)
+            _freeView = ProfileManager.CurrentProfile.WorldMapFreeView;
+        else
+            FreeView = ProfileManager.CurrentProfile.WorldMapFreeView;
     }
 
     public void SaveSettings()
@@ -310,6 +434,7 @@ public class WorldMapGump : ResizableGump
         ProfileManager.CurrentProfile.WorldMapShowGroupName = _showGroupName;
         ProfileManager.CurrentProfile.WorldMapShowGroupBar = _showGroupBar;
         ProfileManager.CurrentProfile.WorldMapShowMarkers = _showMarkers;
+        ProfileManager.CurrentProfile.WorldMapShowMarkerIcons = _showMarkerIcons;
         ProfileManager.CurrentProfile.WorldMapShowMultis = _showMultis;
         ProfileManager.CurrentProfile.WorldMapShowMarkersNames = _showMarkerNames;
         if (ProfileManager.GlobalSettings != null)
@@ -469,8 +594,9 @@ public class WorldMapGump : ResizableGump
             () => MarkersManagerWindow.Show(World)
         );
 
-        _options["add_marker_on_player"] = new ContextMenuItemEntry(TazLang.Get("add_marker_on_player"), () => AddMarkerOnPlayer());
+        _options["add_marker_on_player"] = new ContextMenuItemEntry(TazLang.Get("add_marker_on_player"), DetachedWorldMapWindow.ShowAddMarker);
 
+        _options["open_detached_map"] = new ContextMenuItemEntry("Detach World Map", DetachedWorldMapWindow.Show);
         _options["open_web_map"] = new ContextMenuItemEntry("Open Web Map (Browser)", GameActions.OpenWorldMapWebWindow);
 
         _options["enhanced_map"] = new ContextMenuItemEntry(TazLang.Get("enhancedmap_open_settings", "EnhancedMap settings"), EnhancedMapManager.OpenSettingsWindow);
@@ -825,6 +951,7 @@ public class WorldMapGump : ResizableGump
         ContextMenu.Add(_options["markers_manager"]);
         ContextMenu.Add(_options["add_marker_on_player"]);
         ContextMenu.Add("", null);
+        ContextMenu.Add(_options["open_detached_map"]);
         ContextMenu.Add(_options["open_web_map"]);
         ContextMenu.Add(_options["auto_start_web_map"]);
         ContextMenu.Add(_options["enhanced_map"]);
@@ -843,7 +970,7 @@ public class WorldMapGump : ResizableGump
     {
         base.Update();
 
-        if (IsDisposed)
+        if (IsDisposed || IsDetached)
         {
             return;
         }
@@ -880,12 +1007,14 @@ public class WorldMapGump : ResizableGump
         _map = new Map.Map(World, index);
 
 
-        if(World.InGame)
+        if (World.InGame)
         {
-            if (_loadingTask is { Status: TaskStatus.Running })
-                _loadingTask = _loadingTask.ContinueWith(_ => LoadMap(index, _map, _world));
+            Map.Map map = _map;
+            World world = _world;
+            if (_loadingTask is { IsCompleted: false })
+                _loadingTask = _loadingTask.ContinueWith(_ => LoadMap(index, map, world));
             else
-                _loadingTask = Task.Run(() => LoadMap(index, _map, _world));
+                _loadingTask = Task.Run(() => LoadMap(index, map, world));
         }
     }
 
@@ -1036,6 +1165,14 @@ public class WorldMapGump : ResizableGump
 
     public override void Dispose()
     {
+        if (_desktopOnly)
+        {
+            StopDesktopNavigation();
+            PurgeTtfTextBoxes(true);
+            base.Dispose();
+            return;
+        }
+
         SaveSettings();
 
         Client.Game.UO.GameCursor.IsDraggingCursorForced = false;
@@ -1578,7 +1715,7 @@ public class WorldMapGump : ResizableGump
 
     private static void LoadMap(int mapIndex, Map.Map map, World world)
     {
-        if (mapIndex < 0 || mapIndex > MapLoader.MAPS_COUNT)
+        if (mapIndex < 0 || mapIndex >= MapLoader.MAPS_COUNT)
             return;
 
         _mapLoading = 1;
@@ -1605,6 +1742,7 @@ public class WorldMapGump : ResizableGump
                     _mapTexture?.Dispose();
                     using FileStream stream = File.OpenRead(fileMapPath);
                     _mapTexture = Texture2D.FromStream(Client.Game.GraphicsDevice, stream);
+                    _desktopTextureFacet = mapIndex;
                     GameActions.Print(TazLang.Get("world_map_loaded"), 0x48);
                 });
             }
@@ -1624,7 +1762,8 @@ public class WorldMapGump : ResizableGump
 
     public unsafe Task UpdateWorldMapChunk(int mapBlockX, int mapBlockY, uint[] bufferBlock)
     {
-        if (_mapLoading == 1 || _mapTexture == null || _mapTexture.IsDisposed)
+        if (_mapLoading == 1 || _mapTexture == null || _mapTexture.IsDisposed
+            || (IsDetached && _desktopTextureFacet != World.MapIndex))
         {
             return Task.CompletedTask;
         }
@@ -1669,7 +1808,7 @@ public class WorldMapGump : ResizableGump
 
     public static async Task LoadMapTextureForMap(int mapIndex)
     {
-        if (mapIndex < 0 || mapIndex > MapLoader.MAPS_COUNT)
+        if (mapIndex < 0 || mapIndex >= MapLoader.MAPS_COUNT)
         {
             Utility.Logging.Log.Warn($"Invalid map index for texture load: {mapIndex}");
             return;
@@ -1702,6 +1841,7 @@ public class WorldMapGump : ResizableGump
                     _mapTexture?.Dispose();
                     using FileStream stream = File.OpenRead(generatedMapPath);
                     _mapTexture = Texture2D.FromStream(Client.Game.GraphicsDevice, stream);
+                    _desktopTextureFacet = mapIndex;
                     Utility.Logging.Log.Info($"Map texture loaded successfully for map {mapIndex}");
                 });
             }
@@ -1839,7 +1979,7 @@ public class WorldMapGump : ResizableGump
         _zoneSets.Clear();
 
             List<string> zonefiles = new();
-            foreach (string s in _mapFilesPath)
+            foreach (string s in MapFilesPaths)
             {
                 if(Directory.Exists(s))
                     zonefiles.AddRange(Directory.GetFiles(s, "*.zones.json"));
@@ -1860,43 +2000,19 @@ public class WorldMapGump : ResizableGump
 
     private void ImportMapFile()
     {
-        // Copy the chosen marker file into this server's marker directory
-        // (Data/<ServerName>/MapMarkers) so it is picked up by LoadMarkers.
-        string targetDir = Path.Combine(CUOEnviroment.ExecutablePath, "Data", FileSystemHelper.RemoveInvalidChars(World.Instance.ServerName), "MapMarkers");
+        FileSelector.ShowFileBrowser(World, FileSelectorType.File, null, new[] { "map", "csv", "xml" }, path =>
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
 
-        FileSelector.ShowFileBrowser
-        (
-            World,
-            FileSelectorType.File,
-            null,
-            new[] { "map", "csv", "xml" },
-            (selectedFile) =>
+            if (TryImportMarkerFile(path))
             {
-                if (string.IsNullOrEmpty(selectedFile) || !File.Exists(selectedFile))
-                {
-                    return;
-                }
-
-                try
-                {
-                    Directory.CreateDirectory(targetDir);
-
-                    string destination = Path.Combine(targetDir, Path.GetFileName(selectedFile));
-                    File.Copy(selectedFile, destination, true);
-
-                    GameActions.Print(World, string.Format(TazLang.Get("map_import_map_file_success", "Imported map file: {0}"), Path.GetFileName(selectedFile)), 0x2A);
-
-                    LoadMarkers();
-                    BuildContextMenu();
-                }
-                catch (Exception e)
-                {
-                    Log.Error($"Failed to import map file: {e}");
-                    GameActions.Print(World, TazLang.Get("map_import_map_file_failed", "Failed to import map file."), 0x21);
-                }
-            },
-            TazLang.Get("map_import_map_file", "Import Map File")
-        );
+                GameActions.Print(World, string.Format(TazLang.Get("map_import_map_file_success", "Imported map file: {0}"), Path.GetFileName(path)), 0x2A);
+                BuildContextMenu();
+            }
+            else
+                GameActions.Print(World, TazLang.Get("map_import_map_file_failed", "Failed to import map file."), 0x21);
+        }, TazLang.Get("map_import_map_file", "Import Map File"));
     }
 
     private void LoadMarkers()
@@ -1923,7 +2039,7 @@ public class WorldMapGump : ResizableGump
 
         List<string> mapIconPaths = [];
         List<string> mapIconPathsPngJpg = [];
-        foreach (string s in _mapIconsPath)
+        foreach (string s in MapIconPaths)
         {
             bool add = Directory.Exists(s);
             if (!add)
@@ -1952,7 +2068,7 @@ public class WorldMapGump : ResizableGump
 
         List<string> mapFiles = [UserMarkersFilePath];
 
-        foreach (string s in _mapFilesPath)
+        foreach (string s in MapFilesPaths)
         {
             bool add = Directory.Exists(s);
             if (!add)
@@ -2132,68 +2248,6 @@ public class WorldMapGump : ResizableGump
         {
             Log.Error($"Failed to load marker icon {iconPath}: {e}");
         }
-    }
-
-    private void AddMarkerOnPlayer()
-    {
-        if (!World.InGame)
-        {
-            return;
-        }
-
-        var entryDialog = new EntryDialog(World, 250, 150, TazLang.Get("enter_marker_name"), SaveMakerOnPlayer)
-        {
-            CanCloseWithRightClick = true
-        };
-
-        UIManager.Add(entryDialog);
-    }
-
-    private void SaveMakerOnPlayer(string markerName)
-    {
-        if (!World.InGame)
-        {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(markerName))
-        {
-            GameActions.Print(World, TazLang.Get("invalid_marker_name"), 0x2A);
-        }
-
-        string markerColor = "blue";
-        string markerIcon = "";
-        int markerZoomLevel = 3;
-
-        string markerCsv = $"{World.Player.X},{World.Player.Y},{_map.Index},{markerName},{markerIcon},{markerColor},{markerZoomLevel}";
-
-        using (FileStream fileStream = File.Open(UserMarkersFilePath, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Write))
-        using (var streamWriter = new StreamWriter(fileStream))
-        {
-            streamWriter.BaseStream.Seek(0, SeekOrigin.End);
-            streamWriter.WriteLine(markerCsv);
-        }
-
-        var mapMarker = new WMapMarker
-        {
-            X = World.Player.X,
-            Y = World.Player.Y,
-            Color = GetColor(markerColor),
-            ColorName = markerColor,
-            MapId = _map.Index,
-            MarkerIconName = markerIcon,
-            Name = markerName,
-            ZoomIndex = markerZoomLevel
-        };
-
-        if (!string.IsNullOrWhiteSpace(mapMarker.MarkerIconName) && _markerIcons.TryGetValue(mapMarker.MarkerIconName, out Texture2D markerIconTexture))
-        {
-            mapMarker.MarkerIcon = markerIconTexture;
-        }
-
-        WMapMarkerFile mapMarkerFile = _markerFiles.FirstOrDefault(x => x.FullPath == UserMarkersFilePath);
-
-        mapMarkerFile?.Markers.Add(mapMarker);
     }
 
     public void AddUserMarker(string markerName, int x, int y, int map, string color = "yellow")
@@ -2558,6 +2612,12 @@ public class WorldMapGump : ResizableGump
             return false;
         }
 
+        DrawMap(batcher, x, y);
+        return base.Draw(batcher, x, y);
+    }
+
+    private void DrawMap(UltimaBatcher2D batcher, int x, int y)
+    {
         if (!_isScrolling && !_freeView)
         {
             if (following != null)
@@ -2609,85 +2669,85 @@ public class WorldMapGump : ResizableGump
         {
             if (batcher.ClipBegin(gX, gY, gWidth, gHeight))
             {
-                ReadOnlySpan<char> str = "Please wait, I'm making the map file...".AsSpan();
-                //str = str[..(str.Length - (int)_mapLoadingTime % 3)];
+                try
+                {
+                    ReadOnlySpan<char> str = "Please wait, I'm making the map file...".AsSpan();
+                    //str = str[..(str.Length - (int)_mapLoadingTime % 3)];
 
-                //if (Time.Ticks > _mapLoadingTime)
-                //    _mapLoadingTime = Time.Ticks + 1000;
+                    //if (Time.Ticks > _mapLoadingTime)
+                    //    _mapLoadingTime = Time.Ticks + 1000;
 
-                Vector2 strSize = Fonts.Bold.MeasureString(str);
-                Vector2 pos = strSize * -0.5f;
-                pos.X += gX + halfWidth;
-                pos.Y += gY + halfHeight;
-                batcher.DrawString(Fonts.Bold, str, pos, new Vector3(38, 1, 1));
-
-                batcher.ClipEnd();
+                    Vector2 strSize = Fonts.Bold.MeasureString(str);
+                    Vector2 pos = strSize * -0.5f;
+                    pos.X += gX + halfWidth;
+                    pos.Y += gY + halfHeight;
+                    batcher.DrawString(Fonts.Bold, str, pos, new Vector3(38, 1, 1));
+                }
+                finally
+                {
+                    batcher.ClipEnd();
+                }
             }
         }
-        else if (_mapTexture != null && !_mapTexture.IsDisposed)
+        else if (_mapTexture != null && !_mapTexture.IsDisposed && (!IsDetached || _desktopTextureFacet == _map.Index))
         {
             if (batcher.ClipBegin(gX, gY, gWidth, gHeight))
             {
-                var destRect = new Rectangle
-                (
-                    gX + halfWidth,
-                    gY + halfHeight,
-                    size,
-                    size
-                );
+                try
+                {
+                    var destRect = new Rectangle
+                    (
+                        gX + halfWidth,
+                        gY + halfHeight,
+                        size,
+                        size
+                    );
 
-                var srcRect = new Rectangle
-                (
-                    centerX - size_zoom_half,
-                    centerY - size_zoom_half,
-                    size_zoom,
-                    size_zoom
-                );
+                    var srcRect = new Rectangle
+                    (
+                        centerX - size_zoom_half,
+                        centerY - size_zoom_half,
+                        size_zoom,
+                        size_zoom
+                    );
 
-                var origin = new Vector2
-                (
-                    srcRect.Width / 2f,
-                    srcRect.Height / 2f
-                );
+                    var origin = new Vector2
+                    (
+                        srcRect.Width / 2f,
+                        srcRect.Height / 2f
+                    );
 
-                batcher.Draw
-                (
-                    _mapTexture,
-                    destRect,
-                    srcRect,
-                    hueVector,
-                    _flipMap ? Microsoft.Xna.Framework.MathHelper.ToRadians(45) : 0,
-                    origin,
-                    SpriteEffects.None,
-                    0
-                );
+                    batcher.Draw
+                    (
+                        _mapTexture,
+                        destRect,
+                        srcRect,
+                        hueVector,
+                        _flipMap ? Microsoft.Xna.Framework.MathHelper.ToRadians(45) : 0,
+                        origin,
+                        SpriteEffects.None,
+                        0
+                    );
 
-                DrawAll
-                (
-                    batcher,
-                    srcRect,
-                    gX,
-                    gY,
-                    halfWidth,
-                    halfHeight
-                );
+                    DrawAll
+                    (
+                        batcher,
+                        srcRect,
+                        gX,
+                        gY,
+                        halfWidth,
+                        halfHeight
+                    );
 
-                DrawNavDestination(batcher, gX, gY, halfWidth, halfHeight);
-
-                batcher.ClipEnd();
+                    if (!IsDetached || _map.Index == World.MapIndex)
+                    DrawNavDestination(batcher, gX, gY, halfWidth, halfHeight);
+                }
+                finally
+                {
+                    batcher.ClipEnd();
+                }
             }
         }
-
-        //foreach (House house in World.HouseManager.Houses)
-        //{
-        //    foreach (Multi multi in house.Components)
-        //    {
-        //        batcher.Draw2D(Textures.GetTexture())
-        //    }
-        //}
-
-
-        return base.Draw(batcher, x, y);
     }
 
     private void DrawAll(UltimaBatcher2D batcher, Rectangle srcRect, int gX, int gY, int halfWidth, int halfHeight)
@@ -2700,7 +2760,7 @@ public class WorldMapGump : ResizableGump
             }
         }
 
-        if (_showMultis)
+        if (_showMultis && (!IsDetached || _map.Index == World.MapIndex))
         {
             foreach (House house in World.HouseManager.Houses)
             {
@@ -2759,6 +2819,9 @@ public class WorldMapGump : ResizableGump
             }
         }
 
+        if (IsDetached)
+            DrawSightings(batcher, srcRect, gX, gY, halfWidth, halfHeight);
+
         if (_gotoMarker != null)
         {
             DrawMarker
@@ -2771,7 +2834,7 @@ public class WorldMapGump : ResizableGump
                 halfHeight,
                 Zoom
             );
-            if (_gotoMarker.MapId == World.Map.Index)
+            if (_gotoMarker.MapId == World.Map.Index && (!IsDetached || _map.Index == World.MapIndex))
             {
                 Point pdrot = RotatePoint(_gotoMarker.X - _center.X, _gotoMarker.Y - _center.Y, Zoom, 1, _flipMap ? 45f : 0f);
                 pdrot.X += gX + halfWidth;
@@ -2793,7 +2856,7 @@ public class WorldMapGump : ResizableGump
             }
         }
 
-        if (_showMobiles)
+        if (_showMobiles && (!IsDetached || _map.Index == World.MapIndex))
         {
             foreach (Mobile mob in World.Mobiles.Values)
             {
@@ -2819,7 +2882,7 @@ public class WorldMapGump : ResizableGump
                 }
                 else
                 {
-                    if (mob != null && mob.Distance <= World.ClientViewRange)
+                    if (mob != null && mob.Distance <= World.ClientViewRange && (!IsDetached || _map.Index == World.MapIndex))
                     {
                         WMapEntity wme = World.WMapManager.GetEntity(mob);
 
@@ -2900,7 +2963,7 @@ public class WorldMapGump : ResizableGump
                 {
                     Mobile mob = World.Mobiles.Get(partyMember.Serial);
 
-                    if (mob != null && mob.Distance <= World.ClientViewRange)
+                    if (mob != null && mob.Distance <= World.ClientViewRange && (!IsDetached || _map.Index == World.MapIndex))
                     {
                         WMapEntity wme = World.WMapManager.GetEntity(mob);
 
@@ -2961,7 +3024,7 @@ public class WorldMapGump : ResizableGump
                     halfHeight,
                     Zoom
                 );
-            if (World.WMapManager._corpse.Map == World.Map.Index)
+            if (World.WMapManager._corpse.Map == World.Map.Index && (!IsDetached || _map.Index == World.MapIndex))
             {
                 Point pdrot = RotatePoint(World.WMapManager._corpse.X - _center.X, World.WMapManager._corpse.Y - _center.Y, Zoom, 1, _flipMap ? 45f : 0f);
                 pdrot.X += gX + halfWidth;
@@ -2995,7 +3058,7 @@ public class WorldMapGump : ResizableGump
             }
         }
 
-        if (_world.Player.Pathfinder.AutoWalking && World.Player.Pathfinder.PathSize > 0)
+        if ((!IsDetached || _map.Index == World.MapIndex) && _world.Player.Pathfinder.AutoWalking && World.Player.Pathfinder.PathSize > 0)
         {
             Point end = RotatePoint(World.Player.Pathfinder.EndPoint.X - _center.X, World.Player.Pathfinder.EndPoint.Y - _center.Y, Zoom, 1, _flipMap ? 45f : 0f);
             end.X += gX + halfWidth;
@@ -3014,29 +3077,30 @@ public class WorldMapGump : ResizableGump
                 );
         }
 
-        DrawMobile
-        (
-            batcher,
-            World.Player,
-            gX,
-            gY,
-            halfWidth,
-            halfHeight,
-            Zoom,
-            Color.White,
-            _showPlayerName,
-            false,
-            _showPlayerBar
-        );
-
-
+        if (!IsDetached || _map.Index == World.MapIndex)
+        {
+            DrawMobile
+            (
+                batcher,
+                World.Player,
+                gX,
+                gY,
+                halfWidth,
+                halfHeight,
+                Zoom,
+                Color.White,
+                _showPlayerName,
+                false,
+                _showPlayerBar
+            );
+        }
 
         if (ShouldDrawGrid())
         {
             DrawGrid(batcher, srcRect, gX, gY, halfWidth, halfHeight, Zoom);
         }
 
-        if (_showCoordinates)
+        if (_showCoordinates && (!IsDetached || _map.Index == World.MapIndex))
         {
             string text = $"{World.Player.X}, {World.Player.Y}, {World.Player.Z} [{_zoomIndex}]";
 
@@ -3045,14 +3109,16 @@ public class WorldMapGump : ResizableGump
 
             Vector3 hueVector = new(0f, 1f, 1f);
 
-            batcher.DrawString(Fonts.Bold, text, gX + 6, gY + 6, hueVector);
+            int top = gY + (IsDetached ? 38 : 5);
+            batcher.DrawString(Fonts.Bold, text, gX + 6, top + 1, hueVector);
             hueVector = ShaderHueTranslator.GetHueVector(0);
-            batcher.DrawString(Fonts.Bold, text, gX + 5, gY + 5, hueVector);
+            batcher.DrawString(Fonts.Bold, text, gX + 5, top, hueVector);
         }
 
-        if (_showMouseCoordinates && _lastMousePosition != null)
+        if (_showMouseCoordinates && TryGetMapPointer(out Point cursorTile))
         {
-            CanvasToWorld(_lastMousePosition.Value.X, _lastMousePosition.Value.Y, out int mouseWorldX, out int mouseWorldY);
+            int mouseWorldX = cursorTile.X;
+            int mouseWorldY = cursorTile.Y;
 
             string mouseCoordinateString = $"{mouseWorldX} {mouseWorldY}";
 
@@ -3172,7 +3238,9 @@ public class WorldMapGump : ResizableGump
             dotHueVector
         );
 
-        if (drawName && !string.IsNullOrEmpty(mobile.Name))
+        bool hovered = IsDetached && MapHoverPointer is Point pointer
+            && Math.Abs(pointer.X - rot.X) <= DOT_SIZE_HALF + 2 && Math.Abs(pointer.Y - rot.Y) <= DOT_SIZE_HALF + 2;
+        if ((drawName || hovered) && !string.IsNullOrEmpty(mobile.Name))
         {
             TextBox ttfBox = UseTtfFont ? GetTtfTextBox(mobile.Name) : null;
             Vector2 size = ttfBox != null ? new Vector2(ttfBox.MeasuredSize.X, ttfBox.MeasuredSize.Y) : Fonts.Regular.MeasureString(mobile.Name);
@@ -3266,7 +3334,8 @@ public class WorldMapGump : ResizableGump
         int y,
         int width,
         int height,
-        float zoom
+        float zoom,
+        bool hoverOnly = false
     )
     {
         if (marker.MapId != _map.Index)
@@ -3310,10 +3379,13 @@ public class WorldMapGump : ResizableGump
             return false;
         }
 
-        bool showMarkerName = _showMarkerNames && !string.IsNullOrEmpty(marker.Name) && (_zoomIndex > 5 || _alwaysShowMarkers);
+        bool showMarkerName = !hoverOnly && _showMarkerNames && !string.IsNullOrEmpty(marker.Name) && (_zoomIndex > 5 || _alwaysShowMarkers);
         bool drawSingleName = false;
+        Point? pointer = MapHoverPointer;
 
-        if (zoomGated || !_showMarkerIcons || marker.MarkerIcon == null)
+        bool drewMonster = (_showMarkerIcons && (IsDetached || !zoomGated))
+            && MonsterMapIcon.Draw(batcher, marker.MarkerIconName, rot);
+        if (!drewMonster && (zoomGated || !_showMarkerIcons || marker.MarkerIcon == null))
         {
             batcher.Draw
             (
@@ -3328,27 +3400,30 @@ public class WorldMapGump : ResizableGump
                 hueVector
             );
 
-            if (Mouse.Position.X >= rot.X - DOT_SIZE && Mouse.Position.X <= rot.X + DOT_SIZE_HALF &&
-                Mouse.Position.Y >= rot.Y - DOT_SIZE && Mouse.Position.Y <= rot.Y + DOT_SIZE_HALF)
+            if (pointer?.X >= rot.X - DOT_SIZE && pointer?.X <= rot.X + DOT_SIZE_HALF &&
+                pointer?.Y >= rot.Y - DOT_SIZE && pointer?.Y <= rot.Y + DOT_SIZE_HALF)
             {
                 drawSingleName = true;
             }
         }
-        else
+        else if (!drewMonster)
         {
             batcher.Draw(marker.MarkerIcon, new Vector2(rot.X - (marker.MarkerIcon.Width >> 1), rot.Y - (marker.MarkerIcon.Height >> 1)), hueVector);
 
             if (!showMarkerName)
             {
-                if (Mouse.Position.X >= rot.X - (marker.MarkerIcon.Width >> 1) &&
-                    Mouse.Position.X <= rot.X + (marker.MarkerIcon.Width >> 1) &&
-                    Mouse.Position.Y >= rot.Y - (marker.MarkerIcon.Height >> 1) &&
-                    Mouse.Position.Y <= rot.Y + (marker.MarkerIcon.Height >> 1))
+                if (pointer?.X >= rot.X - (marker.MarkerIcon.Width >> 1) &&
+                    pointer?.X <= rot.X + (marker.MarkerIcon.Width >> 1) &&
+                    pointer?.Y >= rot.Y - (marker.MarkerIcon.Height >> 1) &&
+                    pointer?.Y <= rot.Y + (marker.MarkerIcon.Height >> 1))
                 {
                     drawSingleName = true;
                 }
             }
         }
+
+        if (drewMonster && pointer is Point hover && Math.Abs(hover.X - rot.X) <= 14 && Math.Abs(hover.Y - rot.Y) <= 14)
+            drawSingleName = true;
 
         if (showMarkerName)
         {
@@ -3793,10 +3868,10 @@ public class WorldMapGump : ResizableGump
             hueVector
         );
 
-        bool hovered = Mouse.Position.X >= rot.X - DOT_SIZE_HALF - 2 && Mouse.Position.X <= rot.X + DOT_SIZE_HALF + 2 &&
-                       Mouse.Position.Y >= rot.Y - DOT_SIZE_HALF - 2 && Mouse.Position.Y <= rot.Y + DOT_SIZE_HALF + 2;
+        bool hovered = MapHoverPointer is Point pointer && Math.Abs(pointer.X - rot.X) <= DOT_SIZE_HALF + 2
+            && Math.Abs(pointer.Y - rot.Y) <= DOT_SIZE_HALF + 2;
 
-        bool showName = isWaypoint ? hovered : _showGroupName;
+        bool showName = isWaypoint ? hovered : _showGroupName || (IsDetached && hovered);
 
         if (showName)
         {
@@ -4237,6 +4312,7 @@ public class WorldMapGump : ResizableGump
         if (_world.Player == null)
             return;
 
+        _navVersion++;
         _navDest = new Point(wX, wY);
         _navDestSetTime = Environment.TickCount64;
         _navPath = null;
@@ -4272,12 +4348,13 @@ public class WorldMapGump : ResizableGump
     private void StartNavPath(int mapIndex, int startX, int startY, sbyte startZ, int destX, int destY, bool firstAttempt, bool append)
     {
         List<WorldMapPathfinder.HouseMultiSnapshot> houseMultis = BuildHouseMultiSnapshot();
+        int version = _navVersion;
 
         WorldMapPathfinder.FindPathAsync(mapIndex, startX, startY, startZ, destX, destY, 8, path =>
         {
             // The search runs on a worker thread and can complete after the player has left
             // the world or this gump has been closed, so the world state may be gone.
-            if (IsDisposed || _world?.Player?.Pathfinder == null)
+            if (IsDisposed || version != _navVersion || _world?.Player?.Pathfinder == null || _world.MapIndex != mapIndex)
                 return;
 
             if (path == null || path.Count == 0)

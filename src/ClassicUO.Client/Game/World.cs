@@ -34,6 +34,7 @@ namespace ClassicUO.Game
         {
             Instance = this;
             WMapManager = new WorldMapEntityManager(this);
+            MapSightings = new MapSightings(this);
             CorpseManager = new CorpseManager(this);
             Party = new PartyManager(this);
             HouseManager = new HouseManager(this);
@@ -91,6 +92,7 @@ namespace ClassicUO.Game
         public HouseCustomizationManager CustomHouseManager;
 
         public WorldMapEntityManager WMapManager { get; }
+        internal MapSightings MapSightings { get; }
 
         public ActiveSpellIconsManager ActiveSpellIcons = new ActiveSpellIconsManager();
 
@@ -634,6 +636,7 @@ namespace ClassicUO.Game
                 _effectManager.Update();
                 WorldTextManager.Update();
                 WMapManager.RemoveUnupdatedWEntity();
+                MapSightings.Update();
             }
         }
 
@@ -1086,6 +1089,7 @@ namespace ClassicUO.Game
 
         public void Clear()
         {
+            MapSightings.Clear();
             foreach (Mobile mobile in Mobiles.Values)
             {
                 RemoveMobile(mobile);

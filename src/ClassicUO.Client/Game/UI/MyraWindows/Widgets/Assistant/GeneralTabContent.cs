@@ -128,6 +128,8 @@ public static class GeneralTabContent
         grid.AddWidget(DesktopAssistantTheme.Group("Visuals", visuals), 1, 0);
         grid.AddWidget(DesktopAssistantTheme.Group("Object timing", actions), 1, 1);
         grid.AddWidget(DesktopAssistantTheme.Group("Game interaction", gameplay), 2, 0, colspan: 2);
+        grid.AddWidget(DesktopAssistantTheme.Group("World Map",
+            new MyraButton("Open detached map", DetachedWorldMapWindow.Show)), 3, 0, colspan: 2);
         return grid;
     }
 
