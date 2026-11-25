@@ -190,7 +190,9 @@ internal static class ShopListsTabContent
                 HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
             }, row, 0);
 
-            string name = list.Find(rule.Graphic, rule.Hue)?.Name is { Length: > 0 } listName ? listName : $"0x{rule.Graphic:X4}";
+            string name = list.Find(rule.Graphic, rule.Hue) is { } listItem
+                ? ItemListsTabContent.DisplayName(listItem)
+                : $"0x{rule.Graphic:X4}";
             MyraLabel label = MyraGrid.TableText(name);
             label.VerticalAlignment = VerticalAlignment.Center;
             grid.AddWidget(label, row, 1);

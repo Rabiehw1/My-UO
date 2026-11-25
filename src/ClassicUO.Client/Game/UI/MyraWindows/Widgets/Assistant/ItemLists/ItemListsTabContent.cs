@@ -75,8 +75,8 @@ internal static partial class ItemListsTabContent
         grid.AddColumn(new Proportion(ProportionType.Pixels, interaction.IsDesktop ? 202 : 175));
         grid.AddColumn(new Proportion(ProportionType.Fill));
         var listActions = new MyraGrid { ColumnSpacing = 4, RowSpacing = 4 };
-        listActions.AddColumn(new Proportion(ProportionType.Fill));
-        listActions.AddColumn(new Proportion(ProportionType.Fill));
+        // Same layout as the Auto Loot preset buttons: two equal parts, rows added as needed.
+        listActions.AddColumn(new Proportion(ProportionType.Part, 1), count: LIST_BUTTON_COLUMNS);
         var addActions = Toolbar();
         var transferActions = Toolbar();
         var itemActions = Toolbar();
@@ -490,7 +490,7 @@ internal static partial class ItemListsTabContent
                 {
                     row = new MyraGrid { Height = CompactRowHeight, ColumnSpacing = 0 };
                     row.AddTableColumns(desktopColumns);
-                    string itemName = string.IsNullOrWhiteSpace(item.Name) ? graphic : item.Name;
+                    string itemName = DisplayName(item);
                     row.AddWidget(MyraGrid.TableText(itemName), 0, 1);
                     row.AddWidget(MyraGrid.TableText(hue), 0, 2);
                     var editRow = Button(TazLang.Get("macrostab_col_edit"));
@@ -520,7 +520,7 @@ internal static partial class ItemListsTabContent
                 else
                 {
                     row = BuildColumns("", graphic, hue,
-                        Display(item.Name), Display(item.RegexSearch),
+                        DisplayName(item), Display(item.RegexSearch),
                         item.Priority switch { 0 => "Low", 2 => "High", _ => "Normal" },
                         item.MaxAmount == 0 ? "Any" : item.MaxAmount.ToString(),
                         item.DestinationContainer == 0 ? "Default" : $"0x{item.DestinationContainer:X8}");
@@ -724,6 +724,23 @@ internal static partial class ItemListsTabContent
     /// The item's name without a stack count: "52 Bandages" and "Bandages : 52" both become "Bandages".
     /// The shard's name can hold an older count than the stack has now, so any count is removed, not just the current one.
     /// </summary>
+    /// <summary>
+    /// The entry's own name, or else the item's name from the game files, so imported lists without names stay readable.
+    /// Falls back to the graphic ID only when the game files have no name either.
+    /// </summary>
+    internal static string DisplayName(SharedItem item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Name))
+            return item.Name;
+
+        if (item.Graphic == ushort.MaxValue)
+            return TazLang.Get("assistant_items_any");
+
+        var tiles = Client.Game.UO.FileManager?.TileData?.StaticData;
+        string tileName = tiles != null && item.Graphic < tiles.Length ? tiles[item.Graphic].Name?.Trim() ?? "" : "";
+        return tileName.Length > 0 ? StringHelper.CapitalizeAllWords(tileName) : $"0x{item.Graphic:X4}";
+    }
+
     private static string NameWithoutAmount(Item item)
     {
         string name = item.GetNormalizedName(showAmount: false);
