@@ -18,6 +18,9 @@ namespace ClassicUO.Configuration
         public ushort TurnDelay { get; set => SetProperty(ref field, value); } = 80;
         public bool EnableEnhancedPackets { get; set => SetProperty(ref field, value); } = true;
 
+        /// <summary>Allows world-map position queries on older shards that support them without sending an acknowledgment.</summary>
+        public bool UseLegacyWorldMapTracking { get; set => SetProperty(ref field, value); }
+
         /// <summary>When enabled, corpses that have already been opened are not auto-opened again.</summary>
         public bool DoNotReopenCorpses { get; set => SetProperty(ref field, value); } = false;
 

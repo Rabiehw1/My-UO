@@ -250,8 +250,6 @@ public class WorldMapGump : ResizableGump
         _flipMap = ProfileManager.CurrentProfile.WorldMapFlipMap;
         _showPartyMembers = ProfileManager.CurrentProfile.WorldMapShowParty;
 
-        World.WMapManager.SetEnable(_showPartyMembers);
-
         _zoomIndex = ProfileManager.CurrentProfile.WorldMapZoomIndex;
 
         _showCoordinates = ProfileManager.CurrentProfile.WorldMapShowCoordinates;
@@ -418,12 +416,27 @@ public class WorldMapGump : ResizableGump
             {
                 _showPartyMembers = !_showPartyMembers;
 
-                World.WMapManager.SetEnable(_showPartyMembers);
                 SaveSettings();
             },
             true,
             _showPartyMembers
         );
+
+        if (ProfileManager.ServerSettings is { } serverSettings && World.WMapManager.CanUseLegacyTracking)
+        {
+            var legacyTracking = new ContextMenuItemEntry(
+                TazLang.Get("world_map_legacy_tracking", "Legacy server tracking (requires shard support)"),
+                null, true, serverSettings.UseLegacyWorldMapTracking);
+            legacyTracking.Action = () =>
+            {
+                serverSettings.UseLegacyWorldMapTracking = !serverSettings.UseLegacyWorldMapTracking;
+                legacyTracking.IsSelected = serverSettings.UseLegacyWorldMapTracking;
+            };
+            _options["legacy_server_tracking"] = legacyTracking;
+        }
+        else
+            _options.Remove("legacy_server_tracking");
+
         _options["show_corpse"] = new ContextMenuItemEntry("Show my Corpse", () => { _showCorpse = !_showCorpse; SaveSettings(); }, true, _showCorpse);
 
         _options["show_mobiles"] = new ContextMenuItemEntry(TazLang.Get("show_mobiles"), () => { _showMobiles = !_showMobiles; SaveSettings(); }, true, _showMobiles);
@@ -797,6 +810,8 @@ public class WorldMapGump : ResizableGump
 
         ContextMenu.Add("", null);
         ContextMenu.Add(_options["show_party_members"]);
+        if (_options.TryGetValue("legacy_server_tracking", out ContextMenuItemEntry legacyTracking))
+            ContextMenu.Add(legacyTracking);
         ContextMenu.Add(_options["show_corpse"]);
         ContextMenu.Add(_options["show_mobiles"]);
         ContextMenu.Add(_options["show_multis"]);
@@ -1022,7 +1037,6 @@ public class WorldMapGump : ResizableGump
     public override void Dispose()
     {
         SaveSettings();
-        World.WMapManager.SetEnable(false);
 
         Client.Game.UO.GameCursor.IsDraggingCursorForced = false;
 

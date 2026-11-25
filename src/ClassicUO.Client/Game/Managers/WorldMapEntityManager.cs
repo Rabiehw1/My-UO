@@ -6,7 +6,6 @@ using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Network;
-using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers
 {
@@ -57,33 +56,23 @@ namespace ClassicUO.Game.Managers
 
         public WorldMapEntityManager(World world) { _world = world; }
 
-        public bool Enabled => ((_world.ClientFeatures.Flags & CharacterListFlags.CLF_NEW_MOVEMENT_SYSTEM) == 0 || _ackReceived) &&
-                        (AsyncNetClient.Encryption == null || AsyncNetClient.Encryption.EncryptionType == 0) &&
-                        ProfileManager.CurrentProfile != null && ProfileManager.CurrentProfile.WorldMapShowParty &&
-                        UIManager.GetGump<WorldMapGump>() != null; // horrible, but works
+        private bool UsesNewMovement => (_world.ClientFeatures.Flags & CharacterListFlags.CLF_NEW_MOVEMENT_SYSTEM) != 0;
+        private static bool IsEncrypted => AsyncNetClient.Encryption is { EncryptionType: not 0 };
+
+        internal bool CanUseLegacyTracking => !UsesNewMovement && !IsEncrypted;
+
+        public bool Enabled => ProfileManager.CurrentProfile?.WorldMapShowParty == true
+                        && UIManager.GetGump<WorldMapGump>() is { IsDisposed: false };
+
+        internal bool SupportsServerQueries => CanQueryServer(_ackReceived,
+            ProfileManager.ServerSettings?.UseLegacyWorldMapTracking == true, UsesNewMovement, IsEncrypted);
+
+        internal static bool CanQueryServer(bool acknowledged, bool legacyOptIn, bool usesNewMovement, bool encrypted) =>
+            !encrypted && (acknowledged || legacyOptIn && !usesNewMovement);
 
         public readonly Dictionary<uint, WMapEntity> Entities = new Dictionary<uint, WMapEntity>();
 
         public void SetACKReceived() => _ackReceived = true;
-
-        public void SetEnable(bool v)
-        {
-            if ((_world.ClientFeatures.Flags & CharacterListFlags.CLF_NEW_MOVEMENT_SYSTEM) != 0 && !_ackReceived)
-            {
-                Log.WarnDebug("Server support new movement system. Can't use the 0xF0 packet to query guild/party position");
-                v = false;
-            }
-            else if (AsyncNetClient.Encryption?.EncryptionType != 0 && !_ackReceived)
-            {
-                Log.WarnDebug("Server has encryption. Can't use the 0xF0 packet to query guild/party position");
-                v = false;
-            }
-
-            if (v)
-            {
-                RequestServerPartyGuildInfo(true);
-            }
-        }
 
         public void AddOrUpdate
         (
@@ -218,41 +207,28 @@ namespace ClassicUO.Game.Managers
             return entity;
         }
 
-        public void RequestServerPartyGuildInfo(bool force = false)
+        public void RequestServerPartyGuildInfo()
         {
-            if (!force && !Enabled)
+            if (!_world.InGame || !SupportsServerQueries || !Enabled || _lastPacketSend >= Time.Ticks)
             {
                 return;
             }
 
-            if (_world.InGame && _lastPacketSend < Time.Ticks)
+            _lastPacketSend = Time.Ticks + 250;
+            AsyncNetClient.Socket.Send_QueryGuildPosition();
+
+            if (_world.Party != null && _world.Party.Leader != 0)
             {
-                //GameActions.Print($"SENDING PACKET! {Time.Ticks}");
-
-                _lastPacketSend = Time.Ticks + 250;
-
-                //if (!force && !_can_send)
-                //{
-                //    return;
-                //}
-
-                AsyncNetClient.Socket.Send_QueryGuildPosition();
-
-                if (_world.Party != null && _world.Party.Leader != 0)
+                foreach (PartyMember member in _world.Party.Members)
                 {
-                    foreach (PartyMember e in _world.Party.Members)
+                    if (member == null || !SerialHelper.IsValid(member.Serial))
+                        continue;
+
+                    Mobile mobile = _world.Mobiles.Get(member.Serial);
+                    if (mobile == null || mobile.Distance > _world.ClientViewRange)
                     {
-                        if (e != null && SerialHelper.IsValid(e.Serial))
-                        {
-                            Mobile mob = _world.Mobiles.Get(e.Serial);
-
-                            if (mob == null || mob.Distance > _world.ClientViewRange)
-                            {
-                                AsyncNetClient.Socket.Send_QueryPartyPosition();
-
-                                break;
-                            }
-                        }
+                        AsyncNetClient.Socket.Send_QueryPartyPosition();
+                        break;
                     }
                 }
             }
@@ -262,7 +238,7 @@ namespace ClassicUO.Game.Managers
         {
             Entities.Clear();
             _ackReceived = false;
-            SetEnable(false);
+            _lastPacketSend = _lastPacketRecv = 0;
         }
     }
 }
