@@ -267,8 +267,11 @@ internal sealed class SupportAgentManager : IDisposable
         {
             _blessRequested = false;
 
-            // Asked for, so cast even if the 30-minute timer hasn't run out.
-            if (TryUseRole(classSettings, SupportRole.Bless, player, leader, leader ?? player, now, ignoreCooldown: true))
+            long remaining = BlessCooldownRemaining(classSettings, now);
+
+            if (remaining > 0)
+                _status.Show(TazLang.Get("supportagent_status_blesscooldown", [FormatDuration(remaining)]), SupportStatus.HUE_INFO);
+            else if (TryUseRole(classSettings, SupportRole.Bless, player, leader, leader ?? player, now))
                 return true;
         }
 
@@ -330,29 +333,40 @@ internal sealed class SupportAgentManager : IDisposable
         return TryUseRole(classSettings, SupportRole.Heal, player, leader, patient, now);
     }
 
-    /// <summary>
-    /// Keeps buffs up. Bless abilities are only renewed once they have been used this session, so the helper
-    /// doesn't bless on login over a bless that may still be running.
-    /// </summary>
     private bool TryBuff(PlayerMobile player, SupportClassSettings classSettings, Mobile? leader, long now) =>
-        TryUseRole(classSettings, SupportRole.Buff, player, leader, null, now)
-        || TryUseRole(classSettings, SupportRole.Bless, player, leader, leader ?? player, now, onlyRenew: true);
+        TryUseRole(classSettings, SupportRole.Buff, player, leader, null, now);
+
+    /// <summary>Shortest cooldown left among enabled bless abilities; 0 when one is ready.</summary>
+    private long BlessCooldownRemaining(SupportClassSettings classSettings, long now)
+    {
+        long shortest = long.MaxValue;
+
+        foreach (SupportAbility ability in classSettings.Abilities)
+        {
+            if (ability.Enabled && ability.Role == SupportRole.Bless)
+                shortest = Math.Min(shortest, _runner.RemainingCooldownMs(ability, now));
+        }
+
+        return shortest == long.MaxValue ? 0 : shortest;
+    }
+
+    private static string FormatDuration(long ms)
+    {
+        var time = TimeSpan.FromMilliseconds(ms);
+        return time.TotalMinutes >= 1 ? $"{(int)time.TotalMinutes}m {time.Seconds}s" : $"{Math.Max(1, time.Seconds)}s";
+    }
 
     /// <summary>
     /// Uses the first enabled, ready ability of <paramref name="role" /> that has a valid target. Waits for the
     /// previous ability's recovery, except in an emergency.
     /// </summary>
-    /// <param name="ignoreCooldown">Use the ability even if its own cooldown hasn't ended (spoken requests).</param>
-    /// <param name="onlyRenew">Only use abilities that have already been used this session.</param>
     private bool TryUseRole(
         SupportClassSettings classSettings,
         SupportRole role,
         PlayerMobile player,
         Mobile? leader,
         Mobile? patient,
-        long now,
-        bool ignoreCooldown = false,
-        bool onlyRenew = false
+        long now
     )
     {
         if (role != SupportRole.Emergency && now < _abilityReadyAt)
@@ -363,10 +377,7 @@ internal sealed class SupportAgentManager : IDisposable
             if (!ability.Enabled || ability.Role != role)
                 continue;
 
-            if (!ignoreCooldown && !_runner.IsOffCooldown(ability, now))
-                continue;
-
-            if (onlyRenew && !_runner.HasBeenUsed(ability))
+            if (!_runner.IsOffCooldown(ability, now))
                 continue;
 
             // Still active according to the shard's buff icon: casting again would waste the turn.

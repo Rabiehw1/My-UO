@@ -29,7 +29,7 @@ internal static class SupportClassPresets
     /// <summary>Recast interval for long-lasting buffs.</summary>
     private const int BUFF_RECAST_MS = 120_000;
 
-    /// <summary>Nagash's staff casts Bless; its bless lasts 30 minutes.</summary>
+    /// <summary>Nagash's staff bless can only be used once every 30 minutes.</summary>
     private const ushort NAGASH_STAFF_GRAPHIC = 0x13F9;
 
     private const ushort NAGASH_STAFF_HUE = 1950;

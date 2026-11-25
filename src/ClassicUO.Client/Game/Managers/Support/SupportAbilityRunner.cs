@@ -52,10 +52,12 @@ internal sealed class SupportAbilityRunner
     public bool IsOffCooldown(SupportAbility ability, long now) =>
         !_lastUsed.TryGetValue(ability.Id, out long lastUsed) || now - lastUsed >= ability.CooldownMs;
 
-    /// <summary>Whether <paramref name="ability" /> has been used since the agent started.</summary>
+    /// <summary>Time left before <paramref name="ability" /> may be used again.</summary>
     /// <param name="ability">Ability to check.</param>
-    /// <returns>True after its first use this session.</returns>
-    public bool HasBeenUsed(SupportAbility ability) => _lastUsed.ContainsKey(ability.Id);
+    /// <param name="now">Current <see cref="Time.Ticks" />.</param>
+    /// <returns>Milliseconds left; 0 when ready.</returns>
+    public long RemainingCooldownMs(SupportAbility ability, long now) =>
+        _lastUsed.TryGetValue(ability.Id, out long lastUsed) ? Math.Max(0, lastUsed + ability.CooldownMs - now) : 0;
 
     /// <summary>
     /// Whether the helper has what <paramref name="ability" /> needs (the item, a bandage, a target), so a turn is

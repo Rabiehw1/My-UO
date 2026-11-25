@@ -32,7 +32,7 @@ public enum SupportRole
     /// <summary>The helper itself dropped to the emergency threshold; used once before falling back to heals.</summary>
     Emergency,
 
-    /// <summary>Used when the leader says the bless phrase, then kept up by recasting when its cooldown ends.</summary>
+    /// <summary>Used only when the leader says the bless phrase; refused with a status while on cooldown.</summary>
     Bless
 }
 
