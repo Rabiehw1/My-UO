@@ -23,6 +23,7 @@ internal static class SupportAgentTabContent
     private const int TEXT_INPUT_WIDTH = 160;
     private const string HEX_PREFIX = "0x";
     private const int ROW_SPACING = 8;
+    private const int ABILITY_COLUMNS = 5;
 
     #endregion
 
@@ -226,9 +227,19 @@ internal static class SupportAgentTabContent
         panel.Widgets.Clear();
         SupportClassSettings classSettings = settings.GetClassSettings(settings.Class);
 
-        foreach (SupportAbility ability in classSettings.Abilities)
-            panel.Widgets.Add(BuildAbilityRow(ability, settings, interaction, refresh));
+        // A grid so every row's fields line up in the same columns.
+        var grid = new Grid { ColumnSpacing = ROW_SPACING, RowSpacing = ROW_SPACING / 2 };
 
+        for (int column = 0; column < ABILITY_COLUMNS; column++)
+            grid.ColumnsProportions.Add(new Proportion(ProportionType.Auto));
+
+        for (int row = 0; row < classSettings.Abilities.Count; row++)
+        {
+            grid.RowsProportions.Add(new Proportion(ProportionType.Auto));
+            AddAbilityRow(grid, row, classSettings.Abilities[row], settings, interaction, refresh);
+        }
+
+        panel.Widgets.Add(grid);
         panel.Widgets.Add(new MyraButton(TazLang.Get("supportagent_resetabilities"), () =>
         {
             classSettings.Abilities = SupportClassPresets.Create(settings.Class);
@@ -237,33 +248,50 @@ internal static class SupportAgentTabContent
         }) { Tooltip = TazLang.Get("supportagent_resetabilities_tooltip") });
     }
 
-    private static Widget BuildAbilityRow(
+    /// <summary>Fills one grid row: enable box, what it uses, then cast, wait and cooldown times.</summary>
+    private static void AddAbilityRow(
+        Grid grid,
+        int row,
         SupportAbility ability,
         SupportAgentSave settings,
         AgentPageInteraction interaction,
         Action refresh
     )
     {
-        var row = Row();
-        row.Widgets.Add(MyraCheckButton.CreateWithCallback(ability.Enabled, v => ability.Enabled = v, ability.Name, RoleText(ability.Role)));
+        Place(grid, row, 0, MyraCheckButton.CreateWithCallback(ability.Enabled, v => ability.Enabled = v, ability.Name, RoleText(ability.Role)));
+        Place(grid, row, 1, BuildAbilitySource(ability, settings, interaction, refresh));
+        Place(grid, row, 2, Number(TazLang.Get("supportagent_casttime"), ability.CastTimeMs, v => ability.CastTimeMs = Math.Max(0, v)));
+        Place(grid, row, 3, Number(TazLang.Get("supportagent_recovery"), ability.RecoveryMs, v => ability.RecoveryMs = Math.Max(0, v)));
+        Place(grid, row, 4, Number(TazLang.Get("supportagent_cooldown"), ability.CooldownMs, v => ability.CooldownMs = Math.Max(0, v)));
+    }
+
+    /// <summary>The field saying what the ability uses: a spell number, a book spell, a picked item or text.</summary>
+    private static Widget BuildAbilitySource(
+        SupportAbility ability,
+        SupportAgentSave settings,
+        AgentPageInteraction interaction,
+        Action refresh
+    )
+    {
+        var cell = new HorizontalStackPanel { Spacing = ROW_SPACING };
 
         switch (ability.Action)
         {
             case SupportActionType.CastSpell:
-                row.Widgets.Add(Number(TazLang.Get("supportagent_spellnumber"), ability.SpellId, v => ability.SpellId = Math.Max(0, v)));
+                cell.Widgets.Add(Number(TazLang.Get("supportagent_spellnumber"), ability.SpellId, v => ability.SpellId = Math.Max(0, v)));
                 break;
 
             case SupportActionType.UseItemAndGumpButton:
-                AddItemPicker(row, ability, settings, interaction, refresh);
-                row.Widgets.Add(Number(TazLang.Get("supportagent_gumpbutton"), ability.GumpButton, v => ability.GumpButton = Math.Max(0, v)));
+                AddItemPicker(cell, ability, settings, interaction, refresh);
+                cell.Widgets.Add(Number(TazLang.Get("supportagent_gumpbutton"), ability.GumpButton, v => ability.GumpButton = Math.Max(0, v)));
                 break;
 
             case SupportActionType.UseItem:
-                AddItemPicker(row, ability, settings, interaction, refresh);
+                AddItemPicker(cell, ability, settings, interaction, refresh);
                 break;
 
             case SupportActionType.CastShardSpell:
-                row.Widgets.Add(Number(
+                cell.Widgets.Add(Number(
                     TazLang.Get("supportagent_bookspell", [ShardSpellCatalog.Get(ability.ShardBook).Name]),
                     ability.SpellId,
                     v => ability.SpellId = Math.Max(0, v)
@@ -271,19 +299,24 @@ internal static class SupportAgentTabContent
                 break;
 
             case SupportActionType.Say:
-                row.Widgets.Add(Text(TazLang.Get("supportagent_saytext"), ability.Text, v => ability.Text = v));
+                cell.Widgets.Add(Text(TazLang.Get("supportagent_saytext"), ability.Text, v => ability.Text = v));
                 break;
         }
 
-        row.Widgets.Add(Number(TazLang.Get("supportagent_casttime"), ability.CastTimeMs, v => ability.CastTimeMs = Math.Max(0, v)));
-        row.Widgets.Add(Number(TazLang.Get("supportagent_recovery"), ability.RecoveryMs, v => ability.RecoveryMs = Math.Max(0, v)));
-        row.Widgets.Add(Number(TazLang.Get("supportagent_cooldown"), ability.CooldownMs, v => ability.CooldownMs = Math.Max(0, v)));
-        return row;
+        return cell;
+    }
+
+    private static void Place(Grid grid, int row, int column, Widget widget)
+    {
+        widget.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetRow(widget, row);
+        Grid.SetColumn(widget, column);
+        grid.Widgets.Add(widget);
     }
 
     /// <summary>Shows the picked item and a button to pick it; item abilities only ever use this exact item.</summary>
     private static void AddItemPicker(
-        WrapPanel row,
+        HorizontalStackPanel row,
         SupportAbility ability,
         SupportAgentSave settings,
         AgentPageInteraction interaction,

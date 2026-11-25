@@ -207,6 +207,9 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
     public bool Enabled { get; set; }
     public SupportClass Class { get; set; } = SupportClass.Bard;
 
+    /// <summary>Preset generation these settings were last brought up to; see <see cref="SupportClassPresets.PRESET_VERSION" />.</summary>
+    public int PresetVersion { get; set; }
+
     /// <summary>Character the helper follows, protects and listens to.</summary>
     public uint LeaderSerial { get; set; }
 
@@ -256,6 +259,13 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
     /// </summary>
     public void AddNewPresetAbilities()
     {
+        if (PresetVersion < SupportClassPresets.PRESET_VERSION)
+        {
+            // Mage defaults were replaced wholesale (staff bless, Antidote, Angelic Aura).
+            GetClassSettings(SupportClass.Mage).Abilities = SupportClassPresets.Create(SupportClass.Mage);
+            PresetVersion = SupportClassPresets.PRESET_VERSION;
+        }
+
         foreach (SupportClassSettings settings in Classes)
         {
             foreach (SupportAbility preset in SupportClassPresets.Create(settings.Class))

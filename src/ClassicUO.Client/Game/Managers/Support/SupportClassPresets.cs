@@ -1,7 +1,6 @@
 #nullable enable
 
 using System.Collections.Generic;
-using ClassicUO.Game.Data;
 using ClassicUO.Game.Managers.ShardSpells;
 
 namespace ClassicUO.Game.Managers.Support;
@@ -14,20 +13,17 @@ internal static class SupportClassPresets
 {
     #region Private members
 
+    /// <summary>
+    /// Bumped when a class's default list changes in a way old saves can't just append to; saves below it get
+    /// that class's list replaced once.
+    /// </summary>
+    public const int PRESET_VERSION = 1;
+
     /// <summary>Gump button of the area heal song in the Zulu Hotel songbook.</summary>
     private const int BARD_HEAL_SONG_BUTTON = 7;
 
     /// <summary>Shard bandage time is 4.5 s; 4.7 s leaves a margin before the next one.</summary>
     private const int BANDAGE_TIME_MS = 4700;
-
-    private const int SPELL_HEAL = 4;
-    private const int SPELL_CURE = 11;
-    private const int SPELL_PROTECTION = 15;
-    private const int SPELL_BLESS = 17;
-    private const int SPELL_GREATER_HEAL = 29;
-
-    /// <summary>Recast interval for long-lasting buffs.</summary>
-    private const int BUFF_RECAST_MS = 120_000;
 
     /// <summary>Nagash's staff bless can only be used once every 30 minutes.</summary>
     private const ushort NAGASH_STAFF_GRAPHIC = 0x13F9;
@@ -35,9 +31,9 @@ internal static class SupportClassPresets
     private const ushort NAGASH_STAFF_HUE = 1950;
     private const int NAGASH_BLESS_MS = 30 * 60 * 1000;
 
-    /// <summary>Positions in their books (see ShardSpellCatalog): Nature's Touch is the Earth Book's 8th spell,
+    /// <summary>Positions in their books (see ShardSpellCatalog): Antidote is the Earth Book's 1st spell,
     /// Angelic Aura the Holy Book's 4th.</summary>
-    private const int NATURES_TOUCH_INDEX = 7;
+    private const int ANTIDOTE_INDEX = 0;
 
     private const int ANGELIC_AURA_INDEX = 3;
 
@@ -100,63 +96,15 @@ internal static class SupportClassPresets
     [
         new()
         {
-            Id = "mage.cure",
-            Name = "Cure",
+            Id = "mage.antidote",
+            Name = "Antidote (Earth Book)",
             Role = SupportRole.Cure,
-            Action = SupportActionType.CastSpell,
-            Target = SupportTargetMode.Patient,
-            SpellId = SPELL_CURE,
-            CastTimeMs = 1000,
-            RecoveryMs = 750
-        },
-        new()
-        {
-            Id = "mage.greaterheal",
-            Name = "Greater Heal",
-            Role = SupportRole.Heal,
-            Action = SupportActionType.CastSpell,
-            Target = SupportTargetMode.Patient,
-            SpellId = SPELL_GREATER_HEAL,
+            Action = SupportActionType.CastShardSpell,
+            Target = SupportTargetMode.None,
+            ShardBook = ShardSpellBook.Earth,
+            SpellId = ANTIDOTE_INDEX,
             CastTimeMs = 2000,
             RecoveryMs = 750
-        },
-        new()
-        {
-            Id = "mage.heal",
-            Name = "Heal",
-            Enabled = false,
-            Role = SupportRole.Heal,
-            Action = SupportActionType.CastSpell,
-            Target = SupportTargetMode.Patient,
-            SpellId = SPELL_HEAL,
-            CastTimeMs = 750,
-            RecoveryMs = 750
-        },
-        new()
-        {
-            Id = "mage.protection",
-            Name = "Protection (self)",
-            Role = SupportRole.Buff,
-            Action = SupportActionType.CastSpell,
-            Target = SupportTargetMode.Self,
-            SpellId = SPELL_PROTECTION,
-            CastTimeMs = 1000,
-            RecoveryMs = 750,
-            CooldownMs = BUFF_RECAST_MS,
-            ActiveBuff = BuffIconType.Protection
-        },
-        new()
-        {
-            Id = "mage.bless",
-            Name = "Bless (leader)",
-            Enabled = false,
-            Role = SupportRole.Buff,
-            Action = SupportActionType.CastSpell,
-            Target = SupportTargetMode.Leader,
-            SpellId = SPELL_BLESS,
-            CastTimeMs = 1250,
-            RecoveryMs = 750,
-            CooldownMs = BUFF_RECAST_MS
         },
         new()
         {
@@ -173,22 +121,8 @@ internal static class SupportClassPresets
         },
         new()
         {
-            Id = "mage.naturestouch",
-            Name = "Nature's Touch (Earth Book)",
-            Enabled = false,
-            Role = SupportRole.Heal,
-            Action = SupportActionType.CastShardSpell,
-            Target = SupportTargetMode.Patient,
-            ShardBook = ShardSpellBook.Earth,
-            SpellId = NATURES_TOUCH_INDEX,
-            CastTimeMs = 2000,
-            RecoveryMs = 750
-        },
-        new()
-        {
             Id = "mage.angelicaura",
             Name = "Angelic Aura (Holy Book)",
-            Enabled = false,
             Role = SupportRole.Heal,
             Action = SupportActionType.CastShardSpell,
             Target = SupportTargetMode.Patient,
