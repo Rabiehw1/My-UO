@@ -81,8 +81,8 @@ namespace ClassicUO.Game.GameObjects
         public abstract bool CheckMouseSelection();
 
         public sbyte FoliageIndex = -1;
-        public ushort OriginalGraphic => originalGraphic == 0 ? Graphic : originalGraphic;
-        public void ResetOriginalGraphic() => originalGraphic = 0;
+        public ushort OriginalGraphic => originalGraphic ?? Graphic;
+        public void ResetOriginalGraphic() => originalGraphic = null;
 
         protected byte GetGraphicObjectType()
         {
@@ -105,8 +105,8 @@ namespace ClassicUO.Game.GameObjects
                 originalGraphic = value;
                 byte type = GetGraphicObjectType();
                 byte newType = type;
-                GraphicsReplacement.Replace(originalGraphic, type, ref value, ref hue, ref newType);
-                Hue = hue; //Workaround for making sure hues are replaced as-well
+                hue = unfilteredHue;
+                GraphicsReplacement.Replace(value, type, ref value, ref hue, ref newType);
                 graphic = value;
                 OnGraphicSet(graphic);
             }
@@ -116,6 +116,7 @@ namespace ClassicUO.Game.GameObjects
             get => hue;
             set
             {
+                unfilteredHue = value;
                 byte type = GetGraphicObjectType();
                 GraphicsReplacement.ReplaceHue(OriginalGraphic, type, ref value);
                 hue = value;
@@ -144,7 +145,8 @@ namespace ClassicUO.Game.GameObjects
             Y;
         public sbyte Z;
         public GameObject RenderListNext;
-        private ushort graphic, originalGraphic, hue;
+        private ushort graphic, hue, unfilteredHue;
+        private ushort? originalGraphic;
 
         public virtual void OnGraphicSet(ushort newGraphic) { }
 
@@ -412,7 +414,6 @@ namespace ClassicUO.Game.GameObjects
             Offset = Vector3.Zero;
             RealScreenPosition = Point.Zero;
             IsFlipped = false;
-            originalGraphic = 0;
             Graphic = 0;
             ObjectHandlesStatus = ObjectHandlesStatus.NONE;
             FrameInfo = Rectangle.Empty;

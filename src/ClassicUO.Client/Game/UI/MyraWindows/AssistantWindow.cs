@@ -79,18 +79,23 @@ public class AssistantWindow : MyraControl
     private void Build()
     {
         _tabs = new MyraTabControl();
-        _tabs.AddTab(TazLang.Get("assistantwindow_tab_general", "General"), GeneralTab.Build);
+        _tabs.AddTab(GeneralTab.Title, GeneralTab.Build, rebuildOnSelect: true);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_agents", "Agents"), AgentTab.Build, rebuildOnSelect: true);
         _tabs.AddTab(ItemListsTabContent.Title, () => ItemListsTabContent.Build(AgentPageInteraction.InGame), rebuildOnSelect: true);
-        _tabs.AddTab(TazLang.Get("assistantwindow_tab_filters", "Filters"), FiltersTab.Build);
+        _tabs.AddTab(FiltersTab.Title, FiltersTab.Build, rebuildOnSelect: true);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_itemdatabase", "Item Database"), ItemDatabaseTabContent.Build);
-        _tabs.AddTab(TazLang.Get("assistantwindow_tab_macros", "Macros"), () => MacrosTabContent.Build(this));
-        _tabs.AddTab(TazLang.Get("assistantwindow_tab_hotkeys", "Hotkeys"), HotkeysTabContent.Build);
+        _tabs.AddTab(MacrosTabContent.Title, () => MacrosTabContent.Build(this), rebuildOnSelect: true);
+        _tabs.AddTab(HotkeysTabContent.Title, HotkeysTabContent.Build, rebuildOnSelect: true);
         _tabs.AddTab(TazLang.Get("assistantwindow_tab_skills", "Skills"), () => _skillsTabContent = new SkillsTabContent());
         var openDesktop = new MyraButton(
-            TazLang.Get("assistant_agents_open_desktop", "Open Desktop Agents"),
-            DesktopAgentsWindow.Show) { Visible = false, HorizontalAlignment = HorizontalAlignment.Left };
-        _tabs.SelectedIndexChanged += (_, _) => openDesktop.Visible = _tabs.SelectedIndex == 1;
+            TazLang.Get("assistant_open_desktop", "Open Desktop Assistant"),
+            () => DesktopAgentsWindow.Show(_tabs.SelectedItem?.Text)) { Visible = false, HorizontalAlignment = HorizontalAlignment.Left };
+        _tabs.SelectedIndexChanged += (_, _) => openDesktop.Visible = _tabs.SelectedIndex == 1
+            || _tabs.SelectedItem?.Text == MacrosTabContent.Title
+            || _tabs.SelectedItem?.Text == HotkeysTabContent.Title
+            || _tabs.SelectedItem?.Text == FiltersTab.Title
+            || _tabs.SelectedItem?.Text == GeneralTab.Title
+            || _tabs.SelectedItem?.Text == ItemListsTabContent.Title;
 
         var root = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
         root.Widgets.Add(openDesktop);

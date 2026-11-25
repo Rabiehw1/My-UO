@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using ClassicUO.Utility;
 using ClassicUO.Configuration;
+using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.IO.Audio;
 using ClassicUO.Assets;
 using ClassicUO.Utility.Logging;
@@ -32,6 +33,8 @@ namespace ClassicUO.Game.Managers
         public int DeathMusicIndex { get; } = 42;
         private long _nextAudioHealthCheck = 0;
 
+        private static bool HasAudioFocus => Client.Game.IsActive || DesktopAgentsWindow.HasInputFocus;
+
         /// <summary>
         /// Index, Name
         /// </summary>
@@ -53,46 +56,35 @@ namespace ClassicUO.Game.Managers
             Client.Game.Deactivated += OnWindowDeactivated;
         }
 
-        private void OnWindowDeactivated(object sender, EventArgs e)
+        private void OnWindowDeactivated(object sender, EventArgs e) => RefreshWindowFocus();
+        private void OnWindowActivated(object sender, EventArgs e) => RefreshWindowFocus();
+
+        internal void RefreshWindowFocus()
         {
-            if (!_canReproduceAudio || _audioDeviceDisconnected || ProfileManager.GlobalSettings == null || ProfileManager.GlobalSettings.ReproduceSoundsInBackground)
+            GlobalSettingsSave settings = ProfileManager.GlobalSettings;
+            if (!_canReproduceAudio || settings == null)
             {
                 return;
             }
 
-            try
-            {
-                SoundEffect.MasterVolume = 0;
-            }
-            catch (Exception ex)
-            {
-                Log.Warn($"Failed to set master volume on window deactivation: {ex.Message}");
-                _audioDeviceDisconnected = true;
-            }
-        }
-
-        private void OnWindowActivated(object sender, EventArgs e)
-        {
-            if (!_canReproduceAudio || ProfileManager.GlobalSettings == null || ProfileManager.GlobalSettings.ReproduceSoundsInBackground)
-            {
-                return;
-            }
-
+            bool hasFocus = HasAudioFocus;
             if (_audioDeviceDisconnected)
             {
-                TryImmediateFallback();
+                if (hasFocus)
+                    TryImmediateFallback();
                 return;
             }
 
             try
             {
-                SoundEffect.MasterVolume = 1;
+                SoundEffect.MasterVolume = hasFocus || settings.ReproduceSoundsInBackground ? 1 : 0;
             }
             catch (Exception ex)
             {
-                Log.Warn($"Failed to set master volume on window activation: {ex.Message}");
+                Log.Warn($"Failed to update master volume after a focus change: {ex.Message}");
                 _audioDeviceDisconnected = true;
-                TryImmediateFallback();
+                if (hasFocus)
+                    TryImmediateFallback();
             }
         }
 
@@ -113,7 +105,7 @@ namespace ClassicUO.Game.Managers
 
             float volume = globalSettings.SoundVolume / SOUND_DELTA;
 
-            if (Client.Game.IsActive)
+            if (HasAudioFocus)
             {
                 if (!globalSettings.ReproduceSoundsInBackground)
                 {
@@ -130,7 +122,7 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (!globalSettings.EnableSound || !Client.Game.IsActive && !globalSettings.ReproduceSoundsInBackground)
+            if (!globalSettings.EnableSound || !HasAudioFocus && !globalSettings.ReproduceSoundsInBackground)
             {
                 volume = 0;
             }
@@ -197,7 +189,7 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (globalSettings == null || !globalSettings.EnableSound || !Client.Game.IsActive && !globalSettings.ReproduceSoundsInBackground)
+            if (globalSettings == null || !globalSettings.EnableSound || !HasAudioFocus && !globalSettings.ReproduceSoundsInBackground)
             {
                 volume = 0;
             }
@@ -396,6 +388,31 @@ namespace ClassicUO.Game.Managers
 
         public void StopWarMusic() => PlayMusic(_currentMusicIndices[0]);
 
+        internal void StopFilteredPlayback(int id, bool isMusic)
+        {
+            if (isMusic)
+            {
+                for (int i = 0; i < _currentMusic.Length; i++)
+                {
+                    if (_currentMusic[i] == null || _currentMusicIndices[i] != id)
+                        continue;
+
+                    _currentMusic[i].Stop();
+                    _currentMusic[i].Dispose();
+                    _currentMusic[i] = null;
+                    _currentMusicIsLogin[i] = false;
+                }
+                return;
+            }
+
+            if (HasAmbientSound && CurrentAmbientIndex == id)
+                StopAmbientSound();
+
+            foreach (UOSound sound in _currentSounds)
+                if (sound.Index == id)
+                    sound.Stop();
+        }
+
         public void PlayAmbientSound(int index, float volume, bool skipFilter = false)
         {
             if (!_canReproduceAudio || _audioDeviceDisconnected)
@@ -549,7 +566,7 @@ namespace ClassicUO.Game.Managers
                 {
                     // With sounds playing in background the volume must still follow the settings, otherwise
                     // unchecking Enable Music (or moving the slider) never reaches the track already playing.
-                    if (Client.Game.IsActive || globalSettings.ReproduceSoundsInBackground)
+                    if (HasAudioFocus || globalSettings.ReproduceSoundsInBackground)
                     {
                         float volume;
 

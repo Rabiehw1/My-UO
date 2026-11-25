@@ -1,247 +1,203 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
+using Myra.Graphics2D.UI.WrapPanel;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 
 public static class SoundFilterTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame, isMusic: false);
+
+    internal static Widget Build(AgentPageInteraction interaction, bool isMusic)
     {
+        SoundFilterManager manager = SoundFilterManager.Instance;
+        var filters = isMusic ? manager.FilteredMusic : manager.FilteredSounds;
+        var audio = Client.Game.Audio;
+        string idName = isMusic ? "Music ID" : "Sound ID";
+        int maxId = isMusic ? 149 : 65535;
+
         var root = new VerticalStackPanel { Spacing = 6 };
-
-        root.Widgets.Add(new MyraLabel(
-            "Sound Filter allows you to mute specific in-game sounds by their ID.",
-            MyraLabel.TextStyle.H3));
-
-        var lastSoundPanel = new VerticalStackPanel { Spacing = 2 };
-        var filtersPanel = new VerticalStackPanel { Spacing = 2 };
-
-        void BuildFilterList()
+        var rules = new VerticalStackPanel { Spacing = 3 };
+        var history = new VerticalStackPanel { Spacing = 3 };
+        var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false, Wrap = true };
+        var idBox = new MyraInputBox { HintText = $"{idName} (0–{maxId})", Width = 170 };
+        var toolbar = new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 4 };
+        var clear = new MyraButton("Clear All Filters");
+        toolbar.Widgets.Add(idBox);
+        toolbar.Widgets.Add(new MyraButton("Add Filter", () =>
         {
-            filtersPanel.Widgets.Clear();
-            var filterList = SoundFilterManager.Instance.FilteredSounds.OrderBy(x => x).ToList();
+            if (!TryReadId(idBox.Text, out int id))
+                return;
 
-            if (filterList.Count == 0)
+            manager.AddFilter(id, isMusic);
+            idBox.Text = "";
+            status.Visible = false;
+            BuildRules();
+        }));
+        toolbar.Widgets.Add(new MyraButton("Test Play", () =>
+        {
+            if (TryReadId(idBox.Text, out int id))
+                Play(id, preview: true);
+        }));
+        toolbar.Widgets.Add(new MyraButton("Import", Import));
+        toolbar.Widgets.Add(new MyraButton("Export", Export) { Tooltip = "Copy enabled filters to the clipboard." });
+
+        clear.Click += (_, _) => interaction.Confirm(clear, clear.Text,
+            isMusic ? "Remove all music filters?" : "Remove all sound filters?", () =>
             {
-                filtersPanel.Widgets.Add(new MyraLabel("No sounds filtered.", MyraLabel.TextStyle.P));
+                manager.Clear(isMusic);
+                BuildRules();
+            });
+        toolbar.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(clear));
+
+        root.Widgets.Add(toolbar);
+        root.Widgets.Add(status);
+        root.Widgets.Add(interaction.IsDesktop ? rules : new ScrollViewer { Height = 250, Content = rules });
+        root.Widgets.Add(new MyraLabel("Recently played", MyraLabel.TextStyle.H3)
+            .PlaceBefore(new MyraButton("Refresh", BuildHistory)));
+        root.Widgets.Add(interaction.IsDesktop ? history : new ScrollViewer { MaxHeight = 200, Content = history });
+        BuildRules();
+        BuildHistory();
+        return root;
+
+        void BuildRules()
+        {
+            rules.Widgets.Clear();
+            clear.Enabled = filters.Count > 0;
+            if (filters.Count == 0)
+            {
+                rules.Widgets.Add(new MyraLabel(isMusic ? "No music filters." : "No sound filters.", MyraLabel.TextStyle.P));
                 return;
             }
 
-            filtersPanel.Widgets.Add(new MyraLabel($"Total: {filterList.Count} sound(s) filtered", MyraLabel.TextStyle.P));
-
-            filtersPanel.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Clear All Filters", () =>
-            {
-                SoundFilterManager.Instance.Clear();
-                BuildFilterList();
-            })));
-
             var grid = new MyraGrid();
-            grid.SetupWithHeaders(
-                GridColumnInfo.Auto("Sound ID"),
-                GridColumnInfo.Fill("Actions")
-            );
-
-            int dataRow = 1;
-            for (int i = filterList.Count - 1; i >= 0; i--)
+            grid.SetupWithHeaders(GridColumnInfo.Auto("Enabled"), GridColumnInfo.Auto(idName), GridColumnInfo.Fill("Actions"));
+            int row = 1;
+            foreach (int savedId in filters.OrderBy(id => id))
             {
-                int soundId = filterList[i];
-
-                // Track current ID so we can remove-old/add-new on edit without rebuilding
-                int[] current = { soundId };
-                var soundBox = new MyraInputBox { Text = soundId.ToString() };
-                soundBox.TextChangedByUser += (_, _) =>
+                int id = savedId;
+                var field = new MyraInputBox { Text = id.ToString(), Width = 100 };
+                field.LostFocus = () =>
                 {
-                    if (int.TryParse(soundBox.Text, out int newId))
+                    if (TryReadId(field.Text, out int replacement) && replacement != id)
                     {
-                        newId = Math.Clamp(newId, 0, 65535);
-                        if (newId != current[0])
-                        {
-                            SoundFilterManager.Instance.RemoveFilter(current[0]);
-                            SoundFilterManager.Instance.AddFilter(newId);
-                            current[0] = newId;
-                        }
+                        if (manager.ReplaceFilter(id, replacement, isMusic))
+                            id = replacement;
+                        else
+                            Report($"A filter for {idName.ToLowerInvariant()} {replacement} already exists.", Constants.HUE_ERROR);
                     }
+                    field.Text = id.ToString();
                 };
-                grid.AddWidget(soundBox, dataRow, 0);
+                grid.AddWidget(MyraCheckButton.CreateWithCallback(manager.IsSoundFiltered(id, isMusic),
+                    enabled => manager.SetEnabled(id, enabled, isMusic), tooltip: "Enable or disable this filter."), row, 0);
+                grid.AddWidget(field, row, 1);
 
-                int capturedId = soundId;
-                var actionsPanel = new HorizontalStackPanel { Spacing = 4 };
-                actionsPanel.Widgets.Add(
-                    new MyraButton("Play", () => Client.Game.Audio.PlaySound(current[0], true))
-                    {
-                        Tooltip = "Test play this sound (bypasses filter)",
-                    }
-                );
-                actionsPanel.Widgets.Add(
-                    MyraStyle.ApplyButtonDangerStyle(
-                        new MyraButton(
-                            "Delete",
-                            () =>
-                            {
-                                SoundFilterManager.Instance.RemoveFilter(current[0]);
-                                BuildFilterList();
-                            }
-                        )
-                        {
-                            Tooltip = "Delete this filter",
-                        }
-                    )
-                );
-
-                grid.AddWidget(actionsPanel, dataRow, 1);
-
-
-                dataRow++;
+                var actions = new HorizontalStackPanel { Spacing = 4 };
+                actions.Widgets.Add(new MyraButton("Play", () => Play(id, preview: true)) { Tooltip = "Play once while bypassing this filter." });
+                actions.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Delete", () =>
+                {
+                    manager.RemoveFilter(id, isMusic);
+                    BuildRules();
+                })));
+                grid.AddWidget(actions, row++, 2);
             }
 
-            filtersPanel.Widgets.Add(grid);
+            rules.Widgets.Add(grid);
         }
 
-        void BuildLastSoundSection()
+        void BuildHistory()
         {
-            lastSoundPanel.Widgets.Clear();
-            lastSoundPanel.Widgets.Add(new MyraLabel("Recently played:", MyraLabel.TextStyle.H3));
-
-            var rowsPanel = new VerticalStackPanel { Spacing = 2 };
-
-            int c = 0;
-            foreach ((int, string) sound in Client.Game.Audio.LastPlayedSounds.GetItems().Reverse())
+            history.Widgets.Clear();
+            var recent = isMusic ? audio.LastPlayedMusic.GetItems() : audio.LastPlayedSounds.GetItems().Reverse();
+            foreach ((int id, string name) in recent)
             {
-                c++;
-
-                int id = sound.Item1;
-
-                var row = new HorizontalStackPanel { Spacing = 4 };
-                row.Widgets.Add(new MyraLabel($"Sound ID: {id} ({sound.Item2})", MyraLabel.TextStyle.P));
+                var row = new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 2 };
+                row.Widgets.Add(new MyraLabel($"{idName} {id} ({name})", MyraLabel.TextStyle.P));
                 row.Widgets.Add(new MyraButton("Add Filter", () =>
                 {
-                    SoundFilterManager.Instance.AddFilter(id);
-                    BuildFilterList();
-                }) { Tooltip = "Add this sound to the filter list" });
-                row.Widgets.Add(new MyraButton("Play Again", () =>
-                    Client.Game.Audio.PlaySound(id, true)) { Tooltip = "Play this sound again" });
-                rowsPanel.Widgets.Add(row);
+                    manager.AddFilter(id, isMusic);
+                    BuildRules();
+                }));
+                row.Widgets.Add(new MyraButton("Play Again", () => Play(id, preview: !isMusic)));
+                history.Widgets.Add(row);
             }
 
-            if (c == 0)
-            {
-                rowsPanel.Widgets.Add(new MyraLabel("No sound played yet.", MyraLabel.TextStyle.P));
-                lastSoundPanel.Widgets.Add(rowsPanel);
-            }
-            else
-            {
-                lastSoundPanel.Widgets.Add(new ScrollViewer { Height = 200, Content = rowsPanel });
-            }
-
-            lastSoundPanel.Widgets.Add(new MyraButton("Refresh", () => BuildLastSoundSection())
-            {
-                Tooltip = "Refresh last played sound display"
-            }.PlaceBefore(new MyraLabel(
-                                          "Tip: Play a sound in-game to see its ID above, then click Add Filter.",
-                                          MyraLabel.TextStyle.P)));
+            if (history.Widgets.Count == 0)
+                history.Widgets.Add(new MyraLabel("Nothing played yet.", MyraLabel.TextStyle.P));
         }
 
-        var addFilterPanel = new VerticalStackPanel { Visible = false, Spacing = 4 };
-        var newSoundBox = new MyraInputBox { HintText = "Sound ID (0-65535)", Width = 120 };
-
-        var addConfirmRow = new HorizontalStackPanel { Spacing = 4 };
-        addConfirmRow.Widgets.Add(new MyraButton("Add", () =>
+        void Play(int id, bool preview)
         {
-            if (int.TryParse(newSoundBox.Text, out int soundId))
+            if (isMusic)
             {
-                soundId = Math.Clamp(soundId, 0, 65535);
-                SoundFilterManager.Instance.AddFilter(soundId);
-                newSoundBox.Text = "";
-                addFilterPanel.Visible = false;
-                BuildFilterList();
+                audio.StopMusic();
+                audio.PlayMusic(id, skipIgnore: preview);
             }
-        }));
-        addConfirmRow.Widgets.Add(new MyraButton("Test Play", () =>
+            else
+                audio.PlaySound(id, skipFilter: preview);
+        }
+
+        bool TryReadId(string? text, out int id)
         {
-            if (int.TryParse(newSoundBox.Text, out int soundId))
-                Client.Game.Audio.PlaySound(Math.Clamp(soundId, 0, 65535), true);
-        }) { Tooltip = "Test play this sound ID" });
-        addConfirmRow.Widgets.Add(new MyraButton("Cancel", () =>
-        {
-            addFilterPanel.Visible = false;
-            newSoundBox.Text = "";
-        }));
+            if (int.TryParse(text, out id) && id >= 0 && id <= maxId)
+                return true;
 
-        var addFieldRow = new HorizontalStackPanel { Spacing = 4 };
-        addFieldRow.Widgets.Add(new MyraLabel("Sound ID:", MyraLabel.TextStyle.P)
-            { Tooltip = "Enter the numeric ID of the sound to filter (0-65535)" });
-        addFieldRow.Widgets.Add(newSoundBox);
+            Report($"Enter a {idName.ToLowerInvariant()} between 0 and {maxId}.", Constants.HUE_ERROR);
+            return false;
+        }
 
-        addFilterPanel.Widgets.Add(new MyraLabel("Add Sound Filter:", MyraLabel.TextStyle.H3));
-        addFilterPanel.Widgets.Add(addFieldRow);
-        addFilterPanel.Widgets.Add(addConfirmRow);
-
-        var actionRow = new HorizontalStackPanel { Spacing = 4 };
-        actionRow.Widgets.Add(new MyraButton("Add Filter Entry", () => addFilterPanel.Visible = !addFilterPanel.Visible));
-        actionRow.Widgets.Add(new MyraButton("Import", () =>
+        void Import()
         {
             try
             {
-                string? json = Clipboard.GetClipboardText();
-                if (string.IsNullOrWhiteSpace(json))
+                var data = Clipboard.GetClipboardText();
+                if (string.IsNullOrWhiteSpace(data))
                 {
-                    GameActions.Print("Clipboard is empty", Constants.HUE_ERROR);
+                    Report("Clipboard is empty.", Constants.HUE_ERROR);
                     return;
                 }
 
-                HashSet<int>? importedFilters = JsonSerializer.Deserialize(json, HashSetIntContext.Default.HashSetInt32);
-                if (importedFilters == null)
+                var imported = JsonSerializer.Deserialize(data, HashSetIntContext.Default.HashSetInt32);
+                if (imported == null)
                 {
-                    GameActions.Print("Failed to parse clipboard data", Constants.HUE_ERROR);
+                    Report("The clipboard does not contain a filter list.", Constants.HUE_ERROR);
                     return;
                 }
 
-                int added = 0;
-                foreach (int id in importedFilters)
-                {
-                    if (SoundFilterManager.Instance.FilteredSounds.Add(Math.Clamp(id, 0, 65535)))
-                        added++;
-                }
-                BuildFilterList();
-                GameActions.Print($"Added {added} sound filter(s) from clipboard", Constants.HUE_SUCCESS);
+                int previous = filters.Count;
+                foreach (int id in imported)
+                    manager.AddFilter(Math.Clamp(id, 0, maxId), isMusic);
+                BuildRules();
+                Report($"Added {filters.Count - previous} filters from the clipboard.", Constants.HUE_SUCCESS);
             }
-            catch (Exception ex)
+            catch (JsonException)
             {
-                GameActions.Print($"Import failed: {ex.Message}", Constants.HUE_ERROR);
+                Report("The clipboard does not contain a filter list.", Constants.HUE_ERROR);
             }
-        }) { Tooltip = "Import filtered sounds from clipboard JSON (adds to current filters)" });
-        actionRow.Widgets.Add(new MyraButton("Export", () =>
+        }
+
+        void Export()
         {
-            try
-            {
-                string json = JsonSerializer.Serialize(
-                    SoundFilterManager.Instance.FilteredSounds,
-                    HashSetIntContext.Default.HashSetInt32);
-                json.CopyToClipboard();
-                GameActions.Print(
-                    $"Exported {SoundFilterManager.Instance.FilteredSounds.Count} sound filter(s) to clipboard",
-                    Constants.HUE_SUCCESS);
-            }
-            catch (Exception ex)
-            {
-                GameActions.Print($"Export failed: {ex.Message}", Constants.HUE_ERROR);
-            }
-        }) { Tooltip = "Export all filtered sounds as JSON to clipboard" });
+            var enabled = filters.Where(id => manager.IsSoundFiltered(id, isMusic)).ToHashSet();
+            JsonSerializer.Serialize(enabled, HashSetIntContext.Default.HashSetInt32).CopyToClipboard();
+            Report($"Copied {enabled.Count} enabled filters.", Constants.HUE_SUCCESS);
+        }
 
-        BuildLastSoundSection();
-        root.Widgets.Add(lastSoundPanel);
-        root.Widgets.Add(actionRow);
-        root.Widgets.Add(addFilterPanel);
-        root.Widgets.Add(new MyraLabel("Filtered Sounds:", MyraLabel.TextStyle.H3));
-        BuildFilterList();
-        root.Widgets.Add(new ScrollViewer { Height = 250, Content = filtersPanel });
-
-        return root;
+        void Report(string message, ushort hue)
+        {
+            if (interaction.IsDesktop)
+            {
+                status.Text = message;
+                status.Visible = true;
+            }
+            else
+                GameActions.Print(message, hue);
+        }
     }
 }

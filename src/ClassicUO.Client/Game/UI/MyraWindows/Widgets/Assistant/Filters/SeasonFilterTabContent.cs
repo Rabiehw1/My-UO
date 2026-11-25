@@ -1,5 +1,6 @@
 #nullable enable
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
@@ -27,7 +28,9 @@ public static class SeasonFilterTabContent
             DisplayOptions[j + 1] = SeasonNames[j];
     }
 
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         var root = new VerticalStackPanel { Spacing = 6 };
 
@@ -35,19 +38,19 @@ public static class SeasonFilterTabContent
             "Override seasons sent by the server. For example, if the server sends Winter, you can display Fall instead.",
             MyraLabel.TextStyle.H3) { MaxWidth = 500 });
 
-        // Collect BuildCycleBtn delegates so Clear can refresh all wrappers
+        // Each row is rebuilt when its selected override changes.
         var rebuildActions = new System.Collections.Generic.List<System.Action>();
 
-        root.Widgets.Add(new MyraButton("Clear All Filters", () =>
+        var clear = new MyraButton("Clear All Filters");
+        clear.Click += (_, _) => interaction.Confirm(clear, clear.Text, "Remove all season overrides?", () =>
         {
             SeasonFilter.Instance.Clear();
             foreach (System.Action rebuild in rebuildActions) rebuild();
-        }) { Tooltip = "Remove all season filters and display seasons as sent by the server" });
-
-        root.Widgets.Add(new MyraLabel("Season Filters:", MyraLabel.TextStyle.H3));
+        });
+        root.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(clear));
 
         var grid = new MyraGrid();
-        grid.SetupWithHeaders(GridColumnInfo.Auto("When Server Sends"), GridColumnInfo.Auto("Show As"));
+        grid.SetupWithHeaders(GridColumnInfo.Auto("When Server Sends"), GridColumnInfo.Auto("Show As"), GridColumnInfo.Auto("Enabled"));
 
         for (int i = 0; i < AllSeasons.Length; i++)
         {
@@ -57,10 +60,12 @@ public static class SeasonFilterTabContent
             grid.AddWidget(new MyraLabel(incomingName, MyraLabel.TextStyle.P), i + 1, 0);
 
             var cycleWrapper = new HorizontalStackPanel();
+            var enableWrapper = new HorizontalStackPanel();
 
             void BuildCycleBtn()
             {
                 cycleWrapper.Widgets.Clear();
+                enableWrapper.Widgets.Clear();
 
                 string currentLabel = "None";
                 int currentIdx = 0;
@@ -86,11 +91,16 @@ public static class SeasonFilterTabContent
                         SeasonFilter.Instance.SetFilter(incoming, AllSeasons[nextIdx - 1]);
                     BuildCycleBtn();
                 }) { Tooltip = $"Click to cycle season override for {incomingName}" });
+                var enabled = MyraCheckButton.CreateWithCallback(currentIdx != 0 && SeasonFilter.Instance.IsEnabled(incoming),
+                    value => SeasonFilter.Instance.SetEnabled(incoming, value), tooltip: "Enable or disable this override.");
+                enabled.Enabled = currentIdx != 0;
+                enableWrapper.Widgets.Add(enabled);
             }
 
             rebuildActions.Add(BuildCycleBtn);
             BuildCycleBtn();
             grid.AddWidget(cycleWrapper, i + 1, 1);
+            grid.AddWidget(enableWrapper, i + 1, 2);
         }
 
         root.Widgets.Add(grid);

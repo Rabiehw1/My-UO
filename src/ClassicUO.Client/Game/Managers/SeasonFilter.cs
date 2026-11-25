@@ -70,9 +70,25 @@ namespace ClassicUO.Game.Managers
 
         public Season ApplyFilter(Season incoming)
         {
-            if (Filters.TryGetValue(incoming, out Season replacement)) return replacement;
+            if (IsEnabled(incoming) && Filters.TryGetValue(incoming, out Season replacement)) return replacement;
 
             return incoming;
+        }
+
+        internal bool IsEnabled(Season incoming) => ProfileManager.AccountSettings?.DisabledSeasonFilters.Contains(incoming) != true;
+
+        internal void SetEnabled(Season incoming, bool enabled)
+        {
+            AccountSettingsSave settings = ProfileManager.AccountSettings;
+            if (settings == null || !settings.SeasonFilters.ContainsKey(incoming))
+                return;
+
+            if (enabled)
+                settings.DisabledSeasonFilters.Remove(incoming);
+            else
+                settings.DisabledSeasonFilters.Add(incoming);
+
+            RefreshCurrentSeason(incoming);
         }
 
         public void SetFilter(Season from, Season to)
@@ -83,7 +99,7 @@ namespace ClassicUO.Game.Managers
 
             accountSettings.SeasonFilters[from] = to;
 
-            if (World.Instance != null && World.Instance.RealSeason == from) World.Instance.ChangeSeason(to);
+            RefreshCurrentSeason(from);
         }
 
         public void RemoveFilter(Season from)
@@ -92,7 +108,11 @@ namespace ClassicUO.Game.Managers
             if (accountSettings == null)
                 return;
 
-            accountSettings.SeasonFilters.Remove(from);
+            if (accountSettings.SeasonFilters.Remove(from))
+            {
+                accountSettings.DisabledSeasonFilters.Remove(from);
+                RefreshCurrentSeason(from);
+            }
         }
 
         public void Clear()
@@ -102,6 +122,15 @@ namespace ClassicUO.Game.Managers
                 return;
 
             accountSettings.SeasonFilters.Clear();
+            accountSettings.DisabledSeasonFilters.Clear();
+            if (World.Instance is { } world)
+                RefreshCurrentSeason(world.RealSeason);
+        }
+
+        private void RefreshCurrentSeason(Season changed)
+        {
+            if (World.Instance is { } world && world.RealSeason == changed)
+                world.ChangeSeason(ApplyFilter(changed));
         }
     }
 

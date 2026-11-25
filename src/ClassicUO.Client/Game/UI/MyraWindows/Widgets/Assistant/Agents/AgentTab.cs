@@ -9,6 +9,8 @@ public static class AgentTab
     internal enum AgentGroup
     {
         ItemLists,
+        Settings,
+        Controls,
         HealingAndStats,
         Support,
         LootAndScavenge,

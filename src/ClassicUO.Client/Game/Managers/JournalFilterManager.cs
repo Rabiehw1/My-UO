@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -32,7 +33,35 @@ public class JournalFilterManager
 
     public void AddFilter(string filter) => _save.Filters.Add(filter);
 
-    public void RemoveFilter(string filter) => _save.Filters.Remove(filter);
+    public void RemoveFilter(string filter)
+    {
+        _save.Filters.Remove(filter);
+        _save.DisabledFilters.Remove(filter);
+    }
+
+    internal bool IsEnabled(string filter) => !_save.DisabledFilters.Contains(filter);
+
+    internal void SetEnabled(string filter, bool enabled)
+    {
+        if (!_save.Filters.Contains(filter))
+            return;
+
+        if (enabled)
+            _save.DisabledFilters.Remove(filter);
+        else
+            _save.DisabledFilters.Add(filter);
+    }
+
+    internal bool ReplaceFilter(string oldFilter, string newFilter)
+    {
+        if (string.IsNullOrWhiteSpace(newFilter) || !_save.Filters.Contains(oldFilter) || !_save.Filters.Add(newFilter))
+            return false;
+
+        _save.Filters.Remove(oldFilter);
+        if (_save.DisabledFilters.Remove(oldFilter))
+            _save.DisabledFilters.Add(newFilter);
+        return true;
+    }
 
     public bool IgnoreMessage(string message)
     {
@@ -41,7 +70,7 @@ public class JournalFilterManager
 
         foreach (string filter in _save.Filters)
         {
-            if (message.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(filter) && IsEnabled(filter) && message.Contains(filter, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;
@@ -62,7 +91,7 @@ public class JournalFilterManager
     {
         try
         {
-            return JsonSerializer.Serialize(_save.Filters, HashSetContext.Default.HashSetString);
+            return JsonSerializer.Serialize(_save.Filters.Where(IsEnabled).ToHashSet(), HashSetContext.Default.HashSetString);
         }
         catch (Exception e)
         {
@@ -73,7 +102,9 @@ public class JournalFilterManager
     }
     #nullable disable
 
-    public bool ImportFromJson(string json)
+    public bool ImportFromJson(string json) => ImportFromJson(json, message => GameActions.Print(message, Constants.HUE_SUCCESS));
+
+    internal bool ImportFromJson(string json, Action<string> report)
     {
         try
         {
@@ -86,7 +117,7 @@ public class JournalFilterManager
 
                 foreach (string filter in importedFilters)
                 {
-                    if (_save.Filters.Add(filter))
+                    if (!string.IsNullOrWhiteSpace(filter) && _save.Filters.Add(filter))
                     {
                         addedCount++;
                     }
@@ -101,7 +132,7 @@ public class JournalFilterManager
                 string message = $"Imported {addedCount} journal filters from clipboard";
                 if (duplicateCount > 0)
                     message += $" ({duplicateCount} duplicates skipped)";
-                GameActions.Print(message, Constants.HUE_SUCCESS);
+                report(message);
                 return true;
             }
         }
@@ -123,6 +154,7 @@ public sealed class JournalFilterSave : JsonSave<JournalFilterSave>, INotifyProp
     public const string JournalFiltersFileName = "journal_filters.json";
 
     public HashSet<string> Filters { get; set; } = new();
+    public HashSet<string> DisabledFilters { get; set; } = new();
 
     protected override SettingsScope Scope => SettingsScope.Char;
 

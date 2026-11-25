@@ -2,13 +2,16 @@
 using System.Collections.Generic;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 public static class FriendsListTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         var friendsListPanel = new VerticalStackPanel { Spacing = 4 };
 
@@ -68,7 +71,7 @@ public static class FriendsListTabContent
         root.Widgets.Add(new MyraButton("Add by Target", () =>
         {
             GameActions.Print(World.Instance, "Target a player to add to friends list");
-            World.Instance.TargetManager.SetTargeting(targeted =>
+            interaction.SelectTarget(targeted =>
             {
                 if (targeted is Mobile mobile)
                 {
@@ -88,7 +91,7 @@ public static class FriendsListTabContent
                 }
             });
         }));
-        root.Widgets.Add(new ScrollViewer { Height = 300, Content = friendsListPanel });
+        root.Widgets.Add(interaction.IsDesktop ? friendsListPanel : new ScrollViewer { Height = 300, Content = friendsListPanel });
 
         return root;
     }

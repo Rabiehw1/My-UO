@@ -7,8 +7,11 @@ using System.Runtime.InteropServices;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Macros;
 using ClassicUO.Utility.Logging;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -23,8 +26,9 @@ namespace ClassicUO.Game.UI.MyraWindows;
 
 internal sealed class DesktopAgentsWindow
 {
-    private const string Title = "Legion Assistant — Agents";
     private static volatile DesktopAgentsWindow? _instance;
+
+    internal static bool HasInputFocus => _instance?._hasInputFocus == true;
 
     private readonly nint _window;
     private readonly Desktop _desktop;
@@ -32,7 +36,11 @@ internal sealed class DesktopAgentsWindow
     private readonly AgentTab.AgentPage[] _pages =
     [
         ..AgentTab.GetPages(),
-        new(ItemListsTabContent.Title, AgentTab.AgentGroup.ItemLists, ItemListsTabContent.Build)
+        new(ItemListsTabContent.Title, AgentTab.AgentGroup.ItemLists, ItemListsTabContent.Build),
+        new(HotkeysTabContent.Title, AgentTab.AgentGroup.Controls, HotkeysTabContent.Build),
+        new(MacrosTabContent.Title, AgentTab.AgentGroup.Controls, MacrosTabContent.Build),
+        new(FiltersTab.Title, AgentTab.AgentGroup.Settings, FiltersTab.Build),
+        new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
     ];
     private readonly Dictionary<int, MyraButton> _navigation = new();
     private readonly MyraLabel _session = new("", MyraLabel.TextStyle.P);
@@ -51,32 +59,36 @@ internal sealed class DesktopAgentsWindow
     private int _selectedPage;
     private bool _returnToWindow;
     private bool _refreshRequested;
+    private volatile bool _hasInputFocus;
     private bool? _priorCursorVisibility;
     private ulong _nextFrame;
 
     private DesktopAgentsWindow(nint window)
     {
         _window = window;
-        _interaction = new AgentPageInteraction(SetTargetStatus, () => SelectPage(_pages.Length - 1));
+        _interaction = new AgentPageInteraction(SetTargetStatus, () => SelectPage(ItemListsTabContent.Title));
         _desktop = new Desktop { BoundsFetcher = () => _bounds };
         // Game text is broadcast globally by FNA. Feed this desktop only its own SDL text events.
         TextInputEXT.TextInput -= _desktop.OnChar;
         _desktop.Root = BuildLayout();
     }
 
-    public static void Show() => MainThreadQueue.EnqueueAction(Open);
+    public static void Show() => Show(null);
 
-    private static void Open()
+    internal static void Show(string? page) => MainThreadQueue.EnqueueAction(() => Open(page));
+
+    private static void Open(string? page)
     {
         if (_instance is { } existing)
         {
+            existing.SelectPage(page);
             existing._refreshRequested = true;
             SDL_RestoreWindow(existing._window);
             SDL_RaiseWindow(existing._window);
             return;
         }
 
-        nint window = SDL_CreateWindow(Title, 1120, 750,
+        nint window = SDL_CreateWindow(TazLang.Get("assistantwindow_title", "Legion Assistant"), 1120, 750,
             SDL_WindowFlags.SDL_WINDOW_RESIZABLE | SDL_WindowFlags.SDL_WINDOW_HIDDEN);
 
         if (window == 0)
@@ -89,6 +101,7 @@ internal sealed class DesktopAgentsWindow
         {
             var assistant = new DesktopAgentsWindow(window);
             _instance = assistant;
+            assistant.SelectPage(page);
             SDL_SetWindowMinimumSize(window, 740, 500);
             if (!SDL_ShowWindow(window) || !SDL_StartTextInput(window))
                 throw new InvalidOperationException(SDL_GetError());
@@ -107,7 +120,13 @@ internal sealed class DesktopAgentsWindow
     public static unsafe bool TryHandleEvent(ref SDL_Event e)
     {
         DesktopAgentsWindow? assistant = _instance;
-        if (assistant == null || SDL_GetWindowFromEvent(ref e) != assistant._window)
+        if (assistant == null)
+            return false;
+
+        // Gamepad events have no window ID. The desktop owns them only while its capture dialog is open.
+        bool isCapturedGamepad = e.type == (uint)SDL_EventType.SDL_EVENT_GAMEPAD_BUTTON_DOWN
+            && assistant._interaction.IsCapturingDesktopHotkey;
+        if (!isCapturedGamepad && SDL_GetWindowFromEvent(ref e) != assistant._window)
             return false;
 
         string? text = e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT
@@ -140,18 +159,20 @@ internal sealed class DesktopAgentsWindow
 
         assistant._interaction.CancelTarget();
         assistant._interaction.CancelKeyCapture();
+        assistant._interaction.CancelDialog();
         assistant.RestoreCursor();
         assistant._desktop.Dispose();
         assistant._frame?.Dispose();
         SDL_DestroyWindow(assistant._window);
         _instance = null;
+        Client.Game?.Audio?.RefreshWindowFocus();
     }
 
     private static void ReportFailure(string error)
     {
-        Log.Error($"Desktop Agents window failed: {error}");
+        Log.Error($"Desktop Assistant window failed: {error}");
         if (World.Instance?.InGame == true)
-            GameActions.Print("Could not open or update Desktop Agents. You can still use the in-game Agents tab.");
+            GameActions.Print(TazLang.Get("assistant_desktop_failed", "Could not open the Desktop Assistant. The in-game Assistant is available."));
     }
 
     private Widget BuildLayout()
@@ -200,7 +221,7 @@ internal sealed class DesktopAgentsWindow
         }
 
         var header = new VerticalStackPanel { Spacing = 3 };
-        header.Widgets.Add(new MyraLabel(TazLang.Get("assistantwindow_tab_agents", "Agents"), MyraLabel.TextStyle.H1));
+        header.Widgets.Add(new MyraLabel(TazLang.Get("assistantwindow_title", "Legion Assistant"), MyraLabel.TextStyle.H1));
         header.Widgets.Add(_session);
 
         var panel = new MyraGrid
@@ -232,6 +253,8 @@ internal sealed class DesktopAgentsWindow
 
     private static string GetGroupName(AgentTab.AgentGroup group) => group switch
     {
+        AgentTab.AgentGroup.Controls => TazLang.Get("assistant_desktop_controls", "Controls"),
+        AgentTab.AgentGroup.Settings => TazLang.Get("assistant_desktop_settings", "Settings"),
         AgentTab.AgentGroup.HealingAndStats => TazLang.Get("assistant_agents_healing_stats", "Healing & Stats"),
         AgentTab.AgentGroup.Support => TazLang.Get("assistant_agents_support"),
         AgentTab.AgentGroup.LootAndScavenge => TazLang.Get("assistant_agents_loot_scavenge", "Loot & Scavenge"),
@@ -239,10 +262,18 @@ internal sealed class DesktopAgentsWindow
         _ => TazLang.Get("assistant_agents_gear_inventory", "Gear & Inventory")
     };
 
+    private void SelectPage(string? name)
+    {
+        int index = Array.FindIndex(_pages, page => page.Name == name);
+        if (index >= 0)
+            SelectPage(index);
+    }
+
     private void SelectPage(int index)
     {
         _interaction.CancelTarget();
         _interaction.CancelKeyCapture();
+        _interaction.CancelDialog();
         _desktop.FocusedKeyboardWidget = null;
         _desktop.HideContextMenu();
         SetTargetStatus("", false, false);
@@ -435,10 +466,18 @@ internal sealed class DesktopAgentsWindow
             case SDL_EventType.SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 return false;
 
+            case SDL_EventType.SDL_EVENT_WINDOW_FOCUS_GAINED:
+                _hasInputFocus = true;
+                Client.Game.Audio?.RefreshWindowFocus();
+                break;
+
             case SDL_EventType.SDL_EVENT_WINDOW_FOCUS_LOST:
+                _hasInputFocus = false;
+                _interaction.CancelDesktopHotkeyCapture();
                 Array.Clear(_keys);
                 _mouse = new MouseInfo { Position = new Point(-1, -1), Wheel = _mouse.Wheel };
                 _desktop.FocusedKeyboardWidget = null;
+                Client.Game.Audio?.RefreshWindowFocus();
                 break;
 
             case SDL_EventType.SDL_EVENT_WINDOW_MOUSE_ENTER:
@@ -466,6 +505,9 @@ internal sealed class DesktopAgentsWindow
 
     private bool ApplyInput(SDL_Event e, string? text)
     {
+        if (_interaction.HandleDesktopHotkeyInput(e))
+            return false;
+
         switch ((SDL_EventType)e.type)
         {
             case SDL_EventType.SDL_EVENT_MOUSE_MOTION:

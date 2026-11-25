@@ -72,12 +72,8 @@ namespace ClassicUO.Game.Managers
         public void AddFilter(int soundId, bool isMusic = false)
         {
             GlobalSettingsSave globalSettings = ProfileManager.GlobalSettings;
-            if (globalSettings == null)
-                return;
-
-            HashSet<int> filters = isMusic ? globalSettings.FilteredMusic : globalSettings.FilteredSounds;
-
-            filters.Add(soundId);
+            if (globalSettings != null && GetFilters(globalSettings, isMusic).Add(soundId))
+                Client.Game?.Audio?.StopFilteredPlayback(soundId, isMusic);
         }
 
         public void RemoveFilter(int soundId, bool isMusic = false)
@@ -86,20 +82,51 @@ namespace ClassicUO.Game.Managers
             if (globalSettings == null)
                 return;
 
-            HashSet<int> filters = isMusic ? globalSettings.FilteredMusic : globalSettings.FilteredSounds;
-
-            filters.Remove(soundId);
+            GetFilters(globalSettings, isMusic).Remove(soundId);
+            GetDisabled(globalSettings, isMusic).Remove(soundId);
         }
 
         public bool IsSoundFiltered(int soundId, bool isMusic = false)
         {
             GlobalSettingsSave globalSettings = ProfileManager.GlobalSettings;
-            if (globalSettings == null)
+            return globalSettings != null && GetFilters(globalSettings, isMusic).Contains(soundId)
+                && !GetDisabled(globalSettings, isMusic).Contains(soundId);
+        }
+
+        internal void SetEnabled(int id, bool enabled, bool isMusic)
+        {
+            GlobalSettingsSave settings = ProfileManager.GlobalSettings;
+            if (settings == null || !GetFilters(settings, isMusic).Contains(id))
+                return;
+
+            HashSet<int> disabled = GetDisabled(settings, isMusic);
+            if (enabled)
+            {
+                if (disabled.Remove(id))
+                    Client.Game?.Audio?.StopFilteredPlayback(id, isMusic);
+            }
+            else
+                disabled.Add(id);
+        }
+
+        internal bool ReplaceFilter(int oldId, int newId, bool isMusic)
+        {
+            GlobalSettingsSave settings = ProfileManager.GlobalSettings;
+            if (settings == null)
                 return false;
 
-            return isMusic
-                ? globalSettings.FilteredMusic.Contains(soundId)
-                : globalSettings.FilteredSounds.Contains(soundId);
+            HashSet<int> filters = GetFilters(settings, isMusic);
+            if (!filters.Contains(oldId) || !filters.Add(newId))
+                return false;
+
+            filters.Remove(oldId);
+            HashSet<int> disabled = GetDisabled(settings, isMusic);
+            if (disabled.Remove(oldId))
+                disabled.Add(newId);
+            else
+                Client.Game?.Audio?.StopFilteredPlayback(newId, isMusic);
+
+            return true;
         }
 
         public void Clear(bool isMusic = false)
@@ -108,22 +135,17 @@ namespace ClassicUO.Game.Managers
             if (globalSettings == null)
                 return;
 
-            HashSet<int> filters = isMusic ? globalSettings.FilteredMusic : globalSettings.FilteredSounds;
-
-            if (filters.Count > 0)
-                filters.Clear();
+            GetFilters(globalSettings, isMusic).Clear();
+            GetDisabled(globalSettings, isMusic).Clear();
         }
 
-        public void Reset(bool isMusic = false)
-        {
-            GlobalSettingsSave globalSettings = ProfileManager.GlobalSettings;
-            if (globalSettings == null)
-            {
-                return;
-            }
+        public void Reset(bool isMusic = false) => Clear(isMusic);
 
-            (isMusic ? globalSettings.FilteredMusic : globalSettings.FilteredSounds).Clear();
-        }
+        private static HashSet<int> GetFilters(GlobalSettingsSave settings, bool isMusic) =>
+            isMusic ? settings.FilteredMusic : settings.FilteredSounds;
+
+        private static HashSet<int> GetDisabled(GlobalSettingsSave settings, bool isMusic) =>
+            isMusic ? settings.DisabledMusicFilters : settings.DisabledSoundFilters;
     }
 
     [JsonSerializable(typeof(HashSet<int>))]

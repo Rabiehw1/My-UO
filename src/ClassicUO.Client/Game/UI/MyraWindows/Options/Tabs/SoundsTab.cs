@@ -1,3 +1,4 @@
+using System;
 using ClassicUO.Common;
 using ClassicUO.Common.Enums;
 using ClassicUO.Configuration;
@@ -12,9 +13,9 @@ namespace ClassicUO.Game.UI.MyraWindows.Options.Tabs;
 public static class SoundsTab
 {
     /// <summary>Returns the option fragment for sound enable/disable and volume controls</summary>
-    internal static IOptionSource GetContent() => GetSection();
+    internal static IOptionSource GetContent(Action<Action> runInGame = null) => GetSection(runInGame);
 
-    private static OptionFragment GetSection()
+    private static OptionFragment GetSection(Action<Action> runInGame)
     {
         Profile profile = ProfileManager.CurrentProfile;
 
@@ -79,7 +80,13 @@ public static class SoundsTab
                 new VisualContainerProps { LabelText = TazLang.Get("mog_soundtab_voicetotext") },
                 Option.Button(
                     TazLang.Get("mog_soundtab_createvoicebutton"),
-                    OnCreateVoiceButtonClick,
+                    () =>
+                    {
+                        if (runInGame == null)
+                            OnCreateVoiceButtonClick();
+                        else
+                            runInGame(OnCreateVoiceButtonClick);
+                    },
                     new SearchMetadata(TazLang.Get("mog_soundtab_createvoicebutton"), Keywords: [TazLang.Get("mog_kw_voice")])
                 ),
                 Option.InputField(

@@ -58,6 +58,9 @@ namespace ClassicUO.Configuration
         /// <summary>Music IDs the player has muted via the music filter UI. Machine-wide.</summary>
         public HashSet<int> FilteredMusic { get; set => SetProperty(ref field, value); } = new HashSet<int>();
 
+        public HashSet<int> DisabledSoundFilters { get; set; } = new();
+        public HashSet<int> DisabledMusicFilters { get; set; } = new();
+
         public bool UseWASDInsteadArrowKeys { get; set => SetProperty(ref field, value); }
         public bool SingleClickIconUse { get; set => SetProperty(ref field, value); }
 

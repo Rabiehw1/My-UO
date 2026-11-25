@@ -32,7 +32,13 @@ namespace ClassicUO.Game.Managers.Hotkeys
         /// </summary>
         public bool AutoStop { get; set; } = true;
 
-        public void Start(Action<HotkeyBinding> onCaptured, Action? onCancelled = null)
+        public void Start(Action<HotkeyBinding> onCaptured, Action? onCancelled = null) =>
+            Start(onCaptured, onCancelled, listenToGameInput: true);
+
+        internal void StartForDesktop(Action<HotkeyBinding> onCaptured) =>
+            Start(onCaptured, null, listenToGameInput: false);
+
+        private void Start(Action<HotkeyBinding> onCaptured, Action? onCancelled, bool listenToGameInput)
         {
             Stop();
 
@@ -44,16 +50,18 @@ namespace ClassicUO.Game.Managers.Hotkeys
             // Suppress hotkeys globally until the capture is stopped
             HotKeys.RequestDisableHotkeys();
 
-            Keyboard.KeyDownEvent += OnKey;
-            Keyboard.BareModifierEvent += OnBareModifier;
-
-            if (CapturesMouseEvents)
+            if (listenToGameInput)
             {
-                Mouse.ButtonDownEvent += OnMouseButton;
-                Mouse.WheelEvent += OnWheel;
-            }
+                Keyboard.KeyDownEvent += OnKey;
+                Keyboard.BareModifierEvent += HandleModifiers;
 
-            Controller.ButtonDownEvent += OnController;
+                if (CapturesMouseEvents)
+                {
+                    Mouse.ButtonDownEvent += OnMouseButton;
+                    Mouse.WheelEvent += OnWheel;
+                }
+                Controller.ButtonDownEvent += HandleController;
+            }
         }
 
         public void Stop()
@@ -63,10 +71,10 @@ namespace ClassicUO.Game.Managers.Hotkeys
 
             IsActive = false;
             Keyboard.KeyDownEvent -= OnKey;
-            Keyboard.BareModifierEvent -= OnBareModifier;
+            Keyboard.BareModifierEvent -= HandleModifiers;
             Mouse.ButtonDownEvent -= OnMouseButton;
             Mouse.WheelEvent -= OnWheel;
-            Controller.ButtonDownEvent -= OnController;
+            Controller.ButtonDownEvent -= HandleController;
             _onCaptured = null;
             _onCancelled = null;
             _modAccum = SDL.SDL_Keymod.SDL_KMOD_NONE;
@@ -77,7 +85,11 @@ namespace ClassicUO.Game.Managers.Hotkeys
         private void OnKey(string hotkey)
         {
             (SDL.SDL_Keycode key, SDL.SDL_Keymod mod) = HotkeyUtil.ParseHotKeyString(hotkey);
+            HandleKey(key, mod);
+        }
 
+        internal void HandleKey(SDL.SDL_Keycode key, SDL.SDL_Keymod mod)
+        {
             if (key == SDL.SDL_Keycode.SDLK_ESCAPE)
             {
                 // In continuous mode the owning window handles cancellation via its own buttons,
@@ -97,32 +109,34 @@ namespace ClassicUO.Game.Managers.Hotkeys
             Capture(new HotkeyBinding(key, mod));
         }
 
-        private void OnMouseButton(MouseButtonType button)
+        private void OnMouseButton(MouseButtonType button) => HandleMouseButton(button, KeyboardModifiers());
+
+        internal void HandleMouseButton(MouseButtonType button, SDL.SDL_Keymod mods)
         {
             if (button == MouseButtonType.Left || button == MouseButtonType.Right)
                 return;
 
-            Capture(new HotkeyBinding
+            Capture(new HotkeyBinding(SDL.SDL_Keycode.SDLK_UNKNOWN, mods)
             {
-                MouseButton = button,
-                Ctrl = Keyboard.Ctrl,
-                Shift = Keyboard.Shift,
-                Alt = Keyboard.Alt
+                MouseButton = button
             });
         }
 
-        private void OnWheel(bool up) =>
-            Capture(new HotkeyBinding
+        private void OnWheel(bool up) => HandleWheel(up, KeyboardModifiers());
+
+        internal void HandleWheel(bool up, SDL.SDL_Keymod mods) =>
+            Capture(new HotkeyBinding(SDL.SDL_Keycode.SDLK_UNKNOWN, mods)
             {
                 WheelScroll = true,
-                WheelUp = up,
-                Ctrl = Keyboard.Ctrl,
-                Shift = Keyboard.Shift,
-                Alt = Keyboard.Alt
+                WheelUp = up
             });
 
-        private void OnBareModifier(SDL.SDL_Keymod mods)
+        private static SDL.SDL_Keymod KeyboardModifiers() =>
+            HotkeyUtil.ModsFromFlags(Keyboard.Ctrl, Keyboard.Shift, Keyboard.Alt);
+
+        internal void HandleModifiers(SDL.SDL_Keymod mods)
         {
+            mods = HotkeyUtil.NormalizeMods(mods);
             if (mods != SDL.SDL_Keymod.SDL_KMOD_NONE)
             {
                 // Remember the largest combo held so chords (e.g. Ctrl+Shift) can be captured;
@@ -147,7 +161,7 @@ namespace ClassicUO.Game.Managers.Hotkeys
             });
         }
 
-        private void OnController(SDL.SDL_GamepadButton button)
+        internal void HandleController(SDL.SDL_GamepadButton button)
         {
             // Capture every button held at this instant so chords (e.g. LB + A) can be bound.
             SDL.SDL_GamepadButton[] pressed = Controller.PressedButtons();

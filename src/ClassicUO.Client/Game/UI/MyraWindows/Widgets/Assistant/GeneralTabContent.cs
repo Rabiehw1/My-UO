@@ -5,18 +5,23 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Processes;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 public static class GeneralTabContent
 {
-    public static Widget Build()
+    public static Widget Build() => Build(AgentPageInteraction.InGame);
+
+    internal static Widget Build(AgentPageInteraction interaction)
     {
         Profile profile = ProfileManager.CurrentProfile;
         float gameScale = Client.Game.RenderScale;
 
-        var mainContent = new HorizontalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
+        StackPanel mainContent = interaction.IsDesktop
+            ? new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING }
+            : new HorizontalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
         var leftSide = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
         var rightSide = new VerticalStackPanel { Spacing = MyraStyle.STANDARD_SPACING };
 
@@ -62,10 +67,10 @@ public static class GeneralTabContent
         rightSide.Widgets.Add(LabeledHorizontalSlider.SliderWithLabel(TazLang.Get("assistant_objectdelay"), out LabeledHorizontalSlider obDelaySlider,
             v => profile.MoveMultiObjectDelay = (int)v, 0, 3000, profile.MoveMultiObjectDelay));
 
-        rightSide.Widgets.Add(new MyraButton(TazLang.Get("assistant_autodelaychecker"), () => AutomatedObjectDelay.Begin(() =>
+        rightSide.Widgets.Add(new MyraButton(TazLang.Get("assistant_autodelaychecker"), () => interaction.RunInGame(() => AutomatedObjectDelay.Begin(() =>
         {
             obDelaySlider?.Value = profile.MoveMultiObjectDelay;
-        })) { Tooltip = TazLang.Get("assistant_autodelaychecker_tooltip") });
+        }))) { Tooltip = TazLang.Get("assistant_autodelaychecker_tooltip") });
 
         // Right side: Misc
         rightSide.Widgets.Add(new MyraSpacer(20, 15));

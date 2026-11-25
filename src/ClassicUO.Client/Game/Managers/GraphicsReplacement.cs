@@ -277,7 +277,9 @@ namespace ClassicUO.Game.Managers
         }
         #nullable disable
 
-        public static bool ImportFromJson(string json)
+        public static bool ImportFromJson(string json) => ImportFromJson(json, message => GameActions.Print(message, Constants.HUE_SUCCESS));
+
+        internal static bool ImportFromJson(string json, Action<string> report)
         {
             try
             {
@@ -309,7 +311,7 @@ namespace ClassicUO.Game.Managers
                     string message = $"Imported {addedCount} graphic filters from clipboard";
                     if (duplicateCount > 0)
                         message += $" ({duplicateCount} duplicates skipped)";
-                    GameActions.Print(message, Constants.HUE_SUCCESS);
+                    report(message);
                     return true;
                 }
             }
