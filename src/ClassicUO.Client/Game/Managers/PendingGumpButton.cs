@@ -3,6 +3,7 @@
 using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.UI.Controls;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Utility.Logging;
 
@@ -23,6 +24,8 @@ internal sealed class PendingGumpButton
     private Gump? _gumpBeforeUse;
     private long _deadline;
     private Action? _onPressed;
+    private Func<bool>? _canReply;
+    private bool _requireButton;
     private string _sourceName = "";
 
     /// <param name="world">The game world.</param>
@@ -41,9 +44,11 @@ internal sealed class PendingGumpButton
     /// <param name="button">Gump button to press.</param>
     /// <param name="sourceName">What was used, for the message if no gump opens.</param>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
-    public void Arm(int button, string sourceName, long now, Action? onPressed = null)
+    public void Arm(int button, string sourceName, long now, Action? onPressed = null, Func<bool>? canReply = null, bool requireButton = false)
     {
         _onPressed = onPressed;
+        _canReply = canReply;
+        _requireButton = requireButton;
         PlayerMobile? player = _world.Player;
 
         // Remember the gump showing now, so only a newly opened one is answered.
@@ -60,10 +65,17 @@ internal sealed class PendingGumpButton
         if (_button < 0)
             return;
 
+        if (_canReply?.Invoke() == false)
+        {
+            Clear();
+            return;
+        }
+
         PlayerMobile? player = _world.Player;
         Gump? gump = player == null ? null : UIManager.GetGumpServer(player.LastGumpID);
 
-        if (gump is { IsDisposed: false } && !ReferenceEquals(gump, _gumpBeforeUse))
+        if (gump is { IsDisposed: false } && !ReferenceEquals(gump, _gumpBeforeUse)
+            && (!_requireButton || HasButton(gump, _button)))
         {
             GameActions.ReplyGump(_world, gump.LocalSerial, gump.ServerSerial, _button);
             gump.Dispose();
@@ -84,11 +96,21 @@ internal sealed class PendingGumpButton
         }
     }
 
+    private static bool HasButton(Control parent, int button)
+    {
+        foreach (var child in parent.Children)
+            if (child is Control control && (control is Button candidate && candidate.ButtonID == button || HasButton(control, button)))
+                return true;
+
+        return false;
+    }
+
     /// <summary>Stops waiting.</summary>
     public void Clear()
     {
         _button = -1;
         _onPressed = null;
+        _canReply = null;
         _gumpBeforeUse = null;
     }
 }

@@ -8,6 +8,7 @@ internal static class AttackCharacter
     public static void Receive(World world, ref StackDataReader p)
     {
         uint serial = p.ReadUInt32BE();
+        world.TargetManager.ConfirmedAttack = serial;
         GameActions.SendCloseStatus(world, world.TargetManager.LastAttack);
         world.TargetManager.LastAttack = serial;
         GameActions.RequestMobileStatus(world, serial);

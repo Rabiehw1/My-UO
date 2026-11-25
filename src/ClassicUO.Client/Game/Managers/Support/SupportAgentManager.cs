@@ -7,6 +7,7 @@ using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Utility;
+using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers.Support;
 
@@ -67,6 +68,16 @@ internal sealed class SupportAgentManager : IDisposable
     private int _followTargetX;
     private int _followTargetY;
     private long _lastAttack;
+    private uint _attackRequested;
+    private int _attackAttempts;
+    private long _nextRetreatPath;
+    private long _nextFollowPath;
+    private uint _retreatEnemy;
+    private int _retreatX, _retreatY;
+    private long _warModeRetryAt;
+
+    internal bool IsUsingAbility => _wasEnabled && Settings.Enabled && (Time.Ticks < _castUntil || _runner.IsWaiting);
+
     private long _followOverrideUntil;
     private uint _currentEnemy;
     private bool _retreating;
@@ -98,7 +109,6 @@ internal sealed class SupportAgentManager : IDisposable
     public void Update()
     {
         long now = Time.Ticks;
-        _runner.Update(now);
 
         if (now < _nextTick)
             return;
@@ -120,6 +130,7 @@ internal sealed class SupportAgentManager : IDisposable
             return;
         }
 
+        _runner.Update(now);
         _wasEnabled = true;
         Tick(player, settings, now);
     }
@@ -132,6 +143,8 @@ internal sealed class SupportAgentManager : IDisposable
         Settings.LeaderName = leader.Name ?? "";
         Settings.Save();
         _currentEnemy = 0;
+        _runner.Reset();
+        _healRequested = _blessRequested = _followRequested = false;
     }
 
     /// <summary>Saves settings and detaches from game events; called when the game scene unloads.</summary>
@@ -175,6 +188,8 @@ internal sealed class SupportAgentManager : IDisposable
         // With a leader set but out of sight, wait for them rather than wander off fighting.
         if (settings.LeaderSerial != 0 && leader == null)
         {
+            StopMoving(player);
+            SetWarMode(player, false);
             _status.Problem("leader", TazLang.Get("supportagent_status_noleader"));
             return;
         }
@@ -238,9 +253,17 @@ internal sealed class SupportAgentManager : IDisposable
             return false;
         }
 
-        StopMoving(player);
         SetWarMode(player, false);
-        TryUseRole(classSettings, SupportRole.Heal, player, leader, player, now);
+        if (now < _castUntil)
+            return true;
+
+        if (player.IsPoisoned && TryUseRole(classSettings, SupportRole.Cure, player, leader, player, now))
+            return true;
+
+        if (!TryUseRole(classSettings, SupportRole.Heal, player, leader, player, now)
+            && FindNearestEnemy(player, settings) is { } threat
+            && threat.Distance <= settings.Combat.MeleeDangerRange)
+            MoveAwayFrom(player, threat, settings.Combat.PreferredMinRange, now);
         return true;
     }
 
@@ -325,12 +348,22 @@ internal sealed class SupportAgentManager : IDisposable
         Mobile? patient
     )
     {
-        patient ??= FindMostHurt(settings.HealThreshold, settings.LeaderSerial);
+        if (patient != null)
+            return TryUseRole(classSettings, SupportRole.Heal, player, leader, patient, now);
 
-        if (patient == null)
-            return false;
+        _group.Sort((left, right) =>
+        {
+            bool IsPriority(Mobile member) => member == player || member.Serial == settings.LeaderSerial;
+            int priority = IsPriority(right).CompareTo(IsPriority(left));
+            return priority != 0 ? priority : HealthPercent(left).CompareTo(HealthPercent(right));
+        });
 
-        return TryUseRole(classSettings, SupportRole.Heal, player, leader, patient, now);
+        foreach (Mobile member in _group)
+            if (HealthPercent(member) < settings.HealThreshold
+                && TryUseRole(classSettings, SupportRole.Heal, player, leader, member, now))
+                return true;
+
+        return false;
     }
 
     private bool TryBuff(PlayerMobile player, SupportClassSettings classSettings, Mobile? leader, long now) =>
@@ -369,7 +402,10 @@ internal sealed class SupportAgentManager : IDisposable
         long now
     )
     {
-        if (role != SupportRole.Emergency && now < _abilityReadyAt)
+        if (now < _castUntil || _runner.IsWaiting || player.IsCasting || _world.TargetManager.IsTargeting
+            || TargetManager.NextAutoTarget.IsSet || ShardSpellCaster.Instance.IsCasting
+            || BandageManager.Instance.IsBandaging || Client.Game.UO.GameCursor.ItemHold.Enabled
+            || (role != SupportRole.Emergency && now < _abilityReadyAt))
             return false;
 
         foreach (SupportAbility ability in classSettings.Abilities)
@@ -399,7 +435,8 @@ internal sealed class SupportAgentManager : IDisposable
 
             if (_runner.TryUse(ability, target, now))
             {
-                _castUntil = now + ability.CastTimeMs;
+                _castUntil = now + (ability.Action == SupportActionType.Bandage
+                    ? Math.Max(ability.CastTimeMs, ability.CooldownMs) : ability.CastTimeMs);
                 _abilityReadyAt = _castUntil + ability.RecoveryMs;
                 ShowAbilityStatus(ability, patient);
                 return true;
@@ -427,10 +464,15 @@ internal sealed class SupportAgentManager : IDisposable
 
         target = mobile?.Serial ?? 0;
 
+        if (ability.Role == SupportRole.Cure && ability.Target == SupportTargetMode.None
+            && ability.Action == SupportActionType.CastShardSpell && ability.ShardBook == ShardSpellBook.Earth
+            && ability.SpellId == 0 && patient != player)
+            return false;
+
         if (ability.Target == SupportTargetMode.None)
             return true;
 
-        if (mobile == null || mobile.IsDead)
+        if (mobile == null || mobile.IsDead || mobile.IsDestroyed)
             return false;
 
         return ability.Action != SupportActionType.Bandage || mobile.Distance <= BANDAGE_RANGE;
@@ -460,38 +502,6 @@ internal sealed class SupportAgentManager : IDisposable
         }
     }
 
-    /// <summary>
-    /// The most hurt member below <paramref name="threshold" />. The helper and the leader come first; friends
-    /// are only considered when both of them are above the threshold.
-    /// </summary>
-    private Mobile? FindMostHurt(int threshold, uint leaderSerial)
-    {
-        Mobile? priority = FindMostHurt(threshold, member => member == _world.Player || member.Serial == leaderSerial);
-        return priority ?? FindMostHurt(threshold, _ => true);
-    }
-
-    private Mobile? FindMostHurt(int threshold, Func<Mobile, bool> include)
-    {
-        Mobile? mostHurt = null;
-        int lowest = threshold;
-
-        foreach (Mobile member in _group)
-        {
-            if (!include(member))
-                continue;
-
-            int health = HealthPercent(member);
-
-            if (health < lowest)
-            {
-                lowest = health;
-                mostHurt = member;
-            }
-        }
-
-        return mostHurt;
-    }
-
     /// <returns>True while an enemy is being fought or avoided.</returns>
     private bool Fight(PlayerMobile player, SupportAgentSave settings, Mobile? leader, long now)
     {
@@ -514,14 +524,26 @@ internal sealed class SupportAgentManager : IDisposable
         {
             _status.Show(TazLang.Get("supportagent_status_backingoff"), SupportStatus.HUE_COMBAT);
             SetWarMode(player, false);
-            MoveAwayFrom(player, enemy, combat.PreferredMinRange);
+            MoveAwayFrom(player, enemy, combat.PreferredMinRange, now);
             return true;
         }
 
-        if (now - _lastAttack >= combat.AttackIntervalMs)
+        if (_attackRequested != enemy.Serial || previousEnemy != enemy.Serial
+            || _world.TargetManager.LastAttack != enemy.Serial)
+        {
+            _attackRequested = enemy.Serial;
+            _attackAttempts = 0;
+        }
+
+        if (_attackAttempts < 3 && (_attackAttempts == 0 || now - _lastAttack >= Math.Max(1000, combat.AttackIntervalMs))
+            && (_attackAttempts == 0 || _world.TargetManager.ConfirmedAttack != enemy.Serial))
         {
             SetWarMode(player, true);
+            if (_attackAttempts == 0)
+                _world.TargetManager.ConfirmedAttack = 0;
             GameActions.Attack(_world, enemy.Serial);
+            Log.Debug($"Support Agent attack: 0x{enemy.Serial:X8}, attempt {_attackAttempts + 1}.");
+            _attackAttempts++;
             _lastAttack = now;
         }
 
@@ -566,8 +588,16 @@ internal sealed class SupportAgentManager : IDisposable
     }
 
     /// <summary>Steps straight away from <paramref name="enemy" /> to about <paramref name="range" /> tiles.</summary>
-    private static void MoveAwayFrom(PlayerMobile player, Mobile enemy, int range)
+    private void MoveAwayFrom(PlayerMobile player, Mobile enemy, int range, long now)
     {
+        if (now < _nextRetreatPath || (player.Pathfinder.AutoWalking && _retreatEnemy == enemy.Serial
+            && Math.Max(Math.Abs(enemy.X - _retreatX), Math.Abs(enemy.Y - _retreatY)) <= FOLLOW_REPATH_TILES))
+            return;
+
+        _nextRetreatPath = now + 500;
+        _retreatEnemy = enemy.Serial;
+        _retreatX = enemy.X;
+        _retreatY = enemy.Y;
         int deltaX = player.X - enemy.X;
         int deltaY = player.Y - enemy.Y;
 
@@ -578,7 +608,8 @@ internal sealed class SupportAgentManager : IDisposable
         int targetX = (int)Math.Round(player.X + deltaX / length * range);
         int targetY = (int)Math.Round(player.Y + deltaY / length * range);
 
-        player.Pathfinder.WalkTo(targetX, targetY, player.Z, 1);
+        if (player.Pathfinder.WalkTo(targetX, targetY, player.Z, 1))
+            Log.Debug("Support Agent started a retreat path.");
     }
 
     /// <summary>
@@ -600,11 +631,15 @@ internal sealed class SupportAgentManager : IDisposable
             player.Pathfinder.StopAutoWalk();
         }
 
-        if (leader.Distance > settings.Follow.FollowDistance
-            && player.Pathfinder.WalkTo(leader.X, leader.Y, leader.Z, settings.Follow.FollowDistance))
+        if (leader.Distance <= settings.Follow.FollowDistance || Time.Ticks < _nextFollowPath)
+            return;
+
+        _nextFollowPath = Time.Ticks + 500;
+        if (player.Pathfinder.WalkTo(leader.X, leader.Y, leader.Z, settings.Follow.FollowDistance))
         {
             _followTargetX = leader.X;
             _followTargetY = leader.Y;
+            Log.Debug("Support Agent started a follow path.");
         }
     }
 
@@ -617,11 +652,18 @@ internal sealed class SupportAgentManager : IDisposable
     /// <summary>Changes war mode only when needed, and only turns off war mode the agent itself turned on.</summary>
     private void SetWarMode(PlayerMobile player, bool enabled)
     {
+        if (!enabled)
+            _attackRequested = 0;
+
+        if (Time.Ticks < _warModeRetryAt)
+            return;
+
         if (enabled)
         {
             if (!player.InWarMode)
             {
                 GameActions.RequestWarMode(player, true);
+                _warModeRetryAt = Time.Ticks + 750;
                 _warModeByAgent = true;
             }
 
@@ -629,7 +671,10 @@ internal sealed class SupportAgentManager : IDisposable
         }
 
         if (_warModeByAgent && player.InWarMode)
+        {
             GameActions.RequestWarMode(player, false);
+            _warModeRetryAt = Time.Ticks + 750;
+        }
 
         _warModeByAgent = false;
     }

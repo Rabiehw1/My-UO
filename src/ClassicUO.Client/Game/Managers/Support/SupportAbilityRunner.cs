@@ -6,6 +6,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.ShardSpells;
+using ClassicUO.Game.Managers.SpellVisualRange;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Utility.Logging;
 
@@ -28,6 +29,26 @@ internal sealed class SupportAbilityRunner
     private readonly World _world;
     private readonly Dictionary<string, long> _lastUsed = new();
     private readonly PendingGumpButton _pendingGump;
+    private uint _targetSerial;
+    private long _targetExpiry;
+    private int _generation;
+    private bool _waitingForBook;
+    private long _retryAt;
+    private long? _spellStarted;
+    private int _spellResponseWindow;
+    private long _bookDeadline;
+
+    private void ReportNoGump(string name, Action<string> report)
+    {
+        _retryAt = Time.Ticks + 3000;
+        report(name);
+    }
+
+    internal bool IsWaiting => _pendingGump.IsArmed || OwnsTarget || (_waitingForBook && ShardSpellCaster.Instance.IsCasting);
+
+    private bool OwnsTarget => _targetSerial != 0 && TargetManager.NextAutoTarget.IsSet
+        && TargetManager.NextAutoTarget.TargetSerial == _targetSerial
+        && TargetManager.NextAutoTarget.ExpiresAt == _targetExpiry;
 
     #endregion
 
@@ -38,7 +59,7 @@ internal sealed class SupportAbilityRunner
     public SupportAbilityRunner(World world, Action<string> reportNoGump)
     {
         _world = world;
-        _pendingGump = new PendingGumpButton(world, reportNoGump);
+        _pendingGump = new PendingGumpButton(world, name => ReportNoGump(name, reportNoGump));
     }
 
     #endregion
@@ -50,7 +71,7 @@ internal sealed class SupportAbilityRunner
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
     /// <returns>True when it may be used again.</returns>
     public bool IsOffCooldown(SupportAbility ability, long now) =>
-        !_lastUsed.TryGetValue(ability.Id, out long lastUsed) || now - lastUsed >= ability.CooldownMs;
+        now >= _retryAt && (!_lastUsed.TryGetValue(ability.Id, out long lastUsed) || now - lastUsed >= ability.CooldownMs);
 
     /// <summary>Time left before <paramref name="ability" /> may be used again.</summary>
     /// <param name="ability">Ability to check.</param>
@@ -106,20 +127,60 @@ internal sealed class SupportAbilityRunner
         };
 
         if (sent)
+        {
             _lastUsed[ability.Id] = now;
+            if (ability.Action == SupportActionType.CastSpell)
+                TrackSpell(now, ability.CastTimeMs);
+            if (ability.Action == SupportActionType.Bandage && TargetManager.NextAutoTarget.IsSet)
+                RememberTarget();
+            Log.Debug($"Support Agent action: {ability.Action} ({ability.Id}), target 0x{targetSerial:X8}.");
+        }
 
         return sent;
     }
 
     /// <summary>Presses the pending gump button once the item's gump appears. Call every frame.</summary>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
-    public void Update(long now) => _pendingGump.Update(now);
+    public void Update(long now)
+    {
+        _pendingGump.Update(now);
+        if (_waitingForBook && !ShardSpellCaster.Instance.IsCasting && now >= _bookDeadline)
+        {
+            _waitingForBook = false;
+            _retryAt = now + 3000;
+        }
 
-    /// <summary>Forgets cooldowns and any pending gump, e.g. when the agent is turned off.</summary>
+        if (_spellStarted is not long started)
+            return;
+
+        if (SpellVisualRangeManager.Instance.LastCastFailedTick > started
+            && SpellVisualRangeManager.Instance.LastCastFailedTick <= started + _spellResponseWindow)
+        {
+            if (OwnsTarget)
+                TargetManager.NextAutoTarget.Clear();
+            _retryAt = now + 3000;
+            _spellStarted = null;
+        }
+        else if (now > started + _spellResponseWindow)
+            _spellStarted = null;
+    }
+
+    private void TrackSpell(long now, int castTime)
+    {
+        _spellStarted = now;
+        _spellResponseWindow = castTime + TARGET_CURSOR_GRACE_MS;
+    }
+
+    /// <summary>Clears pending responses, e.g. when the agent is turned off.</summary>
     public void Reset()
     {
-        _lastUsed.Clear();
+        _generation++;
+        _spellStarted = null;
+        _waitingForBook = false;
         _pendingGump.Clear();
+        if (OwnsTarget)
+            TargetManager.NextAutoTarget.Clear();
+        _targetSerial = 0;
     }
 
     #endregion
@@ -128,17 +189,8 @@ internal sealed class SupportAbilityRunner
 
     private bool CastSpell(SupportAbility ability, uint targetSerial)
     {
-        // Set before casting: the cursor arrives after the cast time and must go to the intended target, whatever
-        // cursor type the shard uses.
         if (targetSerial != 0)
-        {
-            TargetManager.SetAutoTarget(
-                targetSerial,
-                TargetType.Beneficial,
-                matchAnyTargetType: true,
-                ability.CastTimeMs + TARGET_CURSOR_GRACE_MS
-            );
-        }
+            SetAutoTarget(ability, targetSerial);
 
         GameActions.CastSpell(ability.SpellId);
         return true;
@@ -151,7 +203,7 @@ internal sealed class SupportAbilityRunner
         if (player == null || ability.ItemSerial == 0)
             return false;
 
-        _pendingGump.Arm(ability.GumpButton, ability.Name, now);
+        _pendingGump.Arm(ability.GumpButton, ability.Name, now, requireButton: true);
 
         GameActions.DoubleClick(_world, ability.ItemSerial, ignoreQueue: true);
         return true;
@@ -172,19 +224,35 @@ internal sealed class SupportAbilityRunner
 
     private bool CastShardSpell(SupportAbility ability, uint targetSerial)
     {
-        if (targetSerial != 0)
-            SetAutoTarget(ability, targetSerial);
-
-        return ShardSpellCaster.Instance.TryCast(ability.ShardBook, ability.SpellId);
+        int generation = _generation;
+        _bookDeadline = Time.Ticks + 3000;
+        _waitingForBook = ShardSpellCaster.Instance.TryCast(ability.ShardBook, ability.SpellId, () =>
+        {
+            _waitingForBook = false;
+            TrackSpell(Time.Ticks, ability.CastTimeMs);
+            if (generation == _generation && targetSerial != 0)
+                SetAutoTarget(ability, targetSerial);
+        }, () => generation == _generation && SupportAgentManager.Instance.Settings.Enabled
+            && _world.Player is { IsDead: false });
+        return _waitingForBook;
     }
 
-    private static void SetAutoTarget(SupportAbility ability, uint targetSerial) =>
-        TargetManager.SetAutoTarget(
-            targetSerial,
-            TargetType.Beneficial,
-            matchAnyTargetType: true,
-            ability.CastTimeMs + TARGET_CURSOR_GRACE_MS
-        );
+    private void SetAutoTarget(SupportAbility ability, uint targetSerial)
+    {
+        if (_world.Mobiles.Get(targetSerial) is not { IsDead: false, IsDestroyed: false }
+            && _world.Player?.Serial != targetSerial)
+            return;
+
+        TargetManager.SetAutoTarget(targetSerial, TargetType.Beneficial, timeoutMs: ability.CastTimeMs + TARGET_CURSOR_GRACE_MS);
+        TargetManager.NextAutoTarget.AllowNeutral = true;
+        RememberTarget();
+    }
+
+    private void RememberTarget()
+    {
+        _targetSerial = TargetManager.NextAutoTarget.TargetSerial;
+        _targetExpiry = TargetManager.NextAutoTarget.ExpiresAt;
+    }
 
     /// <summary>
     /// For an item given by graphic and hue but not picked yet (e.g. Nagash's staff), looks in the helper's hands

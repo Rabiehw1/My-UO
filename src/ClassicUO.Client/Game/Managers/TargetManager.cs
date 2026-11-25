@@ -133,6 +133,7 @@ namespace ClassicUO.Game.Managers
         public TargetType ExpectedTargetType { get; set; }
         // When true, respond to any target cursor type instead of only ExpectedTargetType.
         public bool MatchAnyTargetType { get; set; }
+        internal bool AllowNeutral { get; set; }
 
         // Time.Ticks after which the auto target is ignored; zero never expires.
         public long ExpiresAt { get; set; }
@@ -141,6 +142,7 @@ namespace ClassicUO.Game.Managers
 
         public void Set(uint serial, TargetType targetType, bool matchAnyTargetType = false, int timeoutMs = 0)
         {
+            AllowNeutral = false;
             TargetSerial = serial;
             ExpectedTargetType = targetType;
             MatchAnyTargetType = matchAnyTargetType;
@@ -148,10 +150,11 @@ namespace ClassicUO.Game.Managers
         }
 
         // Returns true if this auto target should respond to the given cursor target type.
-        public bool Matches(TargetType targetType) => MatchAnyTargetType || ExpectedTargetType == targetType;
+        public bool Matches(TargetType targetType) => MatchAnyTargetType || ExpectedTargetType == targetType || (AllowNeutral && targetType == TargetType.Neutral);
 
         public void Clear()
         {
+            AllowNeutral = false;
             TargetSerial = 0;
             ExpectedTargetType = TargetType.Cancel;
             MatchAnyTargetType = false;
@@ -169,6 +172,8 @@ namespace ClassicUO.Game.Managers
         public TargetManager(World world) { _world = world; }
 
         public uint SelectedTarget, NewTargetSystemSerial;
+
+        internal uint ConfirmedAttack { get; set; }
 
         public uint LastAttack
         {

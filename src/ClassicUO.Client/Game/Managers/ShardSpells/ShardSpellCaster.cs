@@ -80,7 +80,7 @@ internal sealed class ShardSpellCaster : IDisposable
     public void Cast(ShardSpellBook book, int index)
         => TryCast(book, index);
 
-    internal bool TryCast(ShardSpellBook book, int index, Action? onCast = null)
+    internal bool TryCast(ShardSpellBook book, int index, Action? onCast = null, Func<bool>? canReply = null)
     {
         ShardSpell? spell = ShardSpellCatalog.GetSpell(book, index);
 
@@ -96,7 +96,7 @@ internal sealed class ShardSpellCaster : IDisposable
             return false;
         }
 
-        _pendingGump.Arm(GetButton(book, index), ShardSpellCatalog.Get(book).Name, Time.Ticks, onCast);
+        _pendingGump.Arm(GetButton(book, index), ShardSpellCatalog.Get(book).Name, Time.Ticks, onCast, canReply, requireButton: canReply != null);
         GameActions.DoubleClick(_world, bookSerial, ignoreQueue: true);
         return true;
     }

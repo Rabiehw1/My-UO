@@ -69,7 +69,8 @@ namespace ClassicUO.Game.Managers
             if (entry != null && entry.Binding != null && !entry.Binding.HasKey && !entry.Binding.IsEmpty)
                 held = entry.IsPressed();
 
-            _machine.Tick(_env, held && Client.Game.IsActive);
+            _machine.Tick(_env, held && Client.Game.IsActive && !Support.SupportAgentManager.Instance.IsUsingAbility
+                && !BandageManager.Instance.IsBandaging);
         }
 
         /// <summary>Called from GameSceneInputHandler.OnKeyDown (already focus-gated).</summary>

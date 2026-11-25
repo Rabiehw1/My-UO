@@ -218,8 +218,13 @@ namespace ClassicUO.Game.Managers
         /// player's own health, so damage is caught even when no HP packet triggered
         /// <see cref="OnMobileHpChanged" />, then re-checks one pending heal for others.
         /// </summary>
+        internal bool IsBandaging => Time.Ticks < _bandageInProgressUntil || IsBandagingBuffActive;
+
         public void Update()
         {
+            if (Support.SupportAgentManager.Instance.IsUsingAbility)
+                return;
+
             bool bandagesEnabled = IsEnabled;
             if (!bandagesEnabled && (_pendingHeals.Count > 0 || _retryDeadlines.Count > 0))
                 ClearAllPendingHeals();
@@ -416,6 +421,7 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         private bool IsReadyToBandage() =>
             Time.Ticks >= _nextBandageTime
+            && !Support.SupportAgentManager.Instance.IsUsingAbility
             && Time.Ticks >= _healing.NextActionTime
             && !(CheckForBuff && IsBandagingBuffActive)
             && !Client.Game.UO.GameCursor.ItemHold.Enabled;
