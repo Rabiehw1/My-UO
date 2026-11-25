@@ -5,6 +5,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Game.Managers.Updates;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Game.UI.Gumps.CharCreation;
@@ -85,14 +86,18 @@ namespace ClassicUO.Game.Scenes
 
             Client.Game.Window.AllowUserResizing = false;
 
-            _autoLogin = Settings.GlobalSettings.AutoLogin;
+            // The launcher's own hidden login screen must never log in, prompt or play music.
+            bool launcherOnly = ClientLauncher.IsLauncherOnly;
+            _autoLogin = Settings.GlobalSettings.AutoLogin && !launcherOnly;
 
             UIManager.Add(new LoginBackground(_world));
 
             ClientUpdater.DeleteLeftoversInBackground();
-            UpdateWindow.ShowIfUpdateAvailable();
+            // The launcher checks for updates itself, for every client it starts.
+            if (!launcherOnly && !ClientLauncher.IsLaunchedClient)
+                UpdateWindow.ShowIfUpdateAvailable();
 
-            if (string.IsNullOrEmpty(Settings.GlobalSettings.IP))
+            if (string.IsNullOrEmpty(Settings.GlobalSettings.IP) && !launcherOnly)
             {
                 new PromptPopupWindow("Server IP", "Please enter a server IP to connect to", input =>
                 {
@@ -126,7 +131,8 @@ namespace ClassicUO.Game.Scenes
                 UIManager.Add(_currentGump = new LoginGump(_world, this));
             }
 
-            Client.Game.Audio.PlayMusic(Client.Game.Audio.LoginMusicIndex, false, true);
+            if (!launcherOnly)
+                Client.Game.Audio.PlayMusic(Client.Game.Audio.LoginMusicIndex, false, true);
 
             if (CanAutologin && CurrentLoginStep != LoginSteps.Main || CUOEnviroment.SkipLoginScreen && _currentGump != null)
             {

@@ -5,6 +5,7 @@ using ClassicUO.Game;
 using ClassicUO.Game.Managers;
 using ClassicUO.IO;
 using ClassicUO.Network;
+using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Setup;
 using ClassicUO.Utility;
 using ClassicUO.Utility.Logging;
@@ -169,6 +170,9 @@ namespace ClassicUO
             }
             else
             {
+                // After setup, so a first launcher profile copies the finished settings.
+                ClientLauncher.DecideMode(args);
+
                 switch (Settings.GlobalSettings.ForceDriver)
                 {
                     default:
@@ -291,6 +295,11 @@ namespace ClassicUO
 
                         case "clientversion":
                             Settings.GlobalSettings.ClientVersion = value;
+
+                            break;
+
+                        case ClientLauncher.PROFILE_ARGUMENT:
+                            ClientLauncher.SetLaunchedProfile(value);
 
                             break;
 

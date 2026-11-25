@@ -38,6 +38,7 @@ internal static class UpdateInstaller
         "LegionScripts",
         "ExternalImages",
         "Logs",
+        ClassicUO.Game.Managers.Launcher.LauncherSave.FOLDER,
         ClassicUO.Configuration.Settings.SETTINGS_FILENAME
     ];
 
