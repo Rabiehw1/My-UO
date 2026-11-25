@@ -10,6 +10,8 @@ using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Search;
 using ClassicUO.Utility;
+using Microsoft.Xna.Framework;
+using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.WrapPanel;
 using System;
@@ -57,22 +59,31 @@ public static class MacrosTabContent
             return new MyraLabel(TazLang.Get("macrostab_noprofile"), MyraLabel.TextStyle.P);
 
         // ── State ────────────────────────────────────────────────────────────
-        Macro? selectedMacro = null;
-        string filterText = "";
+        Macro? selectedMacro = interaction.IsDesktop ? manager.GetAllMacros().FirstOrDefault() : null;
+        bool refreshingPicker = false;
+        MyraButton[] selectionActions = [];
 
         // ── Panel references ─────────────────────────────────────────────────
         var macroListPanel = new VerticalStackPanel { Spacing = 1 };
+        var macroPicker = interaction.IsDesktop ? new ListView() : null;
+        var filterBox = new MyraInputBox
+        {
+            HintText = TazLang.Get(interaction.IsDesktop ? "macrostab_search" : "macrostab_filter")
+        };
         var editorPanel    = new VerticalStackPanel { Spacing = 4 };
         var editorLayout = new MyraGrid { RowSpacing = 4 };
         editorLayout.AddRow();
         editorLayout.AddRow(new Proportion(ProportionType.Fill));
-        editorLayout.AddRow();
         var hotkeyRow      = new HorizontalStackPanel { Spacing = 4 };
         var actionsPanel   = new VerticalStackPanel { Spacing = 2 };
         var actionScroll = new ScrollViewer();
         if (interaction.IsDesktop)
+        {
             actionScroll.Content = actionsPanel;
+            actionScroll.ShowHorizontalScrollBar = false;
+        }
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false, Wrap = true };
+        var actionCount = new MyraLabel("", MyraLabel.TextStyle.P) { TextColor = DesktopAssistantTheme.SecondaryText };
 
         // ── Helpers ──────────────────────────────────────────────────────────
         void MarkDirty() => manager.Save();
@@ -91,8 +102,7 @@ public static class MacrosTabContent
         // ── BuildMacroList ────────────────────────────────────────────────────
         void BuildMacroList()
         {
-            macroListPanel.Widgets.Clear();
-
+            string filterText = filterBox.Text?.Trim() ?? "";
             List<Macro> allMacros = manager.GetAllMacros();
 
             List<Macro> display = string.IsNullOrWhiteSpace(filterText)
@@ -102,6 +112,31 @@ public static class MacrosTabContent
                     m.GetBinding().Describe().Contains(filterText, StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
+            if (macroPicker != null)
+            {
+                refreshingPicker = true;
+                Point scrollPosition = macroPicker.ScrollViewer.ScrollPosition;
+                macroPicker.Widgets.Clear();
+                foreach (Macro macro in display)
+                {
+                    var binding = macro.GetBinding();
+                    var item = DesktopAssistantForm.ListRow(macro.Name,
+                        binding.IsEmpty ? null : MyraGrid.TableText(binding.Describe(), alignRight: true));
+                    item.Tag = macro;
+                    macroPicker.Widgets.Add(item);
+                }
+
+                if (display.Count == 0)
+                    macroPicker.Widgets.Add(new MyraLabel(TazLang.Get(allMacros.Count == 0 ? "macrostab_nomacros" : "macrostab_no_matches"),
+                        MyraLabel.TextStyle.P));
+                int selectedIndex = display.FindIndex(macro => ReferenceEquals(macro, selectedMacro));
+                macroPicker.SelectedIndex = selectedIndex >= 0 ? selectedIndex : null;
+                macroPicker.ScrollViewer.ScrollPosition = scrollPosition;
+                refreshingPicker = false;
+                return;
+            }
+
+            macroListPanel.Widgets.Clear();
             if (display.Count == 0)
             {
                 macroListPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_nomacros"), MyraLabel.TextStyle.P));
@@ -109,11 +144,7 @@ public static class MacrosTabContent
             }
 
             var grid = new MyraGrid();
-            if (interaction.IsDesktop)
-                grid.SetupWithHeaders(GridColumnInfo.Fill(TazLang.Get("macrostab_col_name")),
-                    GridColumnInfo.Auto(TazLang.Get("macrostab_col_hotkey")));
-            else
-                grid.SetupWithHeaders(
+            grid.SetupWithHeaders(
                 GridColumnInfo.Fill(TazLang.Get("macrostab_col_name")),
                 GridColumnInfo.Auto(TazLang.Get("macrostab_col_hotkey")),
                 GridColumnInfo.Auto(TazLang.Get("macrostab_col_edit"))
@@ -124,30 +155,37 @@ public static class MacrosTabContent
             {
                 Macro captured = macro;
 
-                if (interaction.IsDesktop)
-                {
-                    var select = DesktopAssistantTheme.NavigationButton(macro.Name);
-                    select.Click += (_, _) => SelectMacro(captured);
-                    DesktopAssistantTheme.SelectNavigation(select, ReferenceEquals(macro, selectedMacro));
-                    grid.AddWidget(select, dataRow, 0);
-                }
-                else
-                    grid.AddWidget(MyraGrid.TableText(macro.Name), dataRow, 0);
+                grid.AddWidget(MyraGrid.TableText(macro.Name), dataRow, 0);
                 grid.AddWidget(MyraGrid.TableText(macro.GetBinding().Describe()), dataRow, 1);
-                if (!interaction.IsDesktop)
-                    grid.AddWidget(new MyraButton(TazLang.Get("macrostab_col_edit"), () => SelectMacro(captured)), dataRow, 2);
+                grid.AddWidget(new MyraButton(TazLang.Get("macrostab_col_edit"), () => SelectMacro(captured)), dataRow, 2);
                 dataRow++;
             }
 
             macroListPanel.Widgets.Add(grid);
         }
 
-        void SelectMacro(Macro macro)
+        void SelectMacro(Macro? macro)
         {
             selectedMacro = macro;
+            foreach (MyraButton action in selectionActions)
+                action.Enabled = macro != null;
+            status.Visible = false;
             actionScroll.ResetScroll();
-            BuildMacroList();
+            if (!interaction.IsDesktop)
+                BuildMacroList();
             BuildEditor();
+        }
+
+        MyraButton Button(string key, Action? click = null, bool primary = false, bool destructive = false)
+        {
+            string caption = TazLang.Get(key);
+            if (interaction.IsDesktop)
+                return DesktopAssistantForm.Button(caption, click, primary, destructive);
+
+            var button = new MyraButton(caption, click);
+            if (destructive)
+                MyraStyle.ApplyButtonDangerStyle(button);
+            return button;
         }
 
         // ── BuildEditor ───────────────────────────────────────────────────────
@@ -160,51 +198,50 @@ public static class MacrosTabContent
             {
                 editorPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_selectmacro"), MyraLabel.TextStyle.H3));
                 if (interaction.IsDesktop)
+                {
+                    editorPanel.Widgets.Add(status);
                     editorLayout.AddWidget(editorPanel, 0, 0);
+                }
                 return;
             }
 
             Macro macro = selectedMacro;
 
-            // Name row
-            var nameRow = new HorizontalStackPanel { Spacing = 2 };
-            nameRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_macroname"), MyraLabel.TextStyle.P));
-            var nameBox = new MyraInputBox { Text = macro.Name, Width = 200 };
-            nameBox.TextChangedByUser += (_, _) =>
+            if (interaction.IsDesktop)
             {
-                macro.Name = nameBox.Text ?? "";
-                MarkDirty();
-                if (interaction.IsDesktop)
-                    BuildMacroList();
-            };
-            nameRow.Widgets.Add(nameBox);
-            editorPanel.Widgets.Add(nameRow);
-            editorPanel.Widgets.Add(new MyraSpacer(10, 2));
-
-            // Hotkey row (rebuilt dynamically)
+                var heading = MyraGrid.TableText(macro.Name);
+                heading.Font = DesktopAssistantTheme.Font(2, bold: true);
+                editorPanel.Widgets.Add(heading);
+                editorPanel.Widgets.Add(status);
+            }
+            else
+            {
+                var nameRow = new HorizontalStackPanel { Spacing = 2 };
+                nameRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_macroname"), MyraLabel.TextStyle.P));
+                var nameBox = new MyraInputBox { Text = macro.Name, Width = 200 };
+                nameBox.TextChangedByUser += (_, _) =>
+                {
+                    macro.Name = nameBox.Text ?? "";
+                    MarkDirty();
+                };
+                nameRow.Widgets.Add(nameBox);
+                editorPanel.Widgets.Add(nameRow);
+                editorPanel.Widgets.Add(new MyraSpacer(10, 2));
+            }
             BuildHotkeyRow();
-            editorPanel.Widgets.Add(hotkeyRow);
-            editorPanel.Widgets.Add(new MyraSpacer(10, 2));
 
-            // Journal triggers row
-            var journalRow = new HorizontalStackPanel { Spacing = 2 };
-            journalRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_journaltriggers"), MyraLabel.TextStyle.P)
+            var journalBox = new MyraInputBox
             {
+                Text = macro.JournalTriggers ?? "", Width = interaction.IsDesktop ? null : 260,
+                HintText = interaction.IsDesktop ? TazLang.Get("macrostab_journal_hint") : "",
                 Tooltip = TazLang.Get("macrostab_journaltriggers_tooltip")
-            });
-            var journalBox = new MyraInputBox { Text = macro.JournalTriggers ?? "", Width = 260, Tooltip = TazLang.Get("macrostab_journaltriggers_tooltip") };
+            };
             journalBox.TextChangedByUser += (_, _) =>
             {
                 macro.JournalTriggers = journalBox.Text ?? "";
                 MarkDirty();
             };
-            journalRow.Widgets.Add(journalBox);
-            editorPanel.Widgets.Add(journalRow);
-            editorPanel.Widgets.Add(new MyraSpacer(10, 2));
-
-            // Create Macro Button / Button Editor
-            var macroButtonRow = new HorizontalStackPanel { Spacing = 2 };
-            macroButtonRow.Widgets.Add(new MyraButton(TazLang.Get("macrostab_createbutton"), () => interaction.RunInGame(() =>
+            var createButton = Button("macrostab_createbutton", () => interaction.RunInGame(() =>
             {
                 foreach (IGui? gump in UIManager.Gumps)
                     if (gump is MacroButtonGump mbg && mbg.TheMacro == macro)
@@ -216,93 +253,116 @@ public static class MacrosTabContent
                 macroButtonGump.CenterXInViewPort();
                 macroButtonGump.CenterYInViewPort();
                 UIManager.Add(macroButtonGump);
-            })) { Tooltip = TazLang.Get("macrostab_createbutton_tooltip") });
-
-            macroButtonRow.Widgets.Add(new MyraButton(TazLang.Get("macrostab_buttoneditor"), () =>
-            {
-                interaction.RunInGame(() => MacroButtonEditorWindow.Show(macro));
-            }) { Tooltip = TazLang.Get("macrostab_buttoneditor_tooltip") });
-
-            editorPanel.Widgets.Add(macroButtonRow);
-
-            editorPanel.Widgets.Add(new MyraSpacer(10, 2));
-
-            editorPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_actions"), MyraLabel.TextStyle.P));
+            }));
+            createButton.Tooltip = TazLang.Get("macrostab_createbutton_tooltip");
+            var buttonEditor = Button("macrostab_buttoneditor", () => interaction.RunInGame(() => MacroButtonEditorWindow.Show(macro)));
+            buttonEditor.Tooltip = TazLang.Get("macrostab_buttoneditor_tooltip");
 
             BuildActionsPanel();
-            if (!interaction.IsDesktop)
-                editorPanel.Widgets.Add(new ScrollViewer { MaxHeight = 250, Content = actionsPanel });
-
-            var bottomRow = new HorizontalStackPanel { Spacing = 2 };
-            var addAction = new MyraButton(TazLang.Get("macrostab_addaction"), () =>
-            {
-                MacroObject newAction = Macro.Create(MacroType.Say);
-                var scanAction = (MacroObject)macro.Items;
-                MacroObject? lastAction = null;
-                while (scanAction != null && scanAction.Code != MacroType.None)
-                {
-                    lastAction = scanAction;
-                    scanAction = (MacroObject)scanAction.Next;
-                }
-                if (lastAction != null)
-                    macro.Insert(lastAction, newAction);
-                else
-                {
-                    macro.Items = newAction;
-                    newAction.Next = new MacroObject(MacroType.None, MacroSubType.MSC_NONE);
-                }
-                MarkDirty();
-                BuildActionsPanel();
-            });
-            if (interaction.IsDesktop)
-                DesktopAssistantTheme.ApplyActionButtonStyle(addAction, primary: true);
-            bottomRow.Widgets.Add(addAction);
-
-            bottomRow.Widgets.Add(new MyraButton(TazLang.Get("macrostab_addloop"), () =>
-            {
-                MacroLoopContainer loopContainer = Macro.CreateLoopContainer(loopCount: 1, delayBetweenIterations: 500);
-                var scanAction = (MacroObject)macro.Items;
-                MacroObject? lastAction = null;
-                while (scanAction != null && scanAction.Code != MacroType.None)
-                {
-                    lastAction = scanAction;
-                    scanAction = (MacroObject)scanAction.Next;
-                }
-                if (lastAction != null)
-                    macro.Insert(lastAction, loopContainer);
-                else
-                {
-                    macro.Items = loopContainer;
-                    loopContainer.Next = new MacroObject(MacroType.None, MacroSubType.MSC_NONE);
-                }
-                MarkDirty();
-                BuildActionsPanel();
-            }));
-
-            var delete = MyraStyle.ApplyButtonDangerStyle(new MyraButton(TazLang.Get("macrostab_deletemacro"))
-                { Tooltip = TazLang.Get("macrostab_deletemacro_tooltip") });
-            delete.Click += (_, _) =>
-            {
-                interaction.Confirm(delete, TazLang.Get("macrostab_delete_title", [macro.Name]),
-                    TazLang.Get("macrostab_delete_confirm", [macro.Name]), () =>
-                    {
-                        manager.Remove(macro);
-                        selectedMacro = null;
-                        MarkDirty();
-                        BuildMacroList();
-                        BuildEditor();
-                    }, confirmText: TazLang.Get("delete"), destructive: true);
-            };
-            bottomRow.Widgets.Add(delete);
+            var addAction = Button("macrostab_addaction", () => AppendAction(macro, Macro.Create(MacroType.Say)), primary: true);
+            var addLoop = Button("macrostab_addloop", () => AppendAction(macro,
+                Macro.CreateLoopContainer(loopCount: 1, delayBetweenIterations: 500)));
 
             if (interaction.IsDesktop)
             {
+                var triggers = DesktopAssistantForm.Fields(
+                    new(TazLang.Get("macrostab_hotkey_label"), hotkeyRow),
+                    new(TazLang.Get("macrostab_journal_label"), journalBox));
+                journalBox.HorizontalAlignment = HorizontalAlignment.Stretch;
+                editorPanel.Widgets.Add(new DesktopAssistantForm.SectionPair(
+                    DesktopAssistantTheme.Group(TazLang.Get("macrostab_triggers"), triggers),
+                    DesktopAssistantTheme.Group(TazLang.Get("macrostab_ingame_button"), DesktopAssistantForm.Actions(createButton, buttonEditor)),
+                    firstWeight: 7, secondWeight: 4));
+
+                var actionHeader = new MyraGrid { Background = DesktopAssistantTheme.Sidebar, Padding = new Thickness(6, 3) };
+                actionHeader.AddColumn(new Proportion(ProportionType.Fill));
+                actionHeader.AddColumn();
+                actionHeader.AddWidget(new MyraLabel(TazLang.Get("macrostab_actions_heading"), MyraLabel.TextStyle.H3), 0, 0);
+                actionHeader.AddWidget(actionCount, 0, 1);
+                var actionTools = DesktopAssistantForm.Actions(addAction, addLoop);
+                actionTools.Background = DesktopAssistantTheme.Sidebar;
+                actionTools.Border = DesktopAssistantTheme.Divider;
+                actionTools.BorderThickness = new Thickness(0, 1, 0, 0);
+                actionTools.Padding = new Thickness(6);
+                var editorActions = new MyraGrid
+                {
+                    RowSpacing = 0, Border = DesktopAssistantTheme.Divider, BorderThickness = new Thickness(1)
+                };
+                editorActions.AddRow();
+                editorActions.AddRow(new Proportion(ProportionType.Fill));
+                editorActions.AddRow();
+                editorActions.AddWidget(actionHeader, 0, 0);
+                editorActions.AddWidget(actionScroll, 1, 0);
+                editorActions.AddWidget(actionTools, 2, 0);
+
                 editorLayout.AddWidget(editorPanel, 0, 0);
-                editorLayout.AddWidget(actionScroll, 1, 0);
-                editorLayout.AddWidget(bottomRow, 2, 0);
+                editorLayout.AddWidget(editorActions, 1, 0);
             }
             else
+            {
+                editorPanel.Widgets.Add(hotkeyRow);
+                editorPanel.Widgets.Add(new MyraSpacer(10, 2));
+                var journalRow = new HorizontalStackPanel { Spacing = 2 };
+                journalRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_journaltriggers"), MyraLabel.TextStyle.P)
+                {
+                    Tooltip = journalBox.Tooltip
+                });
+                journalRow.Widgets.Add(journalBox);
+                editorPanel.Widgets.Add(journalRow);
+                editorPanel.Widgets.Add(new MyraSpacer(10, 2));
+                var macroButtons = new HorizontalStackPanel { Spacing = 2 };
+                macroButtons.Widgets.Add(createButton);
+                macroButtons.Widgets.Add(buttonEditor);
+                editorPanel.Widgets.Add(macroButtons);
+                editorPanel.Widgets.Add(new MyraSpacer(10, 2));
+                editorPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_actions"), MyraLabel.TextStyle.P));
+                editorPanel.Widgets.Add(new ScrollViewer { MaxHeight = 250, Content = actionsPanel });
+
+                var delete = Button("macrostab_deletemacro", destructive: true);
+                delete.Tooltip = TazLang.Get("macrostab_deletemacro_tooltip");
+                delete.OnClick = () => ConfirmDelete(delete, macro);
+                var bottomRow = new HorizontalStackPanel { Spacing = 2 };
+                bottomRow.Widgets.Add(addAction);
+                bottomRow.Widgets.Add(addLoop);
+                bottomRow.Widgets.Add(delete);
                 editorPanel.Widgets.Add(bottomRow);
+            }
+        }
+
+        void AppendAction(Macro macro, MacroObject action)
+        {
+            MacroObject? last = null;
+            for (var current = (MacroObject?)macro.Items; current != null && current.Code != MacroType.None; current = (MacroObject?)current.Next)
+                last = current;
+
+            if (last != null)
+                macro.Insert(last, action);
+            else
+            {
+                macro.Items = action;
+                action.Next = new MacroObject(MacroType.None, MacroSubType.MSC_NONE);
+            }
+            MarkDirty();
+            BuildActionsPanel();
+            if (interaction.IsDesktop)
+            {
+                actionScroll.UpdateArrange();
+                actionScroll.ScrollPosition = new Point(0, actionScroll.ScrollMaximum.Y);
+            }
+        }
+
+        void ConfirmDelete(MyraButton anchor, Macro macro)
+        {
+            interaction.Confirm(anchor, TazLang.Get("macrostab_delete_title", [macro.Name]),
+                TazLang.Get("macrostab_delete_confirm", [macro.Name]), () =>
+                {
+                    var next = macro.Next as Macro ?? macro.Previous as Macro;
+                    manager.Remove(macro);
+                    MarkDirty();
+                    SelectMacro(interaction.IsDesktop ? next : null);
+                    if (interaction.IsDesktop)
+                        BuildMacroList();
+                }, confirmText: TazLang.Get("delete"), destructive: true);
         }
 
         // ── BuildHotkeyRow ────────────────────────────────────────────────────
@@ -315,19 +375,11 @@ public static class MacrosTabContent
 
             if (interaction.IsDesktop)
             {
-                var set = new MyraButton(TazLang.Get("mog_kw_set", "Set"));
-                set.Click += (_, _) => HotkeysTabContent.CaptureMacroBinding(interaction, set, manager, macro, RefreshBinding);
-                hotkeyRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_hotkey"), MyraLabel.TextStyle.P));
-                hotkeyRow.Widgets.Add(new MyraLabel(macro.GetBinding().Describe(), MyraLabel.TextStyle.P));
+                var set = Button("hotkeys_set_shortcut");
+                set.OnClick = () => HotkeysTabContent.CaptureMacroBinding(interaction, set, manager, macro, RefreshBinding);
+                var binding = macro.GetBinding();
+                hotkeyRow.Widgets.Add(MyraGrid.TableText(binding.IsEmpty ? TazLang.Get("hotkeys_unassigned") : binding.Describe()));
                 hotkeyRow.Widgets.Add(set);
-                var clear = new MyraButton(TazLang.Get("mog_kw_clear", "Clear")) { Enabled = !macro.GetBinding().IsEmpty };
-                clear.Click += (_, _) =>
-                {
-                    macro.ApplyBinding(new HotkeyBinding());
-                    MarkDirty();
-                    RefreshBinding();
-                };
-                hotkeyRow.Widgets.Add(clear);
                 return;
             }
 
@@ -428,6 +480,9 @@ public static class MacrosTabContent
                 action = (MacroObject)action.Next;
             }
 
+            if (interaction.IsDesktop)
+                actionCount.Text = actionIndex == 1 ? TazLang.Get("macrostab_one_step")
+                    : TazLang.Get("macrostab_step_count", [actionIndex.ToString()]);
             if (actionIndex == 0)
                 actionsPanel.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_noactions"), MyraLabel.TextStyle.H3));
             if (hasCastSpell)
@@ -446,9 +501,11 @@ public static class MacrosTabContent
             Container row = interaction.IsDesktop
                 ? new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 3, UniformSizing = false }
                 : new HorizontalStackPanel { Spacing = 2 };
-            row.Widgets.Add(new MyraLabel(indexLabel, MyraLabel.TextStyle.P));
+            if (!interaction.IsDesktop)
+                row.Widgets.Add(new MyraLabel(indexLabel, MyraLabel.TextStyle.P));
 
             MacroObject capturedAction = action;
+            MyraInputBox? textEditor = null;
 
             var typeCombo = new ContainsLevenshteinComboBox
             {
@@ -536,6 +593,7 @@ public static class MacrosTabContent
                     ? ((MacroObjectString)capturedAction).Text
                     : "";
                 var textBox = new MyraInputBox { Text = currentText, Width = 180 };
+                textEditor = textBox;
                 textBox.TextChangedByUser += (_, _) =>
                 {
                     string newText = textBox.Text ?? "";
@@ -555,14 +613,17 @@ public static class MacrosTabContent
             }
 
             // Remove button
-            row.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(new MyraButton(TazLang.Get("macrostab_removeaction"), () =>
+            var remove = Button("macrostab_removeaction", () =>
             {
                 onRemove();
                 MarkDirty();
                 BuildActionsPanel();
-            })
-            { Tooltip = TazLang.Get("macrostab_removeaction_tooltip") }));
+            }, destructive: true);
+            remove.Tooltip = TazLang.Get("macrostab_removeaction_tooltip");
+            if (row is WrapPanel fields)
+                return new DesktopActionRow(indexLabel, fields, typeCombo, textEditor, remove);
 
+            row.Widgets.Add(remove);
             return row;
         }
 
@@ -642,8 +703,14 @@ public static class MacrosTabContent
         void BuildLoopContainerWidget(MacroLoopContainer loopContainer, Macro macro, int loopIndex)
         {
             // Header row: Loop info and Edit/Remove buttons
-            var loopHeaderRow = new HorizontalStackPanel { Spacing = 4 };
-            loopHeaderRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_loop", [(loopIndex + 1).ToString()]), MyraLabel.TextStyle.P));
+            Container loopHeaderRow = interaction.IsDesktop
+                ? DesktopAssistantForm.Actions()
+                : new HorizontalStackPanel { Spacing = 4 };
+            string loopTitle = TazLang.Get("macrostab_loop", [(loopIndex + 1).ToString()]);
+            if (!interaction.IsDesktop)
+                loopHeaderRow.Widgets.Add(new MyraLabel(loopTitle, MyraLabel.TextStyle.P));
+            else
+                loopHeaderRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_loop_repeat"), MyraLabel.TextStyle.P));
 
             var loopCountBox = new MyraInputBox { Text = loopContainer.LoopCount.ToString(), Width = 50 };
             loopCountBox.TextChangedByUser += (_, _) =>
@@ -656,7 +723,8 @@ public static class MacrosTabContent
             };
             loopHeaderRow.Widgets.Add(loopCountBox);
 
-            loopHeaderRow.Widgets.Add(new MyraLabel(TazLang.Get("macrostab_loop_delay"), MyraLabel.TextStyle.P));
+            loopHeaderRow.Widgets.Add(new MyraLabel(TazLang.Get(interaction.IsDesktop ? "macrostab_loop_delay_label" : "macrostab_loop_delay"),
+                MyraLabel.TextStyle.P));
 
             var delayBox = new MyraInputBox { Text = loopContainer.DelayBetweenIterations.ToString(), Width = 70 };
             delayBox.TextChangedByUser += (_, _) =>
@@ -669,14 +737,12 @@ public static class MacrosTabContent
             };
             loopHeaderRow.Widgets.Add(delayBox);
 
-            loopHeaderRow.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(new MyraButton(TazLang.Get("macrostab_removeloop"), () =>
+            loopHeaderRow.Widgets.Add(Button("macrostab_removeloop", () =>
             {
                 macro.Remove(loopContainer);
                 MarkDirty();
                 BuildActionsPanel();
-            })));
-
-            actionsPanel.Widgets.Add(loopHeaderRow);
+            }, destructive: true));
 
             // Inner actions list (indented)
             var loopActionsPanel = new VerticalStackPanel { Spacing = 1 };
@@ -719,7 +785,7 @@ public static class MacrosTabContent
             }
 
             // Add to loop button
-            loopActionsPanel.Widgets.Add(new MyraButton(TazLang.Get("macrostab_addactiontoloop"), () =>
+            loopActionsPanel.Widgets.Add(Button("macrostab_addactiontoloop", () =>
             {
                 MacroObject newAction = Macro.Create(MacroType.Say);
                 loopContainer.Items.AddLast(newAction);
@@ -727,104 +793,186 @@ public static class MacrosTabContent
                 BuildActionsPanel();
             }));
 
-            actionsPanel.Widgets.Add(loopActionsPanel);
+            if (interaction.IsDesktop)
+                actionsPanel.Widgets.Add(DesktopAssistantTheme.Group(loopTitle, loopHeaderRow, loopActionsPanel));
+            else
+            {
+                actionsPanel.Widgets.Add(loopHeaderRow);
+                actionsPanel.Widgets.Add(loopActionsPanel);
+            }
         }
 
-        // ── Toolbar ───────────────────────────────────────────────────────────
-        Container toolbar = interaction.IsDesktop
-            ? new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 4 }
-            : new HorizontalStackPanel { Spacing = 2 };
-
-        var addMacroButton = new MyraButton(TazLang.Get("macrostab_add"), () =>
+        string AvailableName(string baseName)
         {
-            string baseName = TazLang.Get("macrostab_newmacro");
-            string macroName = baseName;
-            int counter = 1;
-            while (manager.GetAllMacros().Any(m => m.Name == macroName))
-                macroName = $"{baseName} {counter++}";
+            var usedNames = new HashSet<string>(manager.GetAllMacros().Select(macro => macro.Name), StringComparer.OrdinalIgnoreCase);
+            string name = baseName;
+            for (int suffix = 1; usedNames.Contains(name); suffix++)
+                name = $"{baseName} {suffix}";
+            return name;
+        }
 
-            var newMacro = new Macro(macroName);
-            newMacro.Items = new MacroObject(MacroType.None, MacroSubType.MSC_NONE);
-            manager.PushToBack(newMacro);
-            selectedMacro = newMacro;
+        Macro NewMacro(string name) => new(name) { Items = new MacroObject(MacroType.None, MacroSubType.MSC_NONE) };
+
+        void SaveAndSelect(Macro macro)
+        {
+            MarkDirty();
+            if (macroPicker != null)
+                filterBox.Text = string.Empty;
+            SelectMacro(macro);
+            if (macroPicker != null)
+            {
+                BuildMacroList();
+                DesktopAssistantForm.RevealSelection(macroPicker);
+            }
+        }
+
+        void InsertMacro(Macro macro)
+        {
+            manager.PushToBack(macro);
+            SaveAndSelect(macro);
+        }
+
+        void MoveSelected(bool up)
+        {
+            if (selectedMacro is not { } macro || !(up ? manager.MoveMacroUp(macro) : manager.MoveMacroDown(macro)))
+                return;
             MarkDirty();
             BuildMacroList();
-            BuildEditor();
-        });
-        if (interaction.IsDesktop)
-            DesktopAssistantTheme.ApplyActionButtonStyle(addMacroButton, primary: true);
-        if (interaction.IsDesktop)
-            DesktopAssistantTheme.ApplyActionButtonStyle(addMacroButton, primary: true);
-        toolbar.Widgets.Add(addMacroButton);
+            if (macroPicker != null)
+                DesktopAssistantForm.RevealSelection(macroPicker);
+        }
 
-        toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_moveup"), () =>
-        {
-            if (selectedMacro == null) return;
-            manager.MoveMacroUp(selectedMacro);
-            MarkDirty();
-            BuildMacroList();
-        }));
-
-        toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_movedown"), () =>
-        {
-            if (selectedMacro == null) return;
-            manager.MoveMacroDown(selectedMacro);
-            MarkDirty();
-            BuildMacroList();
-        }));
-
-        toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_import"), () =>
+        void Import()
         {
             string? xml = Clipboard.GetClipboardText();
             if (xml.NotNullNotEmpty() && manager.ImportFromXml(xml))
             {
                 status.Visible = false;
+                if (interaction.IsDesktop && selectedMacro == null)
+                    SelectMacro(manager.GetAllMacros().FirstOrDefault());
                 BuildMacroList();
                 return;
             }
             ReportStatus(TazLang.Get("macrostab_import_error"), Constants.HUE_ERROR);
-        }) { Tooltip = TazLang.Get("macrostab_import_tooltip") });
+        }
 
-        toolbar.Widgets.Add(new MyraButton(TazLang.Get("macrostab_export"), () =>
+        void Export()
         {
             manager.GetXmlExport()?.CopyToClipboard();
             int count = manager.GetAllMacros().Count;
             ReportStatus(TazLang.Get("macrostab_export_success", [count.ToString()]), Constants.HUE_SUCCESS);
-        }) { Tooltip = TazLang.Get("macrostab_export_tooltip") });
+        }
 
-        var filterBox = new MyraInputBox { HintText = TazLang.Get("macrostab_filter"), Width = 150 };
-        filterBox.TextChangedByUser += (_, _) =>
+        void PromptForName(MyraButton anchor, string title, string initial, string confirm, Action<string> apply, Macro? editing = null)
         {
-            filterText = filterBox.Text ?? "";
-            BuildMacroList();
-        };
-        toolbar.Widgets.Add(filterBox);
+            var name = new MyraInputBox { Text = initial, HintText = TazLang.Get("macrostab_name_hint"), MinWidth = 220 };
+            var error = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
+            var body = new VerticalStackPanel { Spacing = 4 };
+            body.Widgets.Add(DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("macrostab_name_hint"), name)));
+            body.Widgets.Add(error);
+            name.TextChangedByUser += (_, _) => error.Visible = false;
+            interaction.ShowDialog(anchor, title, body, confirmed =>
+            {
+                if (confirmed)
+                    apply(name.Text.Trim());
+            }, Validate, confirmText: confirm);
 
-        // ── Main layout ───────────────────────────────────────────────────────
+            bool Validate()
+            {
+                string value = name.Text?.Trim() ?? "";
+                string? message = value.Length == 0 ? TazLang.Get("macrostab_name_required") : null;
+                if (message == null && manager.GetAllMacros().Any(macro => !ReferenceEquals(macro, editing)
+                    && string.Equals(macro.Name, value, StringComparison.OrdinalIgnoreCase)))
+                    message = TazLang.Get("macrostab_name_in_use");
+                error.Text = message ?? "";
+                error.Visible = message != null;
+                return message == null;
+            }
+        }
+
+        filterBox.TextChangedByUser += (_, _) => BuildMacroList();
         BuildMacroList();
         BuildEditor();
 
-        if (interaction.IsDesktop)
+        if (macroPicker != null)
         {
-            var layout = new MyraGrid { RowSpacing = 4, ColumnSpacing = 8 };
-            layout.AddColumn(new Proportion(ProportionType.Part, 1));
-            layout.AddColumn(new Proportion(ProportionType.Part, 2));
-            layout.AddRow();
-            layout.AddRow();
+            var add = Button("agent_preset_new", primary: true);
+            add.OnClick = () => PromptForName(add, TazLang.Get("macrostab_newmacro"), AvailableName(TazLang.Get("macrostab_newmacro")),
+                TazLang.Get("macrostab_create"), name => InsertMacro(NewMacro(name)));
+            var rename = Button("assistant_dialog_rename");
+            rename.OnClick = () =>
+            {
+                if (selectedMacro is { } macro)
+                    PromptForName(rename, rename.Text, macro.Name, rename.Text, name =>
+                    {
+                        macro.Name = name;
+                        SaveAndSelect(macro);
+                    }, macro);
+            };
+            var copy = Button("agent_preset_copy");
+            copy.OnClick = () =>
+            {
+                if (selectedMacro is { } macro)
+                    PromptForName(copy, TazLang.Get("macrostab_copy"), AvailableName(TazLang.Get("macrostab_copy_name", [macro.Name])),
+                        copy.Text, name => InsertMacro(macro.Duplicate(name)));
+            };
+            var delete = Button("delete", destructive: true);
+            delete.Tooltip = TazLang.Get("macrostab_deletemacro_tooltip");
+            delete.OnClick = () =>
+            {
+                if (selectedMacro is { } macro)
+                    ConfirmDelete(delete, macro);
+            };
+            selectionActions = [rename, copy, delete];
+            foreach (MyraButton action in selectionActions)
+                action.Enabled = selectedMacro != null;
+            macroPicker.SelectedIndexChanged += (_, _) =>
+            {
+                if (!refreshingPicker && macroPicker.SelectedItem?.Tag is Macro macro)
+                    SelectMacro(macro);
+            };
+            var listActions = Button("macrostab_list_actions");
+            listActions.HorizontalAlignment = HorizontalAlignment.Stretch;
+            listActions.OnClick = () =>
+            {
+                var menu = new VerticalMenu();
+                AddAction("macrostab_moveup", () => MoveSelected(up: true), selectedMacro?.Previous != null);
+                AddAction("macrostab_movedown", () => MoveSelected(up: false), selectedMacro?.Next != null);
+                AddAction("macrostab_import", Import);
+                AddAction("macrostab_export", Export);
+                listActions.Desktop?.ShowContextMenu(menu, listActions.ToGlobal(new Point(0, listActions.Bounds.Height)));
+
+                void AddAction(string key, Action action, bool enabled = true)
+                {
+                    var item = new MenuItem { Text = TazLang.Get(key), Enabled = enabled };
+                    item.Selected += (_, _) => action();
+                    menu.Items.Add(item);
+                }
+            };
+
+            const int sidebarWidth = DesktopAssistantForm.ListSidebarWidth;
+            var layout = new DesktopAssistantForm.FixedSidebarLayout(editorLayout, sidebarWidth) { ColumnSpacing = 10 };
+            layout.AddColumn(new Proportion(ProportionType.Pixels, sidebarWidth));
+            layout.AddColumn(new Proportion(ProportionType.Fill));
             layout.AddRow(new Proportion(ProportionType.Fill));
-            toolbar.Widgets.Remove(filterBox);
-            layout.AddWidget(filterBox, 0, 0, colspan: 2);
-            layout.AddWidget(status, 1, 0, colspan: 2);
-            var library = new MyraGrid { RowSpacing = 4 };
-            library.AddRow(new Proportion(ProportionType.Fill));
-            library.AddRow();
-            library.AddWidget(new ScrollViewer { Content = macroListPanel }, 0, 0);
-            library.AddWidget(toolbar, 1, 0);
-            layout.AddWidget(library, 2, 0);
-            layout.AddWidget(editorLayout, 2, 1);
+            layout.AddWidget(DesktopAssistantForm.ListSidebar(TazLang.Get("macrostab_saved_macros"), macroPicker, [add, rename, copy, delete],
+                filterBox, listActions), 0, 0);
+            layout.AddWidget(editorLayout, 0, 1);
             return layout;
         }
 
+        var toolbar = new HorizontalStackPanel { Spacing = 2 };
+        toolbar.Widgets.Add(Button("macrostab_add", () => InsertMacro(NewMacro(AvailableName(TazLang.Get("macrostab_newmacro"))))));
+        toolbar.Widgets.Add(Button("macrostab_moveup", () => MoveSelected(up: true)));
+        toolbar.Widgets.Add(Button("macrostab_movedown", () => MoveSelected(up: false)));
+        var import = Button("macrostab_import", Import);
+        import.Tooltip = TazLang.Get("macrostab_import_tooltip");
+        toolbar.Widgets.Add(import);
+        var export = Button("macrostab_export", Export);
+        export.Tooltip = TazLang.Get("macrostab_export_tooltip");
+        toolbar.Widgets.Add(export);
+        filterBox.Width = 150;
+        toolbar.Widgets.Add(filterBox);
         var mainArea = new HorizontalStackPanel { Spacing = 4 };
         mainArea.Widgets.Add(new ScrollViewer { MaxHeight = 450, Content = macroListPanel });
         mainArea.Widgets.Add(editorPanel);
@@ -833,5 +981,44 @@ public static class MacrosTabContent
         root.Widgets.Add(status);
         root.Widgets.Add(mainArea);
         return root;
+    }
+
+    private sealed class DesktopActionRow : MyraGrid
+    {
+        private readonly MyraLabel _number;
+        private readonly MyraButton _remove;
+        private readonly WrapPanel _fields;
+        private readonly Widget _typePicker;
+        private readonly MyraInputBox? _textEditor;
+
+        internal DesktopActionRow(string index, WrapPanel fields, Widget typePicker, MyraInputBox? textEditor, MyraButton remove)
+        {
+            _number = new MyraLabel(index, MyraLabel.TextStyle.P) { MinWidth = 24 };
+            _fields = fields;
+            _typePicker = typePicker;
+            _textEditor = textEditor;
+            _remove = remove;
+            ColumnSpacing = 5;
+            Padding = new Thickness(5, 3);
+            Border = DesktopAssistantTheme.Divider;
+            BorderThickness = new Thickness(0, 0, 0, 1);
+            AddColumn();
+            AddColumn(new Proportion(ProportionType.Fill));
+            AddColumn();
+            AddWidget(_number, 0, 0);
+            AddWidget(_fields, 0, 1);
+            AddWidget(_remove, 0, 2);
+        }
+
+        protected override Point InternalMeasure(Point availableSize)
+        {
+            int fieldWidth = Math.Max(1, availableSize.X - _number.Measure(availableSize).X
+                - _remove.Measure(availableSize).X - 2 * ColumnSpacing);
+            _fields.MaxWidth = fieldWidth;
+            _typePicker.MaxWidth = Math.Max(1, fieldWidth / 2);
+            if (_textEditor != null)
+                _textEditor.Width = Math.Clamp(fieldWidth - _typePicker.Measure(availableSize).X - _fields.HorizontalSpacing, 1, 180);
+            return base.InternalMeasure(availableSize);
+        }
     }
 }

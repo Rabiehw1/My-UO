@@ -2933,6 +2933,22 @@ namespace ClassicUO.Game.Managers
             ControllerButtons = binding.ControllerButtons;
         }
 
+        internal Macro Duplicate(string name)
+        {
+            // Use the saved representation to copy action parameters, loop contents and button appearance.
+            using var text = new StringWriter();
+            using (var writer = new XmlTextWriter(text))
+                Save(writer);
+
+            var document = new XmlDocument();
+            document.LoadXml(text.ToString());
+            var copy = new Macro(name);
+            copy.Load(document.DocumentElement);
+            copy.ApplyBinding(new HotkeyBinding());
+            copy.JournalTriggers = string.Empty;
+            return copy;
+        }
+
         /// <summary>
         /// Text the button shows at rest. Null falls back to <see cref="Name"/>, so a button keeps
         /// following the macro's name unless deliberately given its own; empty hides the label.

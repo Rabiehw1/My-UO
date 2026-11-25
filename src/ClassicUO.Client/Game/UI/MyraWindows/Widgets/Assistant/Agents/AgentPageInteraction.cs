@@ -26,6 +26,7 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
     private Action<SDL.SDL_KeyboardEvent>? _captureKey;
     private Window? _dialog;
     private HotkeyCapture? _hotkeyCapture;
+    private Func<bool>? _desktopCaptureReady;
 
     public bool IsDesktop => showTargetStatus != null;
     public bool IsCapturingDesktopHotkey => _hotkeyCapture != null;
@@ -183,7 +184,7 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
         };
     }
 
-    public void ShowDesktopDialog(Widget anchor, Window dialog, Action<HotkeyBinding>? capture = null)
+    public void ShowDesktopDialog(Widget anchor, Window dialog, Action<HotkeyBinding>? capture = null, Func<bool>? captureReady = null)
     {
         if (anchor.Desktop is not Desktop desktop)
             return;
@@ -197,12 +198,14 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
             desktop.KeyDown -= CloseOnEscape;
             _hotkeyCapture?.Stop();
             _hotkeyCapture = null;
+            _desktopCaptureReady = null;
             _dialog = null;
         };
         dialog.ShowModal(desktop);
         _dialog = dialog;
         if (capture != null)
         {
+            _desktopCaptureReady = captureReady;
             _hotkeyCapture = new HotkeyCapture { AutoStop = false };
             _hotkeyCapture.StartForDesktop(capture);
         }
@@ -245,7 +248,7 @@ internal sealed class AgentPageInteraction(Action<string, bool, bool>? showTarge
 
     public bool HandleDesktopHotkeyInput(SDL.SDL_Event e)
     {
-        if (_hotkeyCapture is not { } capture)
+        if (_hotkeyCapture is not { } capture || _desktopCaptureReady?.Invoke() == false)
             return false;
 
         switch ((SDL.SDL_EventType)e.type)

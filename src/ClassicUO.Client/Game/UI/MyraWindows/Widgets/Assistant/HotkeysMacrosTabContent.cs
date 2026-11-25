@@ -12,6 +12,11 @@ internal static class HotkeysMacrosTabContent
     internal static Widget Build(AgentPageInteraction interaction)
     {
         var tabs = new MyraTabControl();
+        if (interaction.IsDesktop)
+        {
+            tabs.HorizontalAlignment = HorizontalAlignment.Stretch;
+            tabs.VerticalAlignment = VerticalAlignment.Stretch;
+        }
         tabs.AddTab(HotkeysTabContent.Title, () => HotkeysTabContent.Build(interaction), rebuildOnSelect: true);
         tabs.AddTab(MacrosTabContent.Title, () => MacrosTabContent.Build(interaction), rebuildOnSelect: true);
         tabs.SelectFirst();

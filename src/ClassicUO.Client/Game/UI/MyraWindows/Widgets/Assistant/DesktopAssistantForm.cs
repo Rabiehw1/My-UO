@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.Linq;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using Myra.Graphics2D;
 using Microsoft.Xna.Framework;
 using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.WrapPanel;
@@ -9,6 +11,8 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 internal static class DesktopAssistantForm
 {
+    internal const int ListSidebarWidth = 238;
+
     internal readonly record struct Field(string Label, Widget Control, Widget? Actions = null);
 
     internal static MyraGrid Fields(params Field[] fields)
@@ -52,6 +56,101 @@ internal static class DesktopAssistantForm
         foreach (Widget button in buttons)
             row.Widgets.Add(button);
         return row;
+    }
+
+    internal static MyraGrid ListSidebar(string title, ListView list, MyraButton[] actions,
+        Widget? filter = null, Widget? footer = null)
+    {
+        var buttons = new MyraGrid { ColumnSpacing = 5, RowSpacing = 4 };
+        buttons.AddColumn(new Proportion(ProportionType.Part, 1), count: 2);
+        for (int index = 0; index < actions.Length; index++)
+        {
+            actions[index].HorizontalAlignment = HorizontalAlignment.Stretch;
+            buttons.AddWidget(actions[index], index / 2, index % 2);
+        }
+
+        var sidebar = new MyraGrid
+        {
+            Background = DesktopAssistantTheme.Sidebar, Border = DesktopAssistantTheme.Divider,
+            BorderThickness = new Thickness(1), Padding = new Thickness(7), RowSpacing = 5
+        };
+        list.HorizontalAlignment = HorizontalAlignment.Stretch;
+        list.VerticalAlignment = VerticalAlignment.Stretch;
+        list.ScrollViewer.ShowHorizontalScrollBar = false;
+        int row = 0;
+        Add(new MyraLabel(title, MyraLabel.TextStyle.H3));
+        if (filter != null)
+            Add(filter);
+        Add(list, new Proportion(ProportionType.Fill));
+        Add(buttons);
+        if (footer != null)
+            Add(footer);
+        StyleListSelection(list);
+        return sidebar;
+
+        void Add(Widget child, Proportion? height = null)
+        {
+            sidebar.AddRow(height);
+            sidebar.AddWidget(child, row++, 0);
+        }
+    }
+
+    internal static MyraGrid ListRow(string name, Widget? detail = null)
+    {
+        var row = new MyraGrid { MinHeight = 24, ColumnSpacing = 4 };
+        row.AddColumn(new Proportion(ProportionType.Fill));
+        row.AddColumn();
+        row.AddWidget(MyraGrid.TableText(name), 0, 0);
+        if (detail != null)
+        {
+            detail.VerticalAlignment = VerticalAlignment.Center;
+            row.AddWidget(detail, 0, 1);
+        }
+        return row;
+    }
+
+    internal static void StyleListSelection(ListView list)
+    {
+        MyraLabel? selected = null;
+        list.SelectedIndexChanged += (_, _) => StyleSelection();
+        StyleSelection();
+
+        void StyleSelection()
+        {
+            if (selected != null)
+            {
+                selected.Font = DesktopAssistantTheme.Font();
+                selected.TextColor = DesktopAssistantTheme.Text;
+            }
+            selected = list.SelectedItem?.FindChild<MyraLabel>();
+            if (selected != null)
+            {
+                selected.Font = DesktopAssistantTheme.Font(bold: true);
+                selected.TextColor = DesktopAssistantTheme.Accent;
+            }
+        }
+    }
+
+    internal static void RevealSelection(ListView list)
+    {
+        if (list.SelectedItem?.Parent is not Widget row)
+            return;
+
+        var scroll = list.ScrollViewer;
+        scroll.UpdateArrange();
+        int top = scroll.ToLocal(row.ToGlobal(Point.Zero)).Y;
+        int bottom = top + row.Bounds.Height;
+        int delta = top < 0 ? top : Math.Max(0, bottom - scroll.Bounds.Height);
+        scroll.ScrollPosition = new Point(0, Math.Clamp(scroll.ScrollPosition.Y + delta, 0, scroll.ScrollMaximum.Y));
+    }
+
+    internal static MyraButton Button(string text, Action? click = null, bool primary = false, bool destructive = false)
+    {
+        var button = new MyraButton(text, click);
+        DesktopAssistantTheme.ApplyActionButtonStyle(button, primary);
+        if (destructive)
+            MyraStyle.ApplyButtonDangerStyle(button);
+        return button;
     }
 
     private sealed class FieldsWithActions : MyraGrid
@@ -101,11 +200,15 @@ internal static class DesktopAssistantForm
         private const int Spacing = 8;
         private readonly Widget _first;
         private readonly Widget _second;
+        private readonly int _firstWeight;
+        private readonly int _secondWeight;
 
-        internal SectionPair(Widget first, Widget second)
+        internal SectionPair(Widget first, Widget second, int firstWeight = 1, int secondWeight = 1)
         {
             _first = first;
             _second = second;
+            _firstWeight = firstWeight;
+            _secondWeight = secondWeight;
             Widgets.Add(first);
             Widgets.Add(second);
         }
@@ -114,7 +217,7 @@ internal static class DesktopAssistantForm
         {
             var (first, second, sideBySide) = MeasureSections(availableSize);
             return sideBySide
-                ? new Point(2 * Math.Max(first.X, second.X) + Spacing, Math.Max(first.Y, second.Y))
+                ? new Point(DesiredWidth(first.X, second.X), Math.Max(first.Y, second.Y))
                 : new Point(Math.Max(first.X, second.X), first.Y + second.Y + Spacing);
         }
 
@@ -131,14 +234,22 @@ internal static class DesktopAssistantForm
 
         private (Point First, Point Second, bool SideBySide) MeasureSections(Point size)
         {
-            Point column = new(ColumnWidth(size.X), size.Y);
-            Point first = _first.Measure(column);
-            Point second = _second.Measure(column);
-            return column.X > 0 && first.X <= column.X && second.X <= column.X
+            int firstWidth = ColumnWidth(size.X);
+            int secondWidth = Math.Max(0, size.X - Spacing - firstWidth);
+            Point first = _first.Measure(new Point(firstWidth, size.Y));
+            Point second = _second.Measure(new Point(secondWidth, size.Y));
+            return firstWidth > 0 && secondWidth > 0 && first.X <= firstWidth && second.X <= secondWidth
                 ? (first, second, true)
                 : (_first.Measure(size), _second.Measure(size), false);
         }
 
-        private static int ColumnWidth(int width) => Math.Max(0, (width - Spacing) / 2);
+        private int ColumnWidth(int width) => Math.Max(0, width - Spacing) * _firstWeight / (_firstWeight + _secondWeight);
+
+        private int DesiredWidth(int first, int second)
+        {
+            int weight = _firstWeight + _secondWeight;
+            return Math.Max((first * weight + _firstWeight - 1) / _firstWeight,
+                (second * weight + _secondWeight - 1) / _secondWeight) + Spacing;
+        }
     }
 }

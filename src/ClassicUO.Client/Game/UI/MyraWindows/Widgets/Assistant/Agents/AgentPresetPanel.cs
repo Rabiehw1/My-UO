@@ -71,39 +71,18 @@ internal static class AgentPresetPanel
         };
         MyraStyle.ApplyButtonDangerStyle(delete);
 
-        int sidebarWidth = fullHeight ? 238 : interaction.IsDesktop ? 210 : 175;
+        int sidebarWidth = fullHeight ? DesktopAssistantForm.ListSidebarWidth : interaction.IsDesktop ? 210 : 175;
         MyraGrid layout = interaction.IsDesktop ? new DesktopAssistantForm.FixedSidebarLayout(details, sidebarWidth) : new MyraGrid();
         layout.ColumnSpacing = 10;
         layout.AddColumn(new Proportion(ProportionType.Pixels, sidebarWidth));
         layout.AddColumn(new Proportion(ProportionType.Fill));
         if (fullHeight)
         {
-            var buttons = new MyraGrid { ColumnSpacing = 5, RowSpacing = 4 };
-            buttons.AddColumn(new Proportion(ProportionType.Part, 1), count: 2);
-            MyraButton[] actions = [add, edit, duplicate, delete];
-            for (int index = 0; index < actions.Length; index++)
-            {
-                actions[index].HorizontalAlignment = HorizontalAlignment.Stretch;
-                buttons.AddWidget(actions[index], index / 2, index % 2);
-            }
-
-            var sidebar = new MyraGrid
-            {
-                Background = DesktopAssistantTheme.Sidebar, Border = DesktopAssistantTheme.Divider,
-                BorderThickness = new Thickness(1), Padding = new Thickness(7), RowSpacing = 5
-            };
-            sidebar.AddRow();
-            sidebar.AddRow(new Proportion(ProportionType.Fill));
-            sidebar.AddRow();
-            sidebar.AddWidget(new MyraLabel(title, MyraLabel.TextStyle.H3), 0, 0);
-            sidebar.AddWidget(picker, 1, 0);
-            sidebar.AddWidget(buttons, 2, 0);
-
             var settings = new VerticalStackPanel { Spacing = 9, Padding = new Thickness(0, 0, 5, 0) };
             settings.Widgets.Add(details);
             settings.Widgets.Add(desktopOptions!);
             layout.AddRow(new Proportion(ProportionType.Fill));
-            layout.AddWidget(sidebar, 0, 0);
+            layout.AddWidget(DesktopAssistantForm.ListSidebar(title, picker, [add, edit, duplicate, delete]), 0, 0);
             layout.AddWidget(new ScrollViewer { Content = settings, ShowHorizontalScrollBar = false }, 0, 1);
         }
         else
@@ -137,18 +116,11 @@ internal static class AgentPresetPanel
                 bool running = isRunning?.Invoke(preset) == true;
                 if (fullHeight)
                 {
-                    var row = new MyraGrid { MinHeight = 24, ColumnSpacing = 4 };
-                    row.AddColumn(new Proportion(ProportionType.Fill));
-                    row.AddColumn();
-                    var label = MyraGrid.TableText(name(preset));
-                    label.VerticalAlignment = VerticalAlignment.Center;
-                    row.AddWidget(label, 0, 0);
-                    if (running)
-                        row.AddWidget(new MyraLabel(runningText ?? TazLang.Get("agent_preset_running"), MyraLabel.TextStyle.P)
-                        {
-                            TextColor = new Color(43, 108, 73), VerticalAlignment = VerticalAlignment.Center
-                        }, 0, 1);
-                    picker.Widgets.Add(row);
+                    var status = running ? new MyraLabel(runningText ?? TazLang.Get("agent_preset_running"), MyraLabel.TextStyle.P)
+                    {
+                        TextColor = new Color(43, 108, 73)
+                    } : null;
+                    picker.Widgets.Add(DesktopAssistantForm.ListRow(name(preset), status));
                 }
                 else
                 {
