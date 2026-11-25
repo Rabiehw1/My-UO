@@ -1,4 +1,5 @@
 using ClassicUO.Configuration;
+using ClassicUO.Game.Scenes;
 
 namespace ClassicUO.Game.Managers.Hotkeys
 {
@@ -47,6 +48,8 @@ namespace ClassicUO.Game.Managers.Hotkeys
         public const string ShowNameplatesId = "world.shownameplates";
         #endregion
 
+        public const string WeaponSwitchId = "weapon-switch.auto";
+
         /// <summary>Register all systems' hotkeys. Safe to call again on profile switch.</summary>
         public static void RegisterAll()
         {
@@ -56,6 +59,8 @@ namespace ClassicUO.Game.Managers.Hotkeys
             RegisterWorldMap();
             RegisterGumps();
             RegisterChat();
+            HotKeys.Register(WeaponSwitchId, "Auto Switch Weapon", new HotkeyBinding(), "Weapon Switch",
+                () => GameScene.Instance?.SwitchWeapon());
         }
 
         private static void RegisterChat()

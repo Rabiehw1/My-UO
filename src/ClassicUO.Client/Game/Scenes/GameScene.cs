@@ -109,6 +109,9 @@ namespace ClassicUO.Game.Scenes
         private AnimatedStaticsManager _animatedStaticsManager;
 
         private readonly World _world;
+        internal WeaponSwitchManager WeaponSwitch { get; } = new();
+
+        internal void SwitchWeapon() => WeaponSwitch.Start(_world);
 
         public GameScene(World world)
         {
@@ -1160,6 +1163,7 @@ namespace ClassicUO.Game.Scenes
                 ObjectActionQueue.Instance.ClearByPriority(ActionPriority.OpenCorpse);
             }
 
+            WeaponSwitch.Update(_world);
             ObjectActionQueue.Instance.Update();
             AutoLootManager.Instance.Update();
             ScavengerManager.Instance.Update();

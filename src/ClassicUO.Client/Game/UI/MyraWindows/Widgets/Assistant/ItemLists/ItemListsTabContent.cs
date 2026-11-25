@@ -14,9 +14,25 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 
 internal static class ItemListsTabContent
 {
-    public static string Title => TazLang.Get("assistantwindow_tab_itemlists", "Item Lists");
+    public static string Title => TazLang.Get("assistantwindow_tab_itemlists", "Lists");
 
     public static Widget Build(AgentPageInteraction interaction)
+    {
+        var tabs = new MyraTabControl();
+        tabs.AddTab("Items", () => BuildItems(interaction), rebuildOnSelect: true);
+        tabs.AddTab(TazLang.Get("assistant_general_tab_friends", "Friends"), () => FriendsListTabContent.Build(interaction), rebuildOnSelect: true);
+        tabs.AddTab("Weapon Switch", () => WeaponSwitchListContent.Build(interaction), rebuildOnSelect: true);
+        tabs.SelectFirst();
+        tabs.SelectedIndexChanged += (_, _) =>
+        {
+            interaction.CancelDialog();
+            interaction.CancelTarget();
+        };
+        return interaction.IsDesktop ? tabs
+            : new ScrollViewer { Content = tabs, MaxHeight = Math.Max(180, ScaleHelper.LogicalWindowHeight - 140) };
+    }
+
+    private static Widget BuildItems(AgentPageInteraction interaction)
     {
         var library = ItemListLibrary.Instance;
         SharedItemList? selected = library.Lists?.FirstOrDefault();
@@ -24,13 +40,18 @@ internal static class ItemListsTabContent
         bool refreshing = false;
 
         var root = new VerticalStackPanel { Spacing = 8 };
-        var listPicker = new ComboView { MinWidth = 180 };
+        var listPicker = new ListView { Height = 300 };
         var name = new MyraInputBox { Width = 180, HintText = "List name" };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false };
         var details = new VerticalStackPanel { Spacing = 6 };
-        var entries = new VerticalStackPanel { Spacing = 4 };
+        var entries = new ListView { Height = 300 };
+        SharedItem[] visibleItems = [];
+        SharedItem? editing = null;
         var filter = new MyraInputBox { Width = 180, HintText = "Filter this list" };
-        var deleteConfirmation = new HorizontalStackPanel { Spacing = 6, Visible = false };
+        var names = new VerticalStackPanel { Spacing = 5 };
+        var grid = new MyraGrid { ColumnSpacing = 12 };
+        grid.AddColumn(new Proportion(ProportionType.Part, 1));
+        grid.AddColumn(new Proportion(ProportionType.Part, 2));
         var actions = new HorizontalStackPanel { Spacing = 4 };
         var addActions = new HorizontalStackPanel { Spacing = 4 };
         var manual = new HorizontalStackPanel { Spacing = 4, Visible = false };
@@ -38,11 +59,15 @@ internal static class ItemListsTabContent
         var anyHue = new MyraCheckButton("Match any hue when targeting");
 
         var rename = new MyraButton("Rename");
-        var duplicate = new MyraButton("Duplicate");
-        var delete = MyraStyle.ApplyButtonDangerStyle(new MyraButton("Delete", () => deleteConfirmation.Visible = true));
-        actions.Widgets.Add(listPicker);
-        actions.Widgets.Add(name);
-        actions.Widgets.Add(new MyraButton("New list", () =>
+        var duplicate = new MyraButton("Copy");
+        var delete = new MyraButton("Remove");
+        var edit = new MyraButton("Edit");
+        var remove = new MyraButton("Remove");
+        names.Widgets.Add(new MyraLabel("Saved lists", MyraLabel.TextStyle.H3));
+        names.Widgets.Add(listPicker);
+        names.Widgets.Add(name);
+        names.Widgets.Add(actions);
+        actions.Widgets.Add(new MyraButton("New", () =>
         {
             Select(library.Create(name.Text ?? ""));
             Report($"Created {selected!.Name}.");
@@ -68,16 +93,21 @@ internal static class ItemListsTabContent
         actions.Widgets.Add(duplicate);
         actions.Widgets.Add(delete);
 
-        deleteConfirmation.Widgets.Add(new MyraLabel("Agents linked to a deleted list stop using shared items until another source is selected.", MyraLabel.TextStyle.P));
-        deleteConfirmation.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Delete list", () =>
+        delete.OnClick = () =>
         {
-            if (selected != null && library.Lists.Remove(selected))
-            {
-                library.SaveChanges();
-                Select(library.Lists.FirstOrDefault());
-            }
-        })));
-        deleteConfirmation.Widgets.Add(new MyraButton("Cancel", () => deleteConfirmation.Visible = false));
+            if (selected is not { } list)
+                return;
+
+            interaction.Confirm(delete, "Remove list",
+                "Agents linked to this list will stop using its items.", () =>
+                {
+                    if (library.Lists.Remove(list))
+                    {
+                        library.SaveChanges();
+                        Select(library.Lists.FirstOrDefault());
+                    }
+                });
+        };
 
         addActions.Widgets.Add(new MyraButton("Add from target", () => interaction.SelectTarget(target =>
         {
@@ -105,7 +135,7 @@ internal static class ItemListsTabContent
                 Add(items);
         })) { Tooltip = "Adds the items directly inside an open container." });
         addActions.Widgets.Add(new MyraButton("Search by name", () => search.Visible = !search.Visible));
-        addActions.Widgets.Add(new MyraButton("Add manually", () => manual.Visible = !manual.Visible));
+
 
         var graphic = new MyraInputBox { Width = 110, HintText = "Graphic ID" };
         var hue = MyraInputBox.Hue(ushort.MaxValue, tooltip: "Enter a hue or -1 for any hue.");
@@ -113,7 +143,7 @@ internal static class ItemListsTabContent
         manual.Widgets.Add(graphic);
         manual.Widgets.Add(hue);
         manual.Widgets.Add(itemName);
-        manual.Widgets.Add(new MyraButton("Add", () =>
+        manual.Widgets.Add(new MyraButton("Save", () =>
         {
             if (!StringHelper.TryParseInt((graphic.Text ?? "").Trim(), out int id) || id is <= 0 or > ushort.MaxValue ||
                 !MyraInputBox.TryParseHue((hue.Text ?? "").Trim(), out ushort itemHue))
@@ -121,7 +151,30 @@ internal static class ItemListsTabContent
                 Report("Enter a valid graphic ID and hue. Hex IDs can start with 0x.");
                 return;
             }
-            Add([new SharedItem((ushort)id, itemHue, (itemName.Text ?? "").Trim())]);
+            var item = new SharedItem((ushort)id, itemHue, (itemName.Text ?? "").Trim());
+            if (editing != null && selected != null)
+            {
+                int itemIndex = selected.Items.IndexOf(editing);
+                if (itemIndex < 0)
+                    return;
+
+                selected.Items.RemoveAt(itemIndex);
+                if (selected.AddItems([item]) == 0)
+                {
+                    selected.Items.Insert(itemIndex, editing);
+                    Report("That graphic and hue are already on the list.");
+                    return;
+                }
+
+                library.SaveChanges();
+                RefreshEntries();
+                Report("Item updated.");
+            }
+            else
+            {
+                Add([item]);
+            }
+            manual.Visible = false;
         }));
 
         var query = new MyraInputBox { Width = 180, HintText = "Item name" };
@@ -132,28 +185,53 @@ internal static class ItemListsTabContent
         search.Widgets.Add(searchRow);
         search.Widgets.Add(new ScrollViewer { Content = results, MaxHeight = 200 });
 
+        SharedItem? SelectedItem() => entries.SelectedIndex is int index && index >= 0 && index < visibleItems.Length
+            ? visibleItems[index] : null;
+        var itemActions = new HorizontalStackPanel { Spacing = 4 };
+        itemActions.Widgets.Add(new MyraButton("New", () => ShowEditor(null)));
+        edit.OnClick = () => ShowEditor(SelectedItem());
+        remove.OnClick = () =>
+        {
+            if (SelectedItem() is { } item && selected?.Items.Remove(item) == true)
+            {
+                library.SaveChanges();
+                RefreshEntries();
+            }
+        };
+        itemActions.Widgets.Add(edit);
+        itemActions.Widgets.Add(remove);
+        entries.SelectedIndexChanged += (_, _) => edit.Enabled = remove.Enabled = SelectedItem() != null;
+
+        details.Widgets.Add(new MyraLabel("List contents", MyraLabel.TextStyle.H3));
+        details.Widgets.Add(filter);
+        details.Widgets.Add(entries);
+        details.Widgets.Add(itemActions);
         details.Widgets.Add(addActions);
         details.Widgets.Add(anyHue);
         details.Widgets.Add(manual);
         details.Widgets.Add(search);
-        details.Widgets.Add(filter);
-        details.Widgets.Add(new ScrollViewer { Content = entries, MaxHeight = 280 });
-        root.Widgets.Add(actions);
-        root.Widgets.Add(deleteConfirmation);
+        grid.AddWidget(names, 0, 0);
+        grid.AddWidget(details, 0, 1);
+        root.Widgets.Add(grid);
         root.Widgets.Add(status);
-        root.Widgets.Add(details);
 
-        listPicker.ListView.SelectedIndexChanged += (_, _) =>
+        listPicker.SelectedIndexChanged += (_, _) =>
         {
-            if (!refreshing && listPicker.ListView.SelectedIndex is int index && index >= 0 && index < choices.Length)
+            if (!refreshing && listPicker.SelectedIndex is int index && index >= 0 && index < choices.Length)
                 Select(choices[index], refreshPicker: false);
         };
         filter.TextChangedByUser += (_, _) => RefreshEntries();
         Select(selected);
+        return root;
 
-        return ReferenceEquals(interaction, AgentPageInteraction.InGame)
-            ? new ScrollViewer { Content = root, MaxHeight = Math.Max(180, ScaleHelper.LogicalWindowHeight - 140) }
-            : root;
+        void ShowEditor(SharedItem? item)
+        {
+            editing = item;
+            graphic.Text = item == null ? "" : $"0x{item.Graphic:X4}";
+            hue.Text = item == null || item.Hue == ushort.MaxValue ? "-1" : $"0x{item.Hue:X4}";
+            itemName.Text = item?.Name ?? "";
+            manual.Visible = true;
+        }
 
         void Select(SharedItemList? list, bool refreshPicker = true)
         {
@@ -162,18 +240,19 @@ internal static class ItemListsTabContent
             {
                 refreshing = true;
                 choices = (library.Lists ?? []).Where(itemList => itemList != null).ToArray();
-                listPicker.ListView.Widgets.Clear();
+                listPicker.Widgets.Clear();
                 foreach (SharedItemList itemList in choices)
-                    listPicker.ListView.Widgets.Add(new Label { Text = itemList.Name });
+                    listPicker.Widgets.Add(new Label { Text = itemList.Name });
                 int index = Array.IndexOf(choices, list);
-                listPicker.ListView.SelectedIndex = index >= 0 ? index : null;
+                listPicker.SelectedIndex = index >= 0 ? index : null;
                 listPicker.Enabled = choices.Length > 0;
                 refreshing = false;
             }
             name.Text = "";
             filter.Text = "";
             status.Visible = false;
-            deleteConfirmation.Visible = false;
+            manual.Visible = search.Visible = false;
+            editing = null;
             rename.Enabled = duplicate.Enabled = delete.Enabled = details.Visible = list != null;
             if (list == null)
                 Report("Create a list to start adding items.");
@@ -182,33 +261,26 @@ internal static class ItemListsTabContent
 
         void RefreshEntries()
         {
+            entries.SelectedIndex = null;
             entries.Widgets.Clear();
             string text = (filter.Text ?? "").Trim();
-            foreach (SharedItem item in selected?.Items ?? [])
+            visibleItems = (selected?.Items ?? []).Where(item => item != null &&
+                (item.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true
+                || $"0x{item.Graphic:X4}".Contains(text, StringComparison.OrdinalIgnoreCase)
+                || $"0x{item.Hue:X4}".Contains(text, StringComparison.OrdinalIgnoreCase))).ToArray();
+            foreach (SharedItem item in visibleItems)
             {
-                if (item == null || !(item.Name?.Contains(text, StringComparison.OrdinalIgnoreCase) == true ||
-                    $"0x{item.Graphic:X4}".Contains(text, StringComparison.OrdinalIgnoreCase)))
-                    continue;
-
-                entries.Widgets.Add(ItemRow(item, "Remove", () =>
-                {
-                    if (selected?.Items.Remove(item) == true)
-                    {
-                        library.SaveChanges();
-                        RefreshEntries();
-                    }
-                }));
+                string displayHue = item.Hue == ushort.MaxValue ? "Any" : $"0x{item.Hue:X4}";
+                entries.Widgets.Add(new Label { Text = $"0x{item.Graphic:X4}   {displayHue}   {item.Name}" });
             }
-
-            if (entries.Widgets.Count == 0)
-                entries.Widgets.Add(new MyraLabel(string.IsNullOrEmpty(text) ? "This list is empty." : "No matching items.", MyraLabel.TextStyle.P));
+            edit.Enabled = remove.Enabled = false;
         }
 
         void FindItems()
         {
             results.Widgets.Clear();
             string text = (query.Text ?? "").Trim();
-            var tiles = Client.Game.UO.FileManager?.TileData.StaticData;
+            var tiles = Client.Game.UO.FileManager?.TileData?.StaticData;
             if (text.Length == 0 || tiles == null)
                 return;
 

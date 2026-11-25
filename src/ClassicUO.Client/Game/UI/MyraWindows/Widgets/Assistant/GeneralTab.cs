@@ -19,7 +19,7 @@ public static class GeneralTab
         tabs.AddTab(TazLang.Get("assistant_general_tab_hud", "HUD"), HudTabContent.Build);
         tabs.AddTab(TazLang.Get("assistant_general_tab_titlebar", "Title Bar"), TitleBarTabContent.Build);
         tabs.AddTab(TazLang.Get("assistant_general_tab_spellindicators", "Spell Indicators"), SpellIndicatorTabContent.Build);
-        tabs.AddTab(TazLang.Get("assistant_general_tab_friends", "Friends"), FriendsListTabContent.Build);
+        tabs.AddTab(TazLang.Get("assistant_general_tab_friends", "Friends"), FriendsListTabContent.Build, rebuildOnSelect: true);
         tabs.AddTab(TazLang.Get("assistant_general_tab_pathfinding", "Pathfinding"), PathfindingTabContent.Build);
         tabs.SelectFirst();
         return tabs;
