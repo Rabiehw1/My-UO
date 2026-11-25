@@ -1,5 +1,6 @@
 #nullable enable
 
+using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.UI.Gumps;
@@ -17,13 +18,20 @@ internal sealed class PendingGumpButton
     private const int GUMP_WAIT_MS = 3000;
 
     private readonly World _world;
+    private readonly Action<string>? _reportNoGump;
     private int _button = -1;
     private Gump? _gumpBeforeUse;
     private long _deadline;
     private string _sourceName = "";
 
     /// <param name="world">The game world.</param>
-    public PendingGumpButton(World world) => _world = world;
+    /// <param name="reportNoGump">Shows the "no gump opened" message (given the item's name); null prints it to the
+    /// system messages.</param>
+    public PendingGumpButton(World world, Action<string>? reportNoGump = null)
+    {
+        _world = world;
+        _reportNoGump = reportNoGump;
+    }
 
     /// <summary>Whether a button is waiting for its gump.</summary>
     public bool IsArmed => _button >= 0;
@@ -64,7 +72,10 @@ internal sealed class PendingGumpButton
         if (now > _deadline)
         {
             Log.Warn($"No gump opened after using '{_sourceName}'; button {_button} not pressed.");
-            GameActions.Print(TazLang.Get("gumpbutton_nogump", [_sourceName]), Constants.HUE_WARN);
+            if (_reportNoGump != null)
+                _reportNoGump(_sourceName);
+            else
+                GameActions.Print(TazLang.Get("gumpbutton_nogump", [_sourceName]), Constants.HUE_WARN);
             Clear();
         }
     }

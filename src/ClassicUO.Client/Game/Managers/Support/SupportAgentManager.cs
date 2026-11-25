@@ -53,6 +53,7 @@ internal sealed class SupportAgentManager : IDisposable
 
     private readonly World _world;
     private readonly SupportAbilityRunner _runner;
+    private readonly SupportStatus _status;
     private readonly List<Mobile> _group = new();
 
     private SupportAgentSave? _settings;
@@ -82,7 +83,8 @@ internal sealed class SupportAgentManager : IDisposable
     private SupportAgentManager()
     {
         _world = World.Instance;
-        _runner = new SupportAbilityRunner(_world);
+        _status = new SupportStatus(_world, () => Settings.ShowStatusOverhead);
+        _runner = new SupportAbilityRunner(_world, name => _status.Problem("nogump:" + name, TazLang.Get("supportagent_status_nogump", [name])));
         EventSink.MessageReceived += OnMessageReceived;
     }
 
@@ -170,7 +172,10 @@ internal sealed class SupportAgentManager : IDisposable
 
         // With a leader set but out of sight, wait for them rather than wander off fighting.
         if (settings.LeaderSerial != 0 && leader == null)
+        {
+            _status.Problem("leader", TazLang.Get("supportagent_status_noleader"));
             return;
+        }
 
         if (leader != null && (now < _followOverrideUntil || leader.Distance > settings.Follow.MaxLeaderDistance))
         {
@@ -215,10 +220,10 @@ internal sealed class SupportAgentManager : IDisposable
             _currentEnemy = 0;
             StopMoving(player);
             SetWarMode(player, false);
-            GameActions.Print(TazLang.Get("supportagent_emergency"), Constants.HUE_WARN);
-
             if (TryUseRole(classSettings, SupportRole.Emergency, player, leader, null, now))
                 return true;
+
+            _status.Show(TazLang.Get("supportagent_status_emergency"), SupportStatus.HUE_DANGER);
         }
 
         if (!_retreating)
@@ -227,7 +232,7 @@ internal sealed class SupportAgentManager : IDisposable
         if (health >= emergency.RecoveryHealth)
         {
             _retreating = false;
-            GameActions.Print(TazLang.Get("supportagent_recovered"));
+            _status.Show(TazLang.Get("supportagent_status_recovered"), SupportStatus.HUE_GOOD);
             return false;
         }
 
@@ -253,7 +258,7 @@ internal sealed class SupportAgentManager : IDisposable
             _lastAttack = 0;
             SetWarMode(player, false);
             _followOverrideUntil = now + settings.Commands.FollowOverrideMs;
-            GameActions.Print(TazLang.Get("supportagent_cmd_follow"));
+            _status.Show(TazLang.Get("supportagent_status_following"), SupportStatus.HUE_INFO);
         }
 
         if (!_healRequested)
@@ -267,7 +272,7 @@ internal sealed class SupportAgentManager : IDisposable
         _currentEnemy = 0;
         _lastAttack = 0;
         SetWarMode(player, false);
-        GameActions.Print(TazLang.Get("supportagent_cmd_heal"));
+        _status.Show(TazLang.Get("supportagent_status_healingyou"), SupportStatus.HUE_INFO);
 
         // The leader asked, so heal them whatever their health.
         if (TryUseRole(classSettings, SupportRole.Heal, player, leader, leader ?? player, now))
@@ -338,8 +343,14 @@ internal sealed class SupportAgentManager : IDisposable
             if (!ability.Enabled || ability.Role != role)
                 continue;
 
-            if (!_runner.IsOffCooldown(ability, now) || !_runner.HasRequirements(ability))
+            if (!_runner.IsOffCooldown(ability, now))
                 continue;
+
+            if (!_runner.HasRequirements(ability))
+            {
+                ReportMissing(ability);
+                continue;
+            }
 
             if (!TryResolveTarget(ability, player, leader, patient, out uint target))
                 continue;
@@ -352,6 +363,7 @@ internal sealed class SupportAgentManager : IDisposable
             {
                 _castUntil = now + ability.CastTimeMs;
                 _abilityReadyAt = _castUntil + ability.RecoveryMs;
+                ShowAbilityStatus(ability, patient);
                 return true;
             }
         }
@@ -438,13 +450,18 @@ internal sealed class SupportAgentManager : IDisposable
         if (enemy == null || !IsValidEnemy(enemy, player, settings))
             enemy = FindNearestEnemy(player, settings);
 
+        uint previousEnemy = _currentEnemy;
         _currentEnemy = enemy?.Serial ?? 0;
 
         if (enemy == null)
             return false;
 
+        if (enemy.Serial != previousEnemy)
+            _status.Show(TazLang.Get("supportagent_status_attacking", [MobileName(enemy)]), SupportStatus.HUE_COMBAT);
+
         if (combat.KeepDistance && enemy.Distance <= combat.MeleeDangerRange)
         {
+            _status.Show(TazLang.Get("supportagent_status_backingoff"), SupportStatus.HUE_COMBAT);
             SetWarMode(player, false);
             MoveAwayFrom(player, enemy, combat.PreferredMinRange);
             return true;
@@ -579,6 +596,51 @@ internal sealed class SupportAgentManager : IDisposable
         _abilityReadyAt = 0;
         _wasEnabled = false;
     }
+
+    /// <summary>Says above the helper's head what an ability it just started is for.</summary>
+    private void ShowAbilityStatus(SupportAbility ability, Mobile? patient)
+    {
+        PlayerMobile? player = _world.Player;
+        Mobile? subject = patient ?? player;
+        string name = subject == null ? "" : MobileName(subject);
+        int health = subject == null ? 100 : HealthPercent(subject);
+
+        switch (ability.Role)
+        {
+            case SupportRole.Heal when ability.Target == SupportTargetMode.None:
+                _status.Show(TazLang.Get("supportagent_status_areaheal", [ability.Name, name, health.ToString()]), SupportStatus.HUE_GOOD);
+                break;
+            case SupportRole.Heal:
+                _status.Show(TazLang.Get("supportagent_status_healing", [name, health.ToString()]), SupportStatus.HUE_GOOD);
+                break;
+            case SupportRole.Cure:
+                _status.Show(TazLang.Get("supportagent_status_curing", [name]), SupportStatus.HUE_GOOD);
+                break;
+            case SupportRole.Buff:
+                _status.Show(ability.Name, SupportStatus.HUE_BUFF);
+                break;
+            case SupportRole.Emergency:
+                _status.Show(TazLang.Get("supportagent_status_emergencyability", [ability.Name]), SupportStatus.HUE_DANGER);
+                break;
+        }
+    }
+
+    /// <summary>Explains why a needed ability can't be used: no item picked, or out of bandages.</summary>
+    private void ReportMissing(SupportAbility ability)
+    {
+        switch (ability.Action)
+        {
+            case SupportActionType.UseItem:
+            case SupportActionType.UseItemAndGumpButton:
+                _status.Problem("item:" + ability.Id, TazLang.Get("supportagent_status_noitem", [ability.Name]));
+                break;
+            case SupportActionType.Bandage:
+                _status.Problem("bandages", TazLang.Get("supportagent_status_nobandages"));
+                break;
+        }
+    }
+
+    private static string MobileName(Mobile mobile) => string.IsNullOrEmpty(mobile.Name) ? "?" : mobile.Name;
 
     private static int HealthPercent(Mobile mobile) =>
         mobile.HitsMax == 0 ? 100 : mobile.Hits * 100 / mobile.HitsMax;

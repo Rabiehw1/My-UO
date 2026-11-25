@@ -76,6 +76,12 @@ internal static class SupportAgentTabContent
             TazLang.Get("supportagent_enable"),
             TazLang.Get("supportagent_enable_tooltip")
         ));
+        enabledRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
+            settings.ShowStatusOverhead,
+            value => settings.ShowStatusOverhead = value,
+            TazLang.Get("supportagent_showstatus"),
+            TazLang.Get("supportagent_showstatus_tooltip")
+        ));
 
         var classCombo = new ComboView { MinWidth = 130, VerticalAlignment = VerticalAlignment.Center };
 

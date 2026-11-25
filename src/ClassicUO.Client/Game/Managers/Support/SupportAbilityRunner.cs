@@ -33,10 +33,11 @@ internal sealed class SupportAbilityRunner
     #region Ctor
 
     /// <param name="world">The game world.</param>
-    public SupportAbilityRunner(World world)
+    /// <param name="reportNoGump">Shows a message when an item's gump doesn't open, given the ability's name.</param>
+    public SupportAbilityRunner(World world, Action<string> reportNoGump)
     {
         _world = world;
-        _pendingGump = new PendingGumpButton(world);
+        _pendingGump = new PendingGumpButton(world, reportNoGump);
     }
 
     #endregion

@@ -188,6 +188,9 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
 
     public string LeaderName { get; set; } = "";
 
+    /// <summary>Show what the helper is doing, and any problems, as client-only text above its head.</summary>
+    public bool ShowStatusOverhead { get; set; } = true;
+
     /// <summary>Health % below which the helper heals someone.</summary>
     public int HealThreshold { get; set; } = 80;
 
