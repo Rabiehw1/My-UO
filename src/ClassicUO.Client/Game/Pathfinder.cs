@@ -710,6 +710,9 @@ namespace ClassicUO.Game
 
             if ((sbyte)direction % 2 != 0)
             {
+                // The diagonal tile itself is open; only a corner beside it can still block the step.
+                bool destinationOpen = passed;
+
                 if (passed)
                 {
                     for (int i = 0; i < 2 && passed; i++)
@@ -723,9 +726,12 @@ namespace ClassicUO.Game
                     }
                 }
 
-                // Slide around the obstacle by trying the two neighboring straight directions, only when the player
-                // wants obstacles avoided or a computed path is being walked; otherwise a blocked step just stops.
-                if (!passed && ((ProfileManager.CurrentProfile?.AutoAvoidObstacules ?? false) || AutoWalking))
+                // Slide by trying the two neighboring straight directions. A corner clip (open diagonal tile) always
+                // slides so walking past corners stays smooth; walking into a wall only slides when the player wants
+                // obstacles avoided or a computed path is being walked, otherwise the player just stops.
+                bool slide = destinationOpen || (ProfileManager.CurrentProfile?.AutoAvoidObstacules ?? false) || AutoWalking;
+
+                if (!passed && slide)
                 {
                     for (int i = 0; i < 2 && !passed; i++)
                     {
