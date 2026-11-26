@@ -300,43 +300,56 @@ namespace ClassicUO.Game.Managers
                 }
 
                 if (itemsToEquip.Count > 0)
+                {
                     // Send KR equip packet for all items at once
                     AsyncNetClient.Socket.Send_EquipMacroKR(itemsToEquip.ToArray().AsSpan());
+
+                    // Shards that ignore the KR packet equip nothing: dress the normal way for whatever isn't on yet.
+                    Task.Delay(KR_FALLBACK_MS).ContinueWith(_ => MainThreadQueue.InvokeOnMainThread(() => DressNormally(config)));
+                }
             }
             else
             {
-                // Use traditional queue-based approach
-                // Collect layers that need to be unequipped
-                var layersToUnequip = new List<byte>();
-                foreach (DressItem dressItem in config.Items)
+                DressNormally(config);
+            }
+        }
+
+        /// <summary>Equips the set one item at a time through the action queue, clearing conflicting slots first.</summary>
+        private void DressNormally(DressConfig config)
+        {
+            if (World.Instance?.Player == null)
+                return;
+
+            // Collect layers that need to be unequipped
+            var layersToUnequip = new List<byte>();
+            foreach (DressItem dressItem in config.Items)
+            {
+                if (dressItem == null) continue;
+                if(_forbiddenLayers.Contains((Layer)dressItem.Layer)) continue;
+
+                if (!layersToUnequip.Contains(dressItem.Layer))
                 {
-                    if (dressItem == null) continue;
-                    if(_forbiddenLayers.Contains((Layer)dressItem.Layer)) continue;
-
-                    if (!layersToUnequip.Contains(dressItem.Layer))
-                    {
-                        if (dressItem.Layer == (byte)Layer.TwoHanded && !layersToUnequip.Contains((byte)Layer.OneHanded))
-                            layersToUnequip.Add((byte)Layer.OneHanded);
-                        if (dressItem.Layer == (byte)Layer.OneHanded && !layersToUnequip.Contains((byte)Layer.TwoHanded))
-                            layersToUnequip.Add((byte)Layer.TwoHanded);
-                        layersToUnequip.Add(dressItem.Layer);
-                    }
+                    if (dressItem.Layer == (byte)Layer.TwoHanded && !layersToUnequip.Contains((byte)Layer.OneHanded))
+                        layersToUnequip.Add((byte)Layer.OneHanded);
+                    if (dressItem.Layer == (byte)Layer.OneHanded && !layersToUnequip.Contains((byte)Layer.TwoHanded))
+                        layersToUnequip.Add((byte)Layer.TwoHanded);
+                    layersToUnequip.Add(dressItem.Layer);
                 }
+            }
 
-                // First, unequip all conflicting layers
-                if (layersToUnequip.Count > 0)
-                    UnequipLayers(layersToUnequip, config);
+            // First, unequip all conflicting layers
+            if (layersToUnequip.Count > 0)
+                UnequipLayers(layersToUnequip, config);
 
-                foreach (DressItem dressItem in config.Items)
-                {
-                    if (dressItem == null) continue;
+            foreach (DressItem dressItem in config.Items)
+            {
+                if (dressItem == null) continue;
 
-                    // Check if the item is already equipped on the player
-                    Item item = World.Instance.Items.Get(dressItem.Serial);
-                    if (item != null && item.Container == World.Instance.Player?.Serial) continue;
+                // Check if the item is already equipped on the player
+                Item item = World.Instance.Items.Get(dressItem.Serial);
+                if (item != null && item.Container == World.Instance.Player?.Serial) continue;
 
-                    ObjectActionQueue.Instance.Enqueue(ObjectActionQueueItem.EquipItem(dressItem.Serial, (Layer)dressItem.Layer), ActionPriority.EquipItem);
-                }
+                ObjectActionQueue.Instance.Enqueue(ObjectActionQueueItem.EquipItem(dressItem.Serial, (Layer)dressItem.Layer), ActionPriority.EquipItem);
             }
         }
 
