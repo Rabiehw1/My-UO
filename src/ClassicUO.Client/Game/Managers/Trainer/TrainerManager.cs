@@ -94,6 +94,7 @@ internal sealed class TrainerManager
             return;
 
         LumberjackTrainer.Reset(clearCooldowns: true);
+        InscriptionTrainer.Reset();
         FishingTrainer.Reset();
         BardTrainer.Reset();
         BeggingTrainer.Reset();
@@ -124,7 +125,7 @@ internal sealed class TrainerManager
             Stop();
             return;
         }
-        if (FishingTrainer.Waiting(world) || BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
+        if (InscriptionTrainer.Waiting(world) || FishingTrainer.Waiting(world) || BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
             return;
 
         if (_closeListUntil != 0)
@@ -204,6 +205,8 @@ internal sealed class TrainerManager
     }
 
     internal void SkillSent() => _nextUseAt = Time.Ticks + (uint)Math.Clamp(_profile!.Trainer.WaitSeconds, MIN_WAIT_SECONDS, MAX_WAIT_SECONDS) * 1000;
+
+    internal bool MeditationActive => IsBusy(TrainerCatalog.Find("meditation")!);
 
     private bool IsBusy(TrainerSkill skill) =>
         skill.Busy != null && _busyUntil.TryGetValue(skill.Id, out uint until) && Time.Ticks < until;

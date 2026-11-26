@@ -44,6 +44,7 @@ public enum TrainerUse
     /// <summary>Use the skill, warning first when full mana means it can't train.</summary>
     Meditation,
     Blacksmith,
+    Inscription,
     Fishing,
     Lumberjack,
     Begging,
@@ -99,6 +100,7 @@ internal static class TrainerCatalog
     [
         new("anatomy", "Anatomy", TrainerClass.Warrior, TrainerUse.Self),
         new("evaluating_intelligence", "Evaluating Intelligence", TrainerClass.Mage, TrainerUse.Self),
+        new("inscription", "Inscription", TrainerClass.Mage, TrainerUse.Inscription, TrainerTargetKind.Item),
         new("meditation", "Meditation", TrainerClass.Mage, TrainerUse.Meditation, Busy: new TrainerBusyRule(
             "You enter a meditative trance",
             ["You stop meditating", "You've lost your concentration"])),

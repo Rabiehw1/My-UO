@@ -223,6 +223,7 @@ internal static class TrainerTabContent
                 "arms_lore" => "trainer_pick_examine",
                 "lumberjacking" => "trainer_pick_axe",
                 "enticement" => "trainer_pick_animal",
+                "inscription" => "trainer_pick_scrolls",
                 "fishing" => "trainer_pick_pole",
                 _ => skill.Target == TrainerTargetKind.Item ? "trainer_choose_item" : "trainer_choose_creature"
             };
