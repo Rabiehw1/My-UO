@@ -45,6 +45,7 @@ public enum TrainerUse
     Meditation,
     Blacksmith,
     Lumberjack,
+    Begging,
     Tailor
 }
 
@@ -110,6 +111,7 @@ internal static class TrainerCatalog
         new("lumberjacking", "Lumberjacking", TrainerClass.Crafter, TrainerUse.Lumberjack, TrainerTargetKind.Item),
         new("blacksmithy", "Blacksmithy", TrainerClass.Crafter, TrainerUse.Blacksmith, TrainerTargetKind.Item),
         new("arms_lore", "Arms Lore", TrainerClass.Crafter, TrainerUse.Picked, TrainerTargetKind.Item),
+        new("begging", "Begging", TrainerClass.Other, TrainerUse.Begging),
         new("forensic_evaluation", "Forensic Evaluation", TrainerClass.Other, TrainerUse.NearestCorpse)
     ];
 

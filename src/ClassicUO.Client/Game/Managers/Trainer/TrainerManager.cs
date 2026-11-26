@@ -94,6 +94,7 @@ internal sealed class TrainerManager
             return;
 
         LumberjackTrainer.Reset(clearCooldowns: true);
+        BeggingTrainer.Reset();
         TailoringTrainer.Reset();
         BlacksmithTrainer.Reset();
         _profile = null;
@@ -115,7 +116,7 @@ internal sealed class TrainerManager
             return;
         }
 
-        if (TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
+        if (BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
             return;
 
         if (_closeListUntil != 0)
@@ -192,6 +193,8 @@ internal sealed class TrainerManager
         else
             gump.Dispose();
     }
+
+    internal void SkillSent() => _nextUseAt = Time.Ticks + (uint)Math.Clamp(_profile!.Trainer.WaitSeconds, MIN_WAIT_SECONDS, MAX_WAIT_SECONDS) * 1000;
 
     private bool IsBusy(TrainerSkill skill) =>
         skill.Busy != null && _busyUntil.TryGetValue(skill.Id, out uint until) && Time.Ticks < until;

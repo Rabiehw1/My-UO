@@ -42,6 +42,9 @@ internal static class TrainerSkillUser
         PlayerMobile player = world.Player!;
         switch (skill.Use)
         {
+            case TrainerUse.Begging:
+                return BeggingTrainer.Begin(world);
+
             case TrainerUse.Tailor:
                 return TailoringTrainer.Begin(world, target);
 

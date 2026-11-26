@@ -83,6 +83,30 @@ internal static class TrainerTabContent
             foreach (TrainerSkill skill in TrainerCatalog.Skills.Where(s => s.Class == _selectedClass))
                 AddSkillRow(table, row++, profile, skill, interaction, () => { RefreshOrder(); RefreshControls(); });
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_class_skills", [ClassName(_selectedClass)]), table));
+            if (_selectedClass == TrainerClass.Other)
+            {
+                var route = new VerticalStackPanel { Spacing = 4 };
+                var vendors = profile.Trainer.BeggingVendors;
+                route.Widgets.Add(DesktopAssistantForm.Button(TazLang.Get("trainer_beg_add"), () =>
+                    interaction.SelectTarget(target =>
+                    {
+                        if (target is not Mobile mobile || mobile == World.Instance?.Player ||
+                            vendors.Any(v => v.Serial == mobile.Serial))
+                            return;
+                        vendors.Add(new TrainerTarget { Serial = mobile.Serial, Name = mobile.Name ?? "" });
+                        profile.Save();
+                        ShowClass();
+                    }), primary: true));
+                foreach (var vendor in vendors)
+                    route.Widgets.Add(DesktopAssistantForm.Actions(MyraGrid.TableText($"{vendor.Name} · 0x{vendor.Serial:X8}"),
+                        DesktopAssistantForm.Button(TazLang.Get("trainer_beg_remove"), () =>
+                        {
+                            vendors.Remove(vendor);
+                            profile.Save();
+                            ShowClass();
+                        }, destructive: true)));
+                details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_beg_route"), route));
+            }
             if (_selectedClass == TrainerClass.Crafter)
             {
                 MyraButton Pick(string key, System.Func<uint> get, System.Action<uint> set)

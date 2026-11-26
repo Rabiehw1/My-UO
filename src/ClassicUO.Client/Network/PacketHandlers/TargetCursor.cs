@@ -25,6 +25,8 @@ internal static class TargetCursor
 
         bool claimed = partyTarget != 0 || autoTarget;
         bool skinTarget = AutoSkinningManager.Instance.TryHandleCursor(world, cursorTarget, targetType, claimed);
+        if (liveCursor && !claimed && !skinTarget && Game.Managers.Trainer.BeggingTrainer.TryCursor(world, targetType))
+            return;
         if (liveCursor && !claimed && !skinTarget && Game.Managers.Trainer.BlacksmithTrainer.TryRecoveryCursor(world, cursorTarget, targetType))
             return;
         if (liveCursor && !claimed && !skinTarget && Game.Managers.Trainer.LumberjackTrainer.TryCursor(world, cursorTarget, targetType))

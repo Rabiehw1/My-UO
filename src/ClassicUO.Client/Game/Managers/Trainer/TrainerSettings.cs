@@ -24,6 +24,7 @@ public sealed class TrainerSettings
 
     public uint SmeltTool { get; set; }
     public uint UnstitchTool { get; set; }
+    public List<TrainerTarget> BeggingVendors { get; set; } = [];
     public uint Forge { get; set; }
 
     /// <summary>Picked targets by skill ID.</summary>
