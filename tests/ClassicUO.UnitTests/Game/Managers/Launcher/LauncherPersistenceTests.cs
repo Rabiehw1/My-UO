@@ -95,4 +95,16 @@ public class LauncherPersistenceTests
         Assert.Equal((expected, true), LoginScene.FindAutomaticCharacter(["", "First", "Other"], preferred, matchRequired));
         Assert.Equal((-1, false), LoginScene.FindAutomaticCharacter(["", ""], preferred, matchRequired));
     }
+
+    [Theory]
+    [InlineData(" tirOC ", "Tiroc of Minoc", "Other", 1)]
+    [InlineData("Tiroc", "Tiroc of Minoc", "Tiroc", 2)]
+    [InlineData("Tiroc", "Tiroc of Minoc", "TIROC", 2)]
+    [InlineData("Tiroc", "Tiroc of Minoc", "Tiroc of Britain", -1)]
+    [InlineData("Tiro", "Tiroc of Minoc", "Other", -1)]
+    public void LauncherOnlySelectsAUniqueWholeWordAbbreviationWhenNoFullNameMatches(
+        string preferred, string first, string second, int expected)
+    {
+        Assert.Equal((expected, true), LoginScene.FindAutomaticCharacter(["", first, second], preferred, requirePreferred: true));
+    }
 }

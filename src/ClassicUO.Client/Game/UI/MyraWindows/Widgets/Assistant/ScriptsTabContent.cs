@@ -180,20 +180,16 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
         var edit = new MyraButton("Edit source");
         edit.OnClick = () =>
         {
-            var source = new MyraInputBox
-            {
-                Multiline = true, Width = 560, Height = 310,
-                Text = string.Join("\n", script.ReadFromFile())
-            };
+            var source = new ScriptSourceEditor(string.Join("\n", script.ReadFromFile()), script.Type);
             _interaction.ShowDialog(edit, script.FileName, source, saved =>
             {
                 if (!saved)
                     return;
 
-                script.OverrideFileContents(source.Text ?? "");
+                script.OverrideFileContents(source.Source);
                 script.ReadFromFile();
                 ShowDetails();
-            }, confirmText: TazLang.Get("mog_kw_save"), preferredWidth: 600);
+            }, confirmText: TazLang.Get("mog_kw_save"), preferredWidth: 820);
         };
         _details.Widgets.Add(DesktopAssistantTheme.Group("Source preview", edit, preview));
     }

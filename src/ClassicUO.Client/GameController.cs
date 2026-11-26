@@ -55,6 +55,7 @@ namespace ClassicUO
         private bool _suppressedDraw;
         private Texture2D _background;
         private bool _pluginsInitialized;
+        private bool _openAssistantAfterLogin;
         private Rectangle bufferRect = Rectangle.Empty;
         private bool _fullscreenBorderless;
         private RenderTarget2D _screenRenderTarget;
@@ -271,8 +272,10 @@ namespace ClassicUO
             }
             else if (LauncherSave.Current.OpenAssistantWithClient)
             {
-                // Each game window brings its own Assistant; it switches to the character once logged in.
-                DesktopAgentsWindow.Show(Game.UI.MyraWindows.Widgets.Assistant.GeneralTab.Title);
+                if (ClientLauncher.IsLaunchedClient)
+                    _openAssistantAfterLogin = true;
+                else
+                    DesktopAgentsWindow.Show(Game.UI.MyraWindows.Widgets.Assistant.GeneralTab.Title);
             }
 
             Console.WriteLine("|--------------------------------------------------------------|");
@@ -371,6 +374,12 @@ namespace ClassicUO
                 drawScene = true;
             else
                 drawScene = false;
+
+            if (_openAssistantAfterLogin && drawScene && Scene is GameScene)
+            {
+                _openAssistantAfterLogin = false;
+                DesktopAgentsWindow.Show(Game.UI.MyraWindows.Widgets.Assistant.GeneralTab.Title);
+            }
         }
 
         public void SetVSync(bool value)

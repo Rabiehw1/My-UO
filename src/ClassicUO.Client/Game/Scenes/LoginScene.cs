@@ -613,16 +613,19 @@ namespace ClassicUO.Game.Scenes
             bool canLogin = CanAutologin;
             _autoLogin = false;
 
-            string lastCharName = LastCharacterManager.GetPreferredCharacter(Account, _world.ServerName);
+            string preferredName = LastCharacterManager.GetPreferredCharacter(Account, _world.ServerName);
             bool hasExplicitCharacter = LastCharacterManager.HasCharacterOverride;
-            (int index, bool haveAnyCharacter) = FindAutomaticCharacter(Characters, lastCharName, hasExplicitCharacter);
+            (int index, bool haveAnyCharacter) = FindAutomaticCharacter(Characters, preferredName, hasExplicitCharacter);
             if (canLogin && index >= 0)
             {
+                // Keep reconnects on the resolved launcher character even if another client updates the account history.
+                if (hasExplicitCharacter)
+                    LastCharacterManager.OverrideLastCharacter(Characters[index]);
                 SelectCharacter((uint)index);
             }
             else if (canLogin && hasExplicitCharacter)
             {
-                var message = TazLang.Get("launcher_character_missing", [lastCharName]);
+                var message = TazLang.Get("launcher_character_missing", [preferredName]);
                 LoadingGump alert = null;
                 alert = new LoadingGump(_world, message, LoginButtons.OK, _ => alert.Dispose()) { IsModal = true };
                 UIManager.Add(alert);
@@ -633,27 +636,45 @@ namespace ClassicUO.Game.Scenes
             }
         }
 
-        /// <summary>Finds the requested character or an occupied slot when no explicit character was configured.</summary>
+        /// <summary>Prefers a full character name, then accepts an unambiguous launcher abbreviation.</summary>
+        /// <param name="characters">Character names in shard slot order.</param>
+        /// <param name="preferredName">Name configured in the launcher or remembered from last play.</param>
+        /// <param name="requirePreferred">Whether the player explicitly configured a character.</param>
+        /// <returns>The slot to play, or -1, and whether any slots are occupied.</returns>
         internal static (int Index, bool HasCharacters) FindAutomaticCharacter(
             string[] characters, string preferredName, bool requirePreferred)
         {
+            ReadOnlySpan<char> preferred = preferredName.AsSpan().Trim();
             int firstOccupied = -1;
             int caseInsensitiveMatch = -1;
+            int abbreviationMatch = -1;
+            int abbreviationCount = 0;
             for (int i = 0; i < (characters?.Length ?? 0); i++)
             {
-                string name = characters[i];
-                if (string.IsNullOrEmpty(name))
+                ReadOnlySpan<char> name = characters[i].AsSpan().Trim();
+                if (name.IsEmpty)
                     continue;
 
                 if (firstOccupied < 0)
                     firstOccupied = i;
-                if (string.Equals(name, preferredName, StringComparison.Ordinal))
+                if (name.SequenceEqual(preferred))
                     return (i, true);
-                if (caseInsensitiveMatch < 0 && string.Equals(name, preferredName, StringComparison.OrdinalIgnoreCase))
+                if (caseInsensitiveMatch < 0 && name.Equals(preferred, StringComparison.OrdinalIgnoreCase))
                     caseInsensitiveMatch = i;
+                if (requirePreferred && !preferred.IsEmpty && name.Length > preferred.Length
+                    && char.IsWhiteSpace(name[preferred.Length]) && name.StartsWith(preferred, StringComparison.OrdinalIgnoreCase))
+                {
+                    abbreviationMatch = i;
+                    abbreviationCount++;
+                }
             }
 
-            return (caseInsensitiveMatch >= 0 ? caseInsensitiveMatch : requirePreferred ? -1 : firstOccupied, firstOccupied >= 0);
+            if (caseInsensitiveMatch >= 0)
+                return (caseInsensitiveMatch, true);
+            if (abbreviationCount == 1)
+                return (abbreviationMatch, true);
+
+            return (requirePreferred ? -1 : firstOccupied, firstOccupied >= 0);
         }
 
         public override void Dispose()

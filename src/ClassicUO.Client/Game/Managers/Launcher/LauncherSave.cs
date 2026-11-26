@@ -48,7 +48,7 @@ internal sealed class LauncherSave
     /// <summary>Keep the launcher open after Play, for starting more characters.</summary>
     public bool KeepOpenAfterPlay { get; set; } = true;
 
-    /// <summary>Open each game window's Assistant as soon as that window starts.</summary>
+    /// <summary>Open each game's Assistant automatically. Games started with Play wait until world entry.</summary>
     public bool OpenAssistantWithClient { get; set; } = true;
 
     #endregion
