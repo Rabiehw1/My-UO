@@ -10,7 +10,7 @@ using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Trainer;
 
-/// <summary>The Trainer page: tick skills, grouped by class, and train them in turn with built-in scripts.</summary>
+/// <summary>The Trainer page: tick skills, grouped by class, and train them in turn.</summary>
 internal static class TrainerTabContent
 {
     #region Public accessors
