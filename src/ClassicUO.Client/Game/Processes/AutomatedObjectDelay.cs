@@ -69,6 +69,9 @@ public static class AutomatedObjectDelay
                 GameActions.Print($"Moved item, starting timer for next move test.");
             }, (aqi) =>
             {
+                if (aqi.Canceled)
+                    return;
+
                 _delay -= STEP_CHANGE;
 
                 if (_delay <= 0)

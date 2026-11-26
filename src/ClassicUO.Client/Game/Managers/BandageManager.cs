@@ -219,6 +219,7 @@ namespace ClassicUO.Game.Managers
         /// <see cref="OnMobileHpChanged" />, then re-checks one pending heal for others.
         /// </summary>
         internal bool IsBandaging => Time.Ticks < _bandageInProgressUntil || IsBandagingBuffActive;
+        internal bool IsWaitingForHealingSpellCursor => _healing.IsWaitingForSpellCursor;
 
         internal long GetHealingCooldownRemaining(Profile profile, HealingMethod method, long now) =>
             _healing.GetCooldownRemaining(profile, method, now);
@@ -437,7 +438,7 @@ namespace ClassicUO.Game.Managers
         {
             if (mobile == null) return;
 
-            // Another feature (e.g. auto skinning) is waiting for its target cursor; a bandage now would take it.
+            // Leave any explicit auto-target waiting for its own cursor.
             if (IsReadyToBandage() && !TargetManager.NextAutoTarget.IsSet)
             {
                 // A heal is being attempted, so refresh the retry deadline for this mobile.
@@ -453,18 +454,26 @@ namespace ClassicUO.Game.Managers
         /// <returns>True if something was sent; false when no bandage was found.</returns>
         private bool SendBandage(Mobile mobile)
         {
-            bool isPlayer = mobile == World.Instance.Player;
+            World world = World.Instance;
+            bool isPlayer = mobile == world.Player;
+            bool useSelfCommand = isPlayer && UseSelfCommand && !string.IsNullOrWhiteSpace(SelfCommand);
+            bool expectsTarget = useSelfCommand
+                ? SelfCommandExpectTarget
+                : GameActions.UsesBandageTargetCursor(ProfileManager.CurrentProfile, Client.Game.UO.Version);
+            if (expectsTarget && (AutoSkinningManager.Instance.IsWaitingForCursor
+                || TargetManager.NextAutoTarget.IsSet || world.TargetManager.IsTargeting))
+                return false;
 
             // Some servers support commands (e.g. .bandage / .bandageself) that heal you directly.
-            if (isPlayer && UseSelfCommand && !string.IsNullOrWhiteSpace(SelfCommand))
+            if (useSelfCommand)
             {
                 // If the command opens a target cursor, auto-target self before it arrives
-                if (SelfCommandExpectTarget)
+                if (expectsTarget)
                     TargetManager.SetAutoTarget(mobile.Serial, TargetType.Beneficial, matchAnyTargetType: true, AUTO_TARGET_TIMEOUT_MS);
 
                 GameActions.Say(SelfCommand);
             }
-            else if (!GameActions.UseBandageOnTarget(World.Instance, mobile.Serial, AUTO_TARGET_TIMEOUT_MS))
+            else if (!GameActions.UseBandageOnTarget(world, mobile.Serial, AUTO_TARGET_TIMEOUT_MS))
             {
                 return false;
             }
@@ -480,9 +489,6 @@ namespace ClassicUO.Game.Managers
 
             // Even in buff mode, prevent consumables from starting while the buff or cursor is in transit.
             long estimatedDuration = CheckForBuff && !UseDexFormula ? HealDelayMs : interval;
-            bool expectsTarget = isPlayer && UseSelfCommand && !string.IsNullOrWhiteSpace(SelfCommand)
-                ? SelfCommandExpectTarget
-                : GameActions.UsesBandageTargetCursor(ProfileManager.CurrentProfile, Client.Game.UO.Version);
             _bandageInProgressUntil = now + Math.Max(0, estimatedDuration) + (expectsTarget ? AUTO_TARGET_TIMEOUT_MS : 0);
 
             // Bandaging is an item use too: give queued loot and moves their usual gap after it.

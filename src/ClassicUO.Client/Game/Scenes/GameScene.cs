@@ -86,6 +86,7 @@ namespace ClassicUO.Game.Scenes
         private Rectangle _rectangleObj = Rectangle.Empty,
             _rectanglePlayer;
         private long _timePing;
+        private bool _automaticCorpseOpensWereBlocked;
 
         private uint _timeToPlaceMultiInHouseCustomization;
         private const int MAX_TEXTURE_SIZE = 8192;
@@ -1161,14 +1162,14 @@ namespace ClassicUO.Game.Scenes
             Profiler.ExitContext("WorldUpdate");
 
             Profiler.EnterContext("Actions");
-            if (
-                (currentProfile.CorpseOpenOptions == 1 || currentProfile.CorpseOpenOptions == 3)
-                    && _world.TargetManager.IsTargeting
-                || (currentProfile.CorpseOpenOptions == 2 || currentProfile.CorpseOpenOptions == 3)
-                    && _world.Player.IsHidden
-            )
+            bool automaticCorpseOpensBlocked = _world.Player.IsAutomaticCorpseOpenBlocked;
+            if (_automaticCorpseOpensWereBlocked != automaticCorpseOpensBlocked)
             {
-                ObjectActionQueue.Instance.ClearByPriority(ActionPriority.OpenCorpse);
+                _automaticCorpseOpensWereBlocked = automaticCorpseOpensBlocked;
+                if (automaticCorpseOpensBlocked)
+                    ObjectActionQueue.Instance.CancelAutomaticCorpseOpens();
+                else
+                    _world.Player.TryOpenCorpses();
             }
 
             WeaponSwitch.Update(_world);
@@ -1180,6 +1181,7 @@ namespace ClassicUO.Game.Scenes
             SupportAgentManager.Instance.Update();
             LegionScripting.ScriptSequence.Update();
             ShardSpellCaster.Instance.Update();
+            AutoSkinningManager.Instance.Update(_world);
             EnhancedMapManager.Instance.Update();
             GridHighlightData.ProcessQueue(_world);
             Profiler.ExitContext("Actions");

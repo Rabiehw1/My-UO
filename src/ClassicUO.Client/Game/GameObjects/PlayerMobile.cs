@@ -67,6 +67,7 @@ namespace ClassicUO.Game.GameObjects
 
         public readonly HashSet<uint> AutoOpenedCorpses = new HashSet<uint>();
         public readonly HashSet<uint> ManualOpenedCorpses = new HashSet<uint>();
+        internal readonly HashSet<uint> QueuedCorpseOpens = new HashSet<uint>();
 
         public short ColdResistance;
         public short DamageIncrease;
@@ -363,52 +364,33 @@ namespace ClassicUO.Game.GameObjects
             EventSink.InvokeOnPositionChanged(this, new PositionChangedArgs(new Microsoft.Xna.Framework.Vector3(X, Y, Z)));
         }
 
+        internal bool IsAutomaticCorpseOpenBlocked => ProfileManager.CurrentProfile?.CorpseOpenOptions switch
+        {
+            1 => World.TargetManager.IsTargeting,
+            2 => IsHidden,
+            3 => World.TargetManager.IsTargeting || IsHidden,
+            _ => false
+        };
+
         public void TryOpenCorpses()
         {
-            // Early return if both auto-open settings are disabled
-            if (!ProfileManager.CurrentProfile.AutoOpenCorpses && !ProfileManager.CurrentProfile.AutoOpenOwnCorpse) return;
+            if (ProfileManager.CurrentProfile is not { } profile || !profile.AutoOpenCorpses && !profile.AutoOpenOwnCorpse)
+                return;
 
-            // Use the optimized corpse collection instead of iterating all items
-            Item[] corpses = World.GetCorpseSnapshot();
-
-            foreach (Item item in corpses)
+            foreach (Item item in World.GetCorpseSnapshot())
             {
-                if (!item.IsDestroyed && item.Distance <= ProfileManager.CurrentProfile.AutoOpenCorpseRange && !AutoOpenedCorpses.Contains(item.Serial))
-                {
-                    // Don't reopen corpses the player has already opened when the per-server option is on.
-                    if (ProfileManager.ServerSettings is { DoNotReopenCorpses: true }
-                        && CorpseManager.IsCorpseOpened(item.Serial))
-                        continue;
+                if (item.IsDestroyed || item.Distance > profile.AutoOpenCorpseRange
+                    || AutoOpenedCorpses.Contains(item.Serial) || QueuedCorpseOpens.Contains(item.Serial)
+                    || ProfileManager.ServerSettings is { DoNotReopenCorpses: true } && CorpseManager.IsCorpseOpened(item.Serial))
+                    continue;
 
-                    // Check if this is the player's own corpse
-                    bool isOwnCorpse = !string.IsNullOrEmpty(item.Name) &&
-                                       !string.IsNullOrEmpty(Name) &&
-                                       item.Name.Equals($"the remains of {Name}", System.StringComparison.OrdinalIgnoreCase);
+                bool isOwnCorpse = !string.IsNullOrEmpty(item.Name) && !string.IsNullOrEmpty(Name)
+                    && item.Name.Equals($"the remains of {Name}", System.StringComparison.OrdinalIgnoreCase);
+                bool explicitOwnCorpse = isOwnCorpse && profile.AutoOpenOwnCorpse;
+                if (!explicitOwnCorpse && (!profile.AutoOpenCorpses || IsAutomaticCorpseOpenBlocked))
+                    continue;
 
-                    // Open if it's own corpse and AutoOpenOwnCorpse is enabled, or if AutoOpenCorpses is enabled
-                    bool shouldOpen = (isOwnCorpse && ProfileManager.CurrentProfile.AutoOpenOwnCorpse) ||
-                                      ProfileManager.CurrentProfile.AutoOpenCorpses;
-
-                    if (shouldOpen)
-                    {
-                        // Check targeting and hidden restrictions only for auto open corpses (not own corpse)
-                        if (!isOwnCorpse || !ProfileManager.CurrentProfile.AutoOpenOwnCorpse)
-                        {
-                            if ((ProfileManager.CurrentProfile.CorpseOpenOptions == 1 || ProfileManager.CurrentProfile.CorpseOpenOptions == 3) && World.TargetManager.IsTargeting)
-                            {
-                                continue;
-                            }
-
-                            if ((ProfileManager.CurrentProfile.CorpseOpenOptions == 2 || ProfileManager.CurrentProfile.CorpseOpenOptions == 3) && IsHidden)
-                            {
-                                continue;
-                            }
-                        }
-
-                        AutoOpenedCorpses.Add(item.Serial);
-                        GameActions.QueueOpenCorpse(item.Serial, isOwnCorpse);
-                    }
-                }
+                GameActions.QueueOpenCorpse(item.Serial, isOwnCorpse, automaticallyQueued: true);
             }
         }
 

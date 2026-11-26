@@ -26,6 +26,10 @@ internal sealed class HealingAssistantManager
     private bool _waitingForSpellBook;
     public long NextActionTime { get; private set; }
 
+    internal bool IsWaitingForSpellCursor =>
+        (_spellTargetDeadline != 0 && Time.Ticks <= _spellTargetDeadline)
+        || (_waitingForSpellBook && ShardSpellCaster.Instance.IsCasting);
+
     public bool TryHeal(World world, PlayerMobile player, Profile profile, bool needsBandage, Func<bool> tryBandage)
     {
         long now = Time.Ticks;
@@ -47,7 +51,8 @@ internal sealed class HealingAssistantManager
         bool CastHeal(HealingMethod method)
         {
             var caster = ShardSpellCaster.Instance;
-            if (now < NextActionTime || player.IsCasting || world.TargetManager.IsTargeting || caster.IsCasting)
+            if (now < NextActionTime || player.IsCasting || world.TargetManager.IsTargeting || caster.IsCasting
+                || AutoSkinningManager.Instance.IsWaitingForCursor || TargetManager.NextAutoTarget.IsSet)
                 return false;
 
             if (method is HealingMethod.HealSpell or HealingMethod.GreaterHealSpell)
@@ -114,7 +119,7 @@ internal sealed class HealingAssistantManager
         }
 
         var target = world.TargetManager;
-        if (!target.IsTargeting)
+        if (!target.IsTargeting || AutoSkinningManager.Instance.IsWaitingForCursor)
             return true;
 
         _spellTargetDeadline = 0;

@@ -3,6 +3,7 @@ using ClassicUO.Game;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Structs;
 using ClassicUO.Game.UI;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Utility.Logging;
@@ -19,12 +20,14 @@ internal static class ItemHelpers
         ushort x,
         ushort y,
         ushort hue,
-        uint containerSerial
+        uint containerSerial,
+        bool incrementalUpdate = false
     )
     {
-        if (Client.Game.UO.GameCursor.ItemHold.Serial == serial)
-            if (Client.Game.UO.GameCursor.ItemHold.Dropped)
-                Client.Game.UO.GameCursor.ItemHold.Clear();
+        var hold = Client.Game.UO.GameCursor.ItemHold;
+        bool observeCarve = incrementalUpdate && world.Player?.Backpack?.Serial == containerSerial;
+        if (hold.Serial == serial && hold.Dropped)
+            hold.Clear();
 
         Entity container = world.Get(containerSerial);
 
@@ -37,6 +40,9 @@ internal static class ItemHelpers
         }
 
         Item item = world.Items.Get(serial);
+        ItemMoveSource? previous = observeCarve && item is { IsDestroyed: false }
+            ? ItemMoveSource.Capture(item) with { Graphic = item.OriginalGraphic, Hue = item.OriginalHue ?? item.Hue }
+            : null;
 
         if (SerialHelper.IsMobile(serial))
         {
@@ -70,6 +76,8 @@ internal static class ItemHelpers
         }
 
         container.PushToBack(item);
+        if (observeCarve)
+            AutoSkinningManager.Instance.ObserveBackpackUpdate(world, item, previous);
         ObjectActionQueue.Instance.ConfirmArrived(serial, containerSerial);
 
         // Fire event after item is fully configured

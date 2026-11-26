@@ -24,6 +24,7 @@ namespace ClassicUO.Game
         public uint Container { get; private set; }
         public uint Serial { get; private set; }
         public ushort Graphic { get; private set; }
+        public ushort OriginalGraphic { get; private set; }
         public ushort DisplayedGraphic { get; private set; }
         public bool IsGumpTexture { get; set; }
         public ushort Hue { get; private set; }
@@ -63,6 +64,7 @@ namespace ClassicUO.Game
             Enabled = true;
             Serial = item.Serial;
             Graphic = item.Graphic;
+            OriginalGraphic = item.OriginalGraphic;
             DisplayedGraphic = item.IsCoin && amount == 1 ? item.Graphic : item.DisplayedGraphic;
             X = item.X;
             Y = item.Y;
@@ -93,7 +95,7 @@ namespace ClassicUO.Game
             Y = 0xFFFF;
             Z = 0;
             Container = 0;
-            DisplayedGraphic = Graphic = 0xFFFF;
+            DisplayedGraphic = Graphic = OriginalGraphic = 0xFFFF;
             Hue = 0xFFFF;
             OnGround = false;
             Amount = 0;

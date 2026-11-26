@@ -27,6 +27,6 @@ internal static class UpdateContainedItem
             uint containerSerial = p.ReadUInt32BE();
             ushort hue = p.ReadUInt16BE();
 
-            Helpers.ItemHelpers.AddItemToContainer(world, serial, graphic, amount, x, y, hue, containerSerial);
+            Helpers.ItemHelpers.AddItemToContainer(world, serial, graphic, amount, x, y, hue, containerSerial, incrementalUpdate: true);
     }
 }

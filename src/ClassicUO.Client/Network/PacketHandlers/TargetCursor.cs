@@ -15,7 +15,7 @@ internal static class TargetCursor
 
         world.TargetManager.SetTargeting(cursorTarget, cursorId, targetType);
 
-        bool partyTarget = world.Party.PartyHealTimer < Time.Ticks && world.Party.PartyHealTarget != 0;
+        bool partyTarget = world.Party.HasPendingHealCursor && world.Party.PartyHealTimer < Time.Ticks;
         bool autoTarget = TargetManager.NextAutoTarget.IsSet;
         if (partyTarget)
         {
@@ -26,7 +26,8 @@ internal static class TargetCursor
         else if (autoTarget && TargetManager.NextAutoTarget.Matches(targetType))
             world.TargetManager.Target(TargetManager.NextAutoTarget.TargetSerial);
 
-        SupportAgentManager.Instance.OnPetOrderCursor(cursorTarget, targetType, partyTarget || autoTarget);
+        bool skinTarget = AutoSkinningManager.Instance.TryHandleCursor(world, cursorTarget, targetType, partyTarget || autoTarget);
+        SupportAgentManager.Instance.OnPetOrderCursor(cursorTarget, targetType, partyTarget || autoTarget || skinTarget);
 
         // Always clear after any target cursor (no queuing)
         TargetManager.NextAutoTarget.Clear();

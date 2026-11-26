@@ -84,11 +84,13 @@ public sealed class SupportAgentSaveTests
     {
         var order = new RangerPetOrder();
         order.TryBegin(1, 2, 100).Should().BeTrue();
+        order.IsWaitingForCursor(101).Should().BeTrue();
         order.TryBegin(1, 3, 200).Should().BeFalse();
         order.TakeCursor(300).Should().BeTrue();
         order.TakeCursor(350).Should().BeFalse();
         order.TryBegin(1, 2, 400).Should().BeFalse();
         order.TryBegin(1, 3, 400).Should().BeTrue();
+        order.IsWaitingForCursor(2300).Should().BeFalse();
         order.TakeCursor(2300).Should().BeFalse();
         order.TryBegin(1, 3, 2500).Should().BeFalse();
         order.TryBegin(1, 4, 2500).Should().BeTrue();

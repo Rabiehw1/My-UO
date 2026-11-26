@@ -14,6 +14,7 @@ namespace ClassicUO.Game.Managers
         public bool InParty => Leader != 0;
 
         private const int PARTY_SIZE = 10;
+        private const int HealCursorTimeoutMs = 5_000;
 
         private readonly World _world;
 
@@ -28,6 +29,9 @@ namespace ClassicUO.Game.Managers
 
         public long PartyHealTimer { get; set; }
         public uint PartyHealTarget { get; set; }
+
+        /// <summary>Bounds the quick-heal cursor wait when a spell fails without returning a cursor.</summary>
+        internal bool HasPendingHealCursor => PartyHealTarget != 0 && Time.Ticks < PartyHealTimer + HealCursorTimeoutMs;
 
         public void ParsePacket(ref StackDataReader p)
         {

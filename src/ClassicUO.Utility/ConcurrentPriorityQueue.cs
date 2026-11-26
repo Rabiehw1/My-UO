@@ -27,18 +27,76 @@ public class ConcurrentPriorityQueue<TElement, TPriority>
     public bool TryDequeue(out TElement element, out TPriority priority, out long sequence)
     {
         lock (_lock)
+            return TryDequeueCore(out element, out priority, out sequence);
+    }
+
+    /// <summary>
+    /// Let the next priority group go first when the head group is yielding and work from
+    /// the other group is available. The yielded items keep their original FIFO order.
+    /// </summary>
+    protected bool TryDequeueYielding(TPriority yieldPriority, Predicate<TPriority> mayTakeTurn,
+        out TElement element, out TPriority priority, out long sequence)
+    {
+        lock (_lock)
         {
-            bool res = _queue.TryDequeue(out element, out (TPriority Priority, long Sequence) compositePriority);
-            priority = compositePriority.Priority;
-            sequence = compositePriority.Sequence;
+            var comparer = EqualityComparer<TPriority>.Default;
+            if (!_queue.TryPeek(out _, out var head) || !comparer.Equals(head.Priority, yieldPriority))
+                return TryDequeueCore(out element, out priority, out sequence);
 
-            _isEmpty = _queue.Count == 0;
+            bool hasOtherWork = false;
+            foreach (var (_, queuedPriority) in _queue.UnorderedItems)
+            {
+                if (mayTakeTurn(queuedPriority.Priority))
+                {
+                    hasOtherWork = true;
+                    break;
+                }
+            }
+            if (!hasOtherWork)
+                return TryDequeueCore(out element, out priority, out sequence);
 
-            if(_isEmpty)
-                _sequence = 0; //reset to avoid potential overrun if client is running for a long time
+            var yielded = new List<(TElement Element, (TPriority Priority, long Sequence) Priority)>();
+            while (_queue.TryPeek(out var next, out var nextPriority) && comparer.Equals(nextPriority.Priority, yieldPriority))
+            {
+                _queue.Dequeue();
+                yielded.Add((next, nextPriority));
+            }
 
-            return res;
+            // The yielded group and its alternate are adjacent. If another group is ahead
+            // of the alternate, retain ordinary ordering.
+            bool tookAlternate = _queue.TryPeek(out _, out var alternate) && mayTakeTurn(alternate.Priority);
+            if (tookAlternate)
+                _queue.TryDequeue(out element, out alternate);
+            else
+            {
+                (element, alternate) = yielded[0];
+                yielded.RemoveAt(0);
+            }
+
+            foreach (var (waiting, originalPriority) in yielded)
+                _queue.Enqueue(waiting, originalPriority);
+
+            priority = alternate.Priority;
+            sequence = alternate.Sequence;
+            FinishDequeue();
+            return true;
         }
+    }
+
+    private bool TryDequeueCore(out TElement element, out TPriority priority, out long sequence)
+    {
+        bool result = _queue.TryDequeue(out element, out var compositePriority);
+        priority = compositePriority.Priority;
+        sequence = compositePriority.Sequence;
+        FinishDequeue();
+        return result;
+    }
+
+    private void FinishDequeue()
+    {
+        _isEmpty = _queue.Count == 0;
+        if (_isEmpty)
+            _sequence = 0; //reset to avoid potential overrun if client is running for a long time
     }
 
     /// <summary>
@@ -54,6 +112,9 @@ public class ConcurrentPriorityQueue<TElement, TPriority>
     /// </summary>
     /// <param name="predicate">Return true to remove the item.</param>
     public void RemoveWhere(Predicate<TElement> predicate) => Retain((element, _) => !predicate(element));
+
+    protected void RemoveWhereWithPriority(Func<TElement, TPriority, bool> predicate) =>
+        Retain((element, priority) => !predicate(element, priority));
 
     private void Retain(Func<TElement, TPriority, bool> keep)
     {

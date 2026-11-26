@@ -624,24 +624,48 @@ internal static class GameActions
         Socket.Send_AttackRequest(serial);
     }
 
-    internal static void QueueOpenCorpse(uint serial, bool ownCorpse = false) =>
-        ObjectActionQueue.Instance.Enqueue(
-            new ObjectActionQueueItem(() =>
-            {
-                if (serial == 0)
-                    return;
+    internal static void QueueOpenCorpse(uint serial, bool ownCorpse = false, bool automaticallyQueued = false)
+    {
+        World world = World.Instance;
+        PlayerMobile player = world?.Player;
+        Item corpse = world?.Items?.Get(serial);
+        if (player == null || corpse is not { IsCorpse: true, IsDestroyed: false })
+            return;
 
-                Item item = World.Instance?.Items?.Get(serial);
-                if (item != null &&
-                    !item.IsDestroyed &&
-                    item.IsCorpse &&
-                    item.Distance <= ProfileManager.CurrentProfile.AutoOpenCorpseRange
-                   )
-                    ObjectActionQueueItem.DoubleClick(serial).Action(); // Using the 'Action' here to remain DRY.
-            }),
-            ownCorpse ? ActionPriority.Immediate :
-                World.Instance.Player.ManualOpenedCorpses.Contains(serial) ? ActionPriority.ManualUseItem : ActionPriority.OpenCorpse
-        );
+        bool manual = player.ManualOpenedCorpses.Contains(serial);
+        bool autoPriority = !ownCorpse && !manual;
+        if (autoPriority && player.IsAutomaticCorpseOpenBlocked || !player.QueuedCorpseOpens.Add(serial))
+            return;
+
+        ActionPriority priority = ownCorpse ? ActionPriority.Immediate
+            : manual ? ActionPriority.ManualUseItem
+            : AutoSkinningManager.Instance.CanPrioritizeOpen(corpse) ? ActionPriority.OpenCorpseForSkinning
+            : ActionPriority.OpenCorpse;
+        bool opened = false;
+        ObjectActionQueue.Instance.Enqueue(
+            new ObjectActionQueueItem(Open, _ => player.QueuedCorpseOpens.Remove(serial))
+            {
+                TriggersGlobalCooldown = () => opened
+            }, priority);
+
+        void Open()
+        {
+            if (!ReferenceEquals(World.Instance, world) || !ReferenceEquals(world.Player, player)
+                || ProfileManager.CurrentProfile is not { } profile
+                || World.Instance.Items.Get(serial) is not { IsCorpse: true, IsDestroyed: false } current
+                || current.Distance > profile.AutoOpenCorpseRange
+                || autoPriority && player.IsAutomaticCorpseOpenBlocked
+                || automaticallyQueued && !profile.AutoOpenCorpses && !(ownCorpse && profile.AutoOpenOwnCorpse)
+                || ProfileManager.ServerSettings is { DoNotReopenCorpses: true } && CorpseManager.IsCorpseOpened(serial))
+                return;
+
+            // This call is already inside the action queue.
+            DoubleClick(world, serial, ignoreQueue: true);
+            opened = true;
+            if (automaticallyQueued)
+                player.AutoOpenedCorpses.Add(serial);
+        }
+    }
 
     internal static void DoubleClickQueued(uint serial) => ObjectActionQueue.Instance.Enqueue(ObjectActionQueueItem.DoubleClick(serial), ActionPriority.UseItem);
 
@@ -991,6 +1015,8 @@ internal static class GameActions
                 ObjectActionQueue.Instance.Enqueue(new MoveRequest(serial, container, (ushort)amount, x, y, z).ToObjectActionQueueItem(), ActionPriority.ManualMoveItem);
                 return;
             }
+
+            AutoSkinningManager.Instance.RememberBackpackDrop(World.Instance, serial, container, Client.Game.UO.GameCursor.ItemHold);
 
             if (Client.Game.UO.Version >= ClientVersion.CV_6017)
             {

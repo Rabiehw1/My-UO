@@ -57,6 +57,7 @@ namespace ClassicUO.Game.Managers
         }
 
         internal static void ClearHeldKey() => _held = false;
+        internal static bool IsWaitingForCursor => _machine.IsWaitingForCursor;
 
         public static void Update()
         {
@@ -70,7 +71,7 @@ namespace ClassicUO.Game.Managers
                 held = entry.IsPressed();
 
             _machine.Tick(_env, held && Client.Game.IsActive && !Support.SupportAgentManager.Instance.IsUsingAbility
-                && !BandageManager.Instance.IsBandaging);
+                && !BandageManager.Instance.IsBandaging && !AutoSkinningManager.Instance.IsWaitingForCursor);
         }
 
         /// <summary>Called from GameSceneInputHandler.OnKeyDown (already focus-gated).</summary>
@@ -174,6 +175,9 @@ namespace ClassicUO.Game.Managers
             {
                 get
                 {
+                    if (AutoSkinningManager.Instance.IsWaitingForCursor)
+                        return false;
+
                     // Prefer the spell-visual detector (it respects cast timing), but fall back to
                     // the raw target-cursor flag so self-heal also works when Spell Indicators are
                     // disabled. Only consulted right after our own cast, so the raw flag is safe.

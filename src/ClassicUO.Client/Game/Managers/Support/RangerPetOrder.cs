@@ -9,10 +9,11 @@ internal sealed class RangerPetOrder
 
     internal uint Pet { get; private set; }
     internal uint Enemy { get; private set; }
+    internal bool IsWaitingForCursor(long now) => now < _deadline;
 
     internal bool TryBegin(uint pet, uint enemy, long now)
     {
-        if (now < _deadline || (Pet == pet && Enemy == enemy))
+        if (IsWaitingForCursor(now) || (Pet == pet && Enemy == enemy))
             return false;
 
         Pet = pet;
@@ -23,7 +24,7 @@ internal sealed class RangerPetOrder
 
     internal bool TakeCursor(long now)
     {
-        bool waiting = now < _deadline;
+        bool waiting = IsWaitingForCursor(now);
         _deadline = 0;
         return waiting;
     }

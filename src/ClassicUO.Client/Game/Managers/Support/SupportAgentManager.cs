@@ -78,6 +78,7 @@ internal sealed class SupportAgentManager : IDisposable
     private long _warModeRetryAt;
 
     internal bool IsUsingAbility => _wasEnabled && Settings.Enabled && (Time.Ticks < _castUntil || _runner.IsWaiting);
+    internal bool IsWaitingForPetCursor => _petOrder.IsWaitingForCursor(Time.Ticks);
 
     private long _followOverrideUntil;
     private uint _currentEnemy;
@@ -488,9 +489,15 @@ internal sealed class SupportAgentManager : IDisposable
             || (role != SupportRole.Emergency && now < _abilityReadyAt))
             return false;
 
+        bool waitingForSkinCursor = AutoSkinningManager.Instance.IsWaitingForCursor;
         foreach (SupportAbility ability in classSettings.Abilities)
         {
             if (!ability.Enabled || ability.Role != role)
+                continue;
+
+            // Direct bandage packets do not open a cursor, so a needed heal can still proceed.
+            if (waitingForSkinCursor && (ability.Action != SupportActionType.Bandage
+                || GameActions.UsesBandageTargetCursor(ProfileManager.CurrentProfile, Client.Game.UO.Version)))
                 continue;
 
             if (!_runner.IsOffCooldown(ability, now))
@@ -641,7 +648,7 @@ internal sealed class SupportAgentManager : IDisposable
 
     private void OrderPetAttack(PlayerMobile player, Mobile enemy, long now)
     {
-        if (_world.TargetManager.IsTargeting || TargetManager.NextAutoTarget.IsSet
+        if (_world.TargetManager.IsTargeting || TargetManager.NextAutoTarget.IsSet || AutoSkinningManager.Instance.IsWaitingForCursor
             || player.IsCasting || ShardSpellCaster.Instance.IsCasting || BandageManager.Instance.IsBandaging
             || Client.Game.UO.GameCursor.ItemHold.Enabled || enemy.Serial == Settings.RangerPetSerial
             || RangerPet is not { } pet || string.IsNullOrWhiteSpace(pet.Name)

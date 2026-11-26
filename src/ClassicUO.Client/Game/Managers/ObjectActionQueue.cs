@@ -20,10 +20,22 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     private const long PENDING_MOVE_GIVE_UP_MS = 5000;
     private long _moveStarted;
     private bool _reportedTimeout;
+    private bool _yieldToLoot;
 
     public bool HasPendingMove => _pendingMove.HasValue;
 
-    private ObjectActionQueue() { }
+    internal ObjectActionQueue() { }
+
+    public new void Clear()
+    {
+        CancelActions(static _ => true);
+        _yieldToLoot = false;
+    }
+
+    public new void ClearByPriority(ActionPriority priority) => CancelActions((_, queuedPriority) => queuedPriority == priority);
+
+    internal void CancelAutomaticCorpseOpens() => CancelActions(static (_, priority) =>
+        priority is ActionPriority.OpenCorpse or ActionPriority.OpenCorpseForSkinning);
 
     /// <summary>
     /// Cancel every queued action that moves <paramref name="serial"/>.
@@ -39,16 +51,19 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
         CancelActions(item => item.Serial == serial);
     }
 
-    internal void CancelActions(Predicate<ObjectActionQueueItem> matches)
+    internal void CancelActions(Predicate<ObjectActionQueueItem> matches) => CancelActions((item, _) => matches(item));
+
+    private void CancelActions(Func<ObjectActionQueueItem, ActionPriority, bool> matches)
     {
         List<ObjectActionQueueItem> canceled = null;
 
-        RemoveWhere(item =>
+        RemoveWhereWithPriority((item, priority) =>
         {
-            if (!matches(item)) return false;
+            if (!matches(item, priority)) return false;
 
-            (canceled ??= new List<ObjectActionQueueItem>()).Add(item);
-
+            item.SetCanceled();
+            if (item.AfterInvoked != null)
+                (canceled ??= new List<ObjectActionQueueItem>()).Add(item);
             return true;
         });
 
@@ -136,7 +151,7 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
 
         if (IsEmpty || GlobalActionCooldown.IsOnCooldown) return; //Quick bool return if empty to avoid checking the queue when unnecessary
 
-        while (TryDequeue(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence))
+        while (TryDequeueScheduled(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence))
         {
             if (item.Canceled)
             {
@@ -144,7 +159,8 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
                 continue;
             }
 
-            if (priority >= ActionPriority.UnequipItem && (HasPendingMove || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.GameCursor.ItemHold.Dropped))
+            if (priority >= ActionPriority.UnequipItem && (HasPendingMove || Client.Game.UO.GameCursor.ItemHold.Enabled || Client.Game.UO.GameCursor.ItemHold.Dropped)
+                || priority >= ActionPriority.MoveItem && AutoSkinningManager.Instance.IsWaitingForCursor)
             {
                 Enqueue(item,  priority, sequence); //Return to queue to retry again when not holding an item
                 return;
@@ -160,10 +176,29 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
             if (!(item.TriggersGlobalCooldown?.Invoke() ?? true))
                 continue;
 
+            RecordExecutedPriority(priority);
             GlobalActionCooldown.BeginCooldown();
             break;
         }
     }
+
+    internal bool TryDequeueScheduled(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence) =>
+        _yieldToLoot
+            ? TryDequeueYielding(ActionPriority.OpenCorpseForSkinning, IsLoot, out item, out priority, out sequence)
+            : TryDequeue(out item, out priority, out sequence);
+
+    internal void RecordExecutedPriority(ActionPriority priority)
+    {
+        // A real promoted open lets the next pending loot move run before more opens.
+        // Canceled actions and no-ops do not take anyone's turn.
+        if (priority == ActionPriority.OpenCorpseForSkinning)
+            _yieldToLoot = true;
+        else if (IsLoot(priority))
+            _yieldToLoot = false;
+    }
+
+    private static bool IsLoot(ActionPriority priority) =>
+        priority is >= ActionPriority.LootItemHigh and <= ActionPriority.LootItem;
 }
 
 /// <summary>
@@ -236,7 +271,9 @@ public enum ActionPriority
     UnequipItem, //Unequip item to make room for equipping - must run before EquipItem
     EquipItem,
     ManualMoveItem, //A move the player initiated - must run before queued/automated moves
+    AutoSkinning,  //A knife use that is ready to reserve the target cursor.
     MoveItem,
+    OpenCorpseForSkinning, //Shares turns with automatic loot moves.
     LootItemHigh,   //Auto-loot: High priority items (still lower than manual moves)
     LootItemMedium, //Auto-loot: Normal priority items
     LootItem,       //Auto-loot: Low priority items - lowest overall priority

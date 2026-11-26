@@ -58,6 +58,8 @@ namespace ClassicUO.Game.Managers
         private long _castIssuedAt;    // env.Now when we issued the in-flight cast (to detect failures since)
         private bool _lastCastWasCure;
 
+        internal bool IsWaitingForCursor => _state == State.WaitingForCursor;
+
         public void Tick(ISelfHealEnv env, bool held)
         {
             if (!env.CanAct)

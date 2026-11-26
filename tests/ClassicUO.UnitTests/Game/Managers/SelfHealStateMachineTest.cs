@@ -111,9 +111,11 @@ namespace ClassicUO.UnitTests.Game.Managers
 
             sm.Tick(env, held: true);            // cast, WaitingForCursor
             sm.Tick(env, held: false);           // released before cursor: still waiting
+            sm.IsWaitingForCursor.Should().BeTrue();
             env.IsTargetingAfterCast = true;
             sm.Tick(env, held: false);           // cursor up -> target self (finish in-flight)
 
+            sm.IsWaitingForCursor.Should().BeFalse();
             env.TargetSelfCount.Should().Be(1);
             env.Casts.Should().HaveCount(1);     // no new cast after release
         }
