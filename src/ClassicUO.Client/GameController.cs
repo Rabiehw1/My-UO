@@ -545,6 +545,10 @@ namespace ClassicUO
 
         protected override void Update(GameTime gameTime)
         {
+            // FNA shows its host window when it registers the game, after Initialize has hidden it.
+            if (ClientLauncher.IsLauncherOnly && (SDL_GetWindowFlags(Window.Handle) & SDL_WindowFlags.SDL_WINDOW_HIDDEN) == 0)
+                SDL_HideWindow(Window.Handle);
+
             Profiler.EnterContext("Update");
 
             Time.Ticks = (uint)gameTime.TotalGameTime.TotalMilliseconds;
