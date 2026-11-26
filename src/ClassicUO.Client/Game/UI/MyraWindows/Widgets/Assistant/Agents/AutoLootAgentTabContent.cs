@@ -95,6 +95,36 @@ public static class AutoLootAgentTabContent
         string skinGraphicsLabel = TazLang.Get("autoskinning_graphics", "Knife graphic IDs:");
         skinGraphicsBox.TextChangedByUser += (_, _) => profile.AutoSkinningKnifeGraphics = skinGraphicsBox.Text;
 
+        // Carved items bag: carved hides, meat and so on are moved there from the backpack.
+        var carvedBagLabel = new MyraLabel(CarvedBagText(profile), MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center };
+        var setCarvedBag = new MyraButton(TazLang.Get("autoskinning_setbag"), () =>
+        {
+            interaction.SelectTarget(targeted =>
+            {
+                if (targeted is Item { ItemData.IsContainer: true } bag)
+                {
+                    profile.AutoSkinningBagSerial = bag.Serial;
+                    carvedBagLabel.Text = CarvedBagText(profile);
+                }
+            });
+        }) { Tooltip = TazLang.Get("autoskinning_setbag_tooltip") };
+        var clearCarvedBag = new MyraButton(TazLang.Get("autoloot_use_backpack"), () =>
+        {
+            profile.AutoSkinningBagSerial = 0;
+            carvedBagLabel.Text = CarvedBagText(profile);
+        });
+        var carvedBagRow = new HorizontalStackPanel { Spacing = 6 };
+        carvedBagRow.Widgets.Add(carvedBagLabel);
+        carvedBagRow.Widgets.Add(setCarvedBag);
+        carvedBagRow.Widgets.Add(clearCarvedBag);
+
+        var carvedGraphicsBox = new MyraInputBox
+        {
+            Text = profile.AutoSkinningCarvedGraphics, MinWidth = 120, Tooltip = TazLang.Get("autoskinning_carved_tooltip")
+        };
+        carvedGraphicsBox.TextChangedByUser += (_, _) => profile.AutoSkinningCarvedGraphics = carvedGraphicsBox.Text;
+        string carvedGraphicsLabel = TazLang.Get("autoskinning_carved");
+
         string skinningTitle = TazLang.Get("autoskinning_title", "Auto Skinning");
         if (interaction.IsDesktop)
         {
@@ -102,7 +132,9 @@ public static class AutoLootAgentTabContent
                 showProgress, hueCorpse,
                 DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(retryLabel, retrySpinner)), disableRetry);
             var skinning = DesktopAssistantTheme.Group(skinningTitle, enableSkinning, skinHumans, targetKnife,
-                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(skinGraphicsLabel, skinGraphicsBox)));
+                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(skinGraphicsLabel, skinGraphicsBox),
+                    new DesktopAssistantForm.Field(carvedGraphicsLabel, carvedGraphicsBox)),
+                carvedBagRow);
             desktopOptions = new DesktopAssistantForm.SectionPair(corpseOptions, skinning);
         }
         else
@@ -118,7 +150,8 @@ public static class AutoLootAgentTabContent
             skinChecks.Widgets.Add(skinHumans);
             skinChecks.Widgets.Add(targetKnife);
             root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = skinningTitle },
-                skinChecks, GameFieldRow(skinGraphicsLabel, skinGraphicsBox)));
+                skinChecks, GameFieldRow(skinGraphicsLabel, skinGraphicsBox), GameFieldRow(carvedGraphicsLabel, carvedGraphicsBox),
+                carvedBagRow));
         }
 
         var presets = AgentPresetPanel.Build(
@@ -255,6 +288,11 @@ public static class AutoLootAgentTabContent
             }
         }
     }
+
+    private static string CarvedBagText(Profile profile) =>
+        TazLang.Get("autoskinning_bag", [profile.AutoSkinningBagSerial == 0
+            ? TazLang.Get("autoloot_backpack")
+            : $"0x{profile.AutoSkinningBagSerial:X8}"]);
 
     private static HorizontalStackPanel GameFieldRow(string text, Widget control)
     {

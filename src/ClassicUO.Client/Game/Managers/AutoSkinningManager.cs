@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.Managers.Structs;
 using ClassicUO.Utility;
 
 namespace ClassicUO.Game.Managers;
@@ -32,16 +33,30 @@ public sealed class AutoSkinningManager
 
     private string _cachedRaw;
     private readonly List<ushort> _cachedGraphics = new();
+    private string _cachedCarvedRaw;
+    private readonly List<ushort> _cachedCarvedGraphics = new();
+
+    // How long after using the knife new carved items in the backpack are moved to the carved items bag.
+    private const uint CARVE_WATCH_MS = 4000;
+    private uint _watchCarvedUntil;
+    private readonly HashSet<uint> _movedCarved = new();
 
     private AutoSkinningManager() { }
 
     public bool IsEnabled => ProfileManager.CurrentProfile?.EnableAutoSkinning ?? false;
 
-    public void OnSceneLoad() => EventSink.OnOpenContainer += OnOpenContainer;
+    public void OnSceneLoad()
+    {
+        EventSink.OnOpenContainer += OnOpenContainer;
+        EventSink.OnItemCreatedInternal += OnItemChanged;
+        EventSink.OnItemUpdatedInternal += OnItemChanged;
+    }
 
     public void OnSceneUnload()
     {
         EventSink.OnOpenContainer -= OnOpenContainer;
+        EventSink.OnItemCreatedInternal -= OnItemChanged;
+        EventSink.OnItemUpdatedInternal -= OnItemChanged;
         _skinnedCorpses.Clear();
         _skinnedOrder.Clear();
         Instance = null;
@@ -106,7 +121,33 @@ public sealed class AutoSkinningManager
 
                                                                               // ignoreQueue: this is already running inside the action queue, don't re-enqueue.
                                                                               GameActions.DoubleClick(world, knifeSerial, false, true);
+
+                                                                              // Carved items that land in the backpack shortly after this go to the carved items bag.
+                                                                              _watchCarvedUntil = Time.Ticks + CARVE_WATCH_MS;
+                                                                              _movedCarved.Clear();
                                                                           }), ActionPriority.UseItem);
+
+    /// <summary>
+    /// Moves a carved item that just appeared in (or stacked onto a pile in) the backpack into the carved items bag.
+    /// Only inside the short window after a carve, and only for the carved graphic list, so loot and anything else
+    /// arriving in the backpack stays put.
+    /// </summary>
+    private void OnItemChanged(object sender, EventArgs e)
+    {
+        if (sender is not Item item || Time.Ticks > _watchCarvedUntil)
+            return;
+
+        uint bag = ProfileManager.CurrentProfile?.AutoSkinningBagSerial ?? 0;
+        World world = World.Instance;
+        Item backpack = world?.Player?.Backpack;
+        if (bag == 0 || backpack == null || item.Container != backpack.Serial || world.Items.Get(bag) == null)
+            return;
+
+        if (!GetCarvedGraphics().Contains(item.Graphic) || !_movedCarved.Add(item.Serial))
+            return;
+
+        ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, bag, item.Amount).ToObjectActionQueueItem(), ActionPriority.MoveItem);
+    }
 
     private bool MarkSkinned(uint serial)
     {
@@ -121,22 +162,28 @@ public sealed class AutoSkinningManager
         return true;
     }
 
-    private List<ushort> GetKnifeGraphics()
+    private List<ushort> GetKnifeGraphics() =>
+        ParseGraphics(ProfileManager.CurrentProfile?.AutoSkinningKnifeGraphics, ref _cachedRaw, _cachedGraphics);
+
+    private List<ushort> GetCarvedGraphics() =>
+        ParseGraphics(ProfileManager.CurrentProfile?.AutoSkinningCarvedGraphics, ref _cachedCarvedRaw, _cachedCarvedGraphics);
+
+    /// <summary>Parses a ';'-separated graphic list, reusing the last result while the text is unchanged.</summary>
+    private static List<ushort> ParseGraphics(string raw, ref string cachedRaw, List<ushort> cached)
     {
-        string raw = ProfileManager.CurrentProfile?.AutoSkinningKnifeGraphics ?? string.Empty;
+        raw ??= string.Empty;
+        if (raw == cachedRaw)
+            return cached;
 
-        if (raw == _cachedRaw)
-            return _cachedGraphics;
-
-        _cachedRaw = raw;
-        _cachedGraphics.Clear();
+        cachedRaw = raw;
+        cached.Clear();
 
         foreach (string part in raw.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (StringHelper.TryParseInt(part, out int graphic) && graphic is > 0 and <= ushort.MaxValue)
-                _cachedGraphics.Add((ushort)graphic);
+                cached.Add((ushort)graphic);
         }
 
-        return _cachedGraphics;
+        return cached;
     }
 }
