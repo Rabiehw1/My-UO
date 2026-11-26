@@ -44,6 +44,7 @@ public enum TrainerUse
     /// <summary>Use the skill, warning first when full mana means it can't train.</summary>
     Meditation,
     Blacksmith,
+    Fishing,
     Lumberjack,
     Begging,
     Entice,
@@ -107,6 +108,7 @@ internal static class TrainerCatalog
         new("musicianship", "Musicianship", TrainerClass.Bard, TrainerUse.Instrument),
         new("peacemaking", "Peacemaking", TrainerClass.Bard, TrainerUse.Plain),
         new("taste_identification", "Taste Identification", TrainerClass.Bard, TrainerUse.Picked, TrainerTargetKind.Item),
+        new("fishing", "Fishing", TrainerClass.Ranger, TrainerUse.Fishing, TrainerTargetKind.Item),
         new("animal_lore", "Animal Lore", TrainerClass.Ranger, TrainerUse.Picked, TrainerTargetKind.Mobile),
         new("tracking", "Tracking", TrainerClass.Ranger, TrainerUse.CloseList),
         new("detecting_hidden", "Detecting Hidden", TrainerClass.Thief, TrainerUse.Plain),

@@ -52,6 +52,9 @@ internal static class TrainerSkillUser
             case TrainerUse.Tailor:
                 return TailoringTrainer.Begin(world, target);
 
+            case TrainerUse.Fishing:
+                return FishingTrainer.Begin(world, target);
+
             case TrainerUse.Lumberjack:
                 return LumberjackTrainer.Begin(world, target);
 

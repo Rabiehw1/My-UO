@@ -94,6 +94,7 @@ internal sealed class TrainerManager
             return;
 
         LumberjackTrainer.Reset(clearCooldowns: true);
+        FishingTrainer.Reset();
         BardTrainer.Reset();
         BeggingTrainer.Reset();
         TailoringTrainer.Reset();
@@ -117,7 +118,13 @@ internal sealed class TrainerManager
             return;
         }
 
-        if (BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
+        bool fishingOnly = _profile.Trainer.Selected.Count == 1 && _profile.Trainer.Selected[0] == "fishing";
+        if (fishingOnly && world.Player.IsDead)
+        {
+            Stop();
+            return;
+        }
+        if (FishingTrainer.Waiting(world) || BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
             return;
 
         if (_closeListUntil != 0)
@@ -141,6 +148,7 @@ internal sealed class TrainerManager
         }
 
         uint gapMs = (uint)Math.Clamp(settings.WaitSeconds, MIN_WAIT_SECONDS, MAX_WAIT_SECONDS) * 1000;
+        if (fishingOnly) gapMs = FishingTrainer.CastDelay;
         _nextUseAt = TryNextSkill(world, settings) ? Time.Ticks + gapMs : Time.Ticks + ALL_SKIPPED_RETRY_MS;
     }
 
