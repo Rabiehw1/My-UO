@@ -249,6 +249,9 @@ namespace ClassicUO.Game.Managers
                 return null;
 
             var library = ItemListLibrary.Instance;
+            if (!library.IsAvailable)
+                return null;
+
             var list = ItemListLibrary.Resolve(_currentList.MainItemListId);
             if (list == null)
             {
@@ -786,7 +789,7 @@ namespace ClassicUO.Game.Managers
                 _data = AutoLootData.Load();
                 _currentList = null;
                 EnsureAtLeastOneList();
-                bool migrated = _data.MigratePresets(ProfileManager.CurrentProfile, _currentList);
+                bool migrated = ItemListLibrary.Instance.IsAvailable && _data.MigratePresets(ProfileManager.CurrentProfile, _currentList);
                 _loaded = true;
                 if (migrated)
                     Save();

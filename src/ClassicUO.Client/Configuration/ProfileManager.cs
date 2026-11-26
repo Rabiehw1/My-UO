@@ -129,7 +129,21 @@ namespace ClassicUO.Configuration
 
             // Load through JsonSave (which recovers from the rotating backups), falling back to the
             // default.json template when the character has no saved profile yet.
-            CurrentProfile = File.Exists(fileToLoad) ? Profile.Load() : NewFromDefault();
+            bool existingProfile = Profile.HasSavedCopy(fileToLoad);
+            Profile profile = existingProfile ? Profile.Load() : NewFromDefault();
+            if (!existingProfile)
+            {
+                // A copied default profile cannot carry references to a different character's lists.
+                profile.AutoLootSharedItemListId = null;
+                profile.AutoLootIgnoreItemListId = null;
+                profile.ScavengerSharedItemListId = null;
+                profile.AutoBuySharedItemListId = null;
+                profile.AutoSellSharedItemListId = null;
+            }
+            bool listsReady = ItemListLibrary.InitializeProfile(path, existingProfile && !profile.HasPrivateItemLists);
+            if (listsReady || !existingProfile)
+                profile.HasPrivateItemLists = true;
+            CurrentProfile = profile;
 
             CurrentProfile.Username = username;
             CurrentProfile.ServerName = servername;
@@ -192,6 +206,7 @@ namespace ClassicUO.Configuration
             CurrentProfile = null;
             // Drop profile-scoped caches so edits can't be saved against the previous profile's path.
             GridContainerBandsConfig.Reset();
+            ItemListLibrary.ResetProfile();
             // Leaving the world means leaving the server/account too, so persist their scoped settings.
             SaveServerSettings();
             SaveAccountSettings();

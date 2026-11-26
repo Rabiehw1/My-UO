@@ -923,6 +923,7 @@ namespace ClassicUO.Configuration
         public Guid? ScavengerSharedItemListId { get; set => SetProperty(ref field, value); }
         public Guid? AutoBuySharedItemListId { get; set => SetProperty(ref field, value); }
         public Guid? AutoSellSharedItemListId { get; set => SetProperty(ref field, value); }
+        public bool HasPrivateItemLists { get; set => SetProperty(ref field, value); }
         public ushort AutoBuySharedItemMaxAmount { get; set => SetProperty(ref field, value); } = 1;
         public ushort AutoSellSharedItemMaxAmount { get; set => SetProperty(ref field, value); } = 1;
         public bool BuyAgentEnabled { get; set => SetProperty(ref field, value); }

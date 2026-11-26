@@ -542,6 +542,9 @@ namespace ClassicUO.Game.Managers
 
         private static bool TryAddLists(ItemListLibrary library, params SharedItemList[] lists)
         {
+            if (!library.IsAvailable)
+                return false;
+
             foreach (var list in lists)
             {
                 list.Name = library.AvailableName(list.Name);
@@ -550,11 +553,11 @@ namespace ClassicUO.Game.Managers
 
             // Organizer configs reference a separate file. Keep the old rules until the lists are written.
             library.SaveChanges();
-            var saved = ItemListLibrary.Load();
+            var saved = library.ReadPersisted();
             bool success = true;
             foreach (var list in lists)
             {
-                if (saved.Find(list.Id)?.Items?.SequenceEqual(list.Items) == true)
+                if (saved?.Find(list.Id)?.Items?.SequenceEqual(list.Items) == true)
                     continue;
 
                 library.Lists.Remove(list);

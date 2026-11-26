@@ -146,6 +146,21 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     /// </summary>
     protected static T LoadFrom(string filePath) => LoadInternal(filePath, true);
 
+    /// <summary>Seeds a missing save from another location while leaving the source and its backups intact.</summary>
+    protected static T LoadFrom(string filePath, string? seedPath) => LoadInternal(filePath, true, seedPath);
+
+    internal static bool HasSavedCopy(string filePath)
+    {
+        if (File.Exists(filePath))
+            return true;
+
+        for (int i = 1; i <= MAX_BACKUPS; i++)
+            if (File.Exists(GetBackupPath(filePath, i)))
+                return true;
+
+        return false;
+    }
+
     /// <summary>
     ///     Saves this instance atomically, rotating the previous version into the backups folder. Writes
     ///     to <see cref="SourcePath" /> where one was bound, and to <see cref="FilePath" /> otherwise.
@@ -352,14 +367,14 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     /// <param name="filePath">The main file to load.</param>
     /// <param name="pinSource">Whether the instance should remember where it came from.</param>
     /// <returns>The loaded instance, or a new one when nothing on disk could be used.</returns>
-    private static T LoadInternal(string filePath, bool pinSource)
+    private static T LoadInternal(string filePath, bool pinSource, string? seedPath = null)
     {
         var instance = new T();
         T result;
 
         using (instance.AcquireLock(filePath))
         {
-            result = instance.LoadCore(filePath);
+            result = instance.LoadCore(filePath, seedPath);
 
             // Captured while the lock is still held so a concurrent writer cannot slip in between the
             // load and the fingerprint read.
@@ -379,7 +394,7 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     /// </summary>
     /// <param name="filePath">The main file to load.</param>
     /// <returns>The loaded instance, or a new one when nothing on disk could be used.</returns>
-    private T LoadCore(string filePath)
+    private T LoadCore(string filePath, string? seedPath)
     {
         // Try the main file first. Only it gets the migrated text written back: a backup is read to
         // recover from, not to become the new main file.
@@ -400,9 +415,12 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
         string? corruptCopy = hadMainFile ? CorruptFileManager.Backup(filePath) : null;
 
         // Fall back through the rotating backups, newest first.
+        bool hadBackup = false;
         for (int i = 1; i <= MAX_BACKUPS; i++)
         {
-            TryLoad(GetBackupPath(filePath, i), false, out loaded);
+            string backupPath = GetBackupPath(filePath, i);
+            hadBackup |= File.Exists(backupPath);
+            TryLoad(backupPath, false, out loaded);
 
             if (loaded == null)
                 continue;
@@ -413,6 +431,14 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
                 CorruptFileManager.Report(filePath, corruptCopy, CorruptConfigFallback.Backup);
 
             return loaded;
+        }
+
+        if (!hadMainFile && !hadBackup && seedPath != null && ReadSeed(seedPath) is { } seed)
+        {
+            // Commit the verified snapshot before exposing its list IDs to dependent settings.
+            string json = JsonSerializer.Serialize(seed, TypeInfo);
+            WriteJson(filePath, MigrationPipeline?.Stamp(json) ?? json);
+            return seed;
         }
 
         // Nothing usable on disk - start fresh and persist it (already holding the lock).
@@ -429,6 +455,32 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
             fresh.SaveCore(filePath);
 
         return fresh;
+    }
+
+    private T? ReadSeed(string path)
+    {
+        using var guard = AcquireLock(path);
+        bool foundSource = File.Exists(path);
+        LoadOutcome outcome = TryLoad(path, false, out T? seed);
+        if (seed != null)
+            return seed;
+
+        if (outcome != LoadOutcome.AheadOfThisBuild)
+        {
+            for (int i = 1; i <= MAX_BACKUPS; i++)
+            {
+                string backupPath = GetBackupPath(path, i);
+                foundSource |= File.Exists(backupPath);
+                TryLoad(backupPath, false, out seed);
+                if (seed != null)
+                    return seed;
+            }
+        }
+
+        if (foundSource)
+            throw new IOException($"Cannot read the source save '{path}' or any of its backups.");
+
+        return null;
     }
 
     /// <summary>

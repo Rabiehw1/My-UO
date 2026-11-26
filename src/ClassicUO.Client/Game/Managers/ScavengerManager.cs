@@ -501,7 +501,7 @@ namespace ClassicUO.Game.Managers
                 EnsureAtLeastOneList();
                 _loaded = true;
                 Profile profile = ProfileManager.CurrentProfile;
-                if (!profile.ScavengerListsMigrated)
+                if (!profile.ScavengerListsMigrated && ItemListLibrary.Instance.IsAvailable)
                 {
                     string owner = profile.CharacterName ?? "Character";
                     foreach (var legacy in Lists)

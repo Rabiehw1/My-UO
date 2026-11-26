@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -9,22 +10,63 @@ using System.Text.RegularExpressions;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Utility;
+using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers;
 
 internal sealed class ItemListLibrary : JsonSave<ItemListLibrary>, INotifyPropertyChanged
 {
+    private const string LibraryFileName = "ItemLists.json";
     private static ItemListLibrary? _instance;
-    public static ItemListLibrary Instance => _instance ??= Load();
+    private bool _unavailable;
+    public static ItemListLibrary Instance => _instance ??= new ItemListLibrary { _unavailable = true };
 
     public List<SharedItemList> Lists { get; set; } = [];
 
     [JsonIgnore]
     internal int Revision { get; private set; }
 
-    protected override SettingsScope Scope => SettingsScope.Global;
-    protected override string FileName => "ItemLists.json";
+    [JsonIgnore]
+    internal bool IsAvailable => !_unavailable;
+
+    protected override SettingsScope Scope => SettingsScope.Char;
+    protected override string FileName => LibraryFileName;
     protected override JsonTypeInfo<ItemListLibrary> TypeInfo => ItemListJsonContext.Default.ItemListLibrary;
+
+    internal static bool InitializeProfile(string profilePath, bool importLegacy)
+    {
+        try
+        {
+            _instance = OpenProfile(profilePath, importLegacy ? JsonSaveLocationHelper.DataDirectory : null);
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _instance = new ItemListLibrary { _unavailable = true };
+            Log.Error($"Could not initialize item lists for '{profilePath}': {e.Message}");
+            return false;
+        }
+    }
+
+    internal static ItemListLibrary OpenProfile(string profilePath, string? legacyDirectory)
+    {
+        string path = Path.Combine(profilePath, LibraryFileName);
+        var library = LoadFrom(path, legacyDirectory == null ? null : Path.Combine(legacyDirectory, LibraryFileName));
+        if (!HasSavedCopy(path))
+            throw new IOException($"The character's item list file '{path}' could not be saved.");
+
+        return library;
+    }
+
+    internal static void ResetProfile() => _instance = null;
+
+    internal ItemListLibrary? ReadPersisted() => SourcePath is { } path && File.Exists(path) ? LoadFrom(path) : null;
+
+    public override void Save()
+    {
+        if (IsAvailable)
+            base.Save();
+    }
 
     public SharedItemList? Find(Guid id) => Lists?.Find(list => list?.Id == id);
 

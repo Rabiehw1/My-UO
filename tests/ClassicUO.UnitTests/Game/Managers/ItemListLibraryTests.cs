@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -9,6 +11,71 @@ namespace ClassicUO.UnitTests.Game.Managers;
 
 public class ItemListLibraryTests
 {
+    [Fact]
+    public void ExistingProfilesGetIndependentCopiesAndNewProfilesStayEmpty()
+    {
+        using var storage = new LibraryStorage();
+        var rules = new SharedItemList { Name = "Arrows", Items = [new SharedItem(0x0F3F, 0, "Arrow")] };
+        string original = storage.SaveShared(rules);
+
+        ItemListLibrary first = ItemListLibrary.OpenProfile(storage.First, storage.Legacy);
+        ItemListLibrary second = ItemListLibrary.OpenProfile(storage.Second, storage.Legacy);
+        Assert.Equal(rules.Items, Assert.Single(first.Lists).Items);
+        Assert.Equal(rules.Id, Assert.Single(first.Lists).Id);
+        Assert.Equal(rules.Id, Assert.Single(second.Lists).Id);
+
+        first.Find(rules.Id).Name = "Quiver supplies";
+        first.SaveChanges();
+        Assert.Equal("Quiver supplies", ItemListLibrary.OpenProfile(storage.First, storage.Legacy).Find(rules.Id).Name);
+        Assert.Equal("Arrows", ItemListLibrary.OpenProfile(storage.Second, storage.Legacy).Find(rules.Id).Name);
+
+        first.Lists.Clear();
+        first.SaveChanges();
+        Assert.Empty(ItemListLibrary.OpenProfile(storage.First, storage.Legacy).Lists);
+        Assert.Empty(ItemListLibrary.OpenProfile(storage.New, null).Lists);
+        Assert.Empty(ItemListLibrary.OpenProfile(storage.New, storage.Legacy).Lists);
+        Assert.Equal(original, File.ReadAllText(storage.SharedFile));
+    }
+
+    [Fact]
+    public void UnreadableLegacyFileLeavesMigrationRetryableAndCanUseALegacyBackup()
+    {
+        using var storage = new LibraryStorage();
+        var list = new SharedItemList { Name = "Supplies" };
+        string original = storage.SaveShared(list);
+        const string damaged = "{\"Lists\":[";
+        File.WriteAllText(storage.SharedFile, damaged);
+
+        Assert.Throws<IOException>(() => ItemListLibrary.OpenProfile(storage.First, storage.Legacy));
+        Assert.False(File.Exists(Path.Combine(storage.First, "ItemLists.json")));
+
+        string backup = Directory.CreateDirectory(Path.Combine(storage.Legacy, "backups")).FullName;
+        File.WriteAllText(Path.Combine(backup, "ItemLists.json.1"), original);
+        Assert.Equal(list.Id, Assert.Single(ItemListLibrary.OpenProfile(storage.First, storage.Legacy).Lists).Id);
+        Assert.Equal(damaged, File.ReadAllText(storage.SharedFile));
+    }
+
+    private sealed class LibraryStorage : IDisposable
+    {
+        private readonly string _root = Directory.CreateTempSubdirectory("item-lists-").FullName;
+
+        internal string Legacy => Path.Combine(_root, "Data");
+        internal string First => Path.Combine(_root, "First");
+        internal string Second => Path.Combine(_root, "Second");
+        internal string New => Path.Combine(_root, "New");
+        internal string SharedFile => Path.Combine(Legacy, "ItemLists.json");
+
+        internal string SaveShared(SharedItemList list)
+        {
+            Directory.CreateDirectory(Legacy);
+            string json = JsonSerializer.Serialize(new ItemListLibrary { Lists = [list] }, ItemListJsonContext.Default.ItemListLibrary);
+            File.WriteAllText(SharedFile, json);
+            return json;
+        }
+
+        public void Dispose() => Directory.Delete(_root, recursive: true);
+    }
+
     [Fact]
     public void AddingStacksDeduplicatesGraphicAndHue()
     {

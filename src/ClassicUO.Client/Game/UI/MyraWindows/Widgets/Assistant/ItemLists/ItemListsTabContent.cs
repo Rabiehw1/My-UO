@@ -42,6 +42,9 @@ internal static partial class ItemListsTabContent
     private static Widget BuildItems(AgentPageInteraction interaction)
     {
         var library = ItemListLibrary.Instance;
+        if (!library.IsAvailable)
+            return new MyraLabel(TazLang.Get("itemlists_profile_load_failed"), MyraLabel.TextStyle.P);
+
         SharedItemList? selected = library.Lists?.FirstOrDefault();
         SharedItemList[] choices = [];
         bool refreshing = false;
