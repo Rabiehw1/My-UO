@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Text;
-using System.Text.RegularExpressions;
 using ClassicUO.Game;
 using ClassicUO.Utility.Logging;
 using IronPython.Hosting;
@@ -16,14 +15,14 @@ public class ZipScriptFile : ScriptFile
     public string EntryPath;
 
     public ZipScriptFile(World world, string zipPath, string entryPath, string group, string subGroup)
-        : base(world, LegionScripting.ScriptPath, System.IO.Path.GetFileName(entryPath))
+        : base(world, LegionScripting.ScriptPath, System.IO.Path.GetFileName(entryPath), readSource: false)
     {
         ZipPath = zipPath;
         EntryPath = entryPath;
         Group = group;
         SubGroup = subGroup;
         FullPath = $"{zipPath}::{entryPath}";
-        FileContents = ReadFromFile();
+        ReadFromFile();
     }
 
     public override bool FileExists()
@@ -37,33 +36,13 @@ public class ZipScriptFile : ScriptFile
         catch { return false; }
     }
 
-    public override string[] ReadFromFile()
+    protected override string[] ReadSourceLines()
     {
-        if (ZipPath == null) return [];
-
-        try
-        {
-            using var archive = ZipFile.OpenRead(ZipPath);
-            ZipArchiveEntry entry = archive.GetEntry(EntryPath);
-            if (entry == null) return [];
-
-            using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
-            string text = reader.ReadToEnd();
-
-            string pattern = @"^\s*(?:from\s+[\w.]+\s+import\s+API|import\s+API)\s*$";
-            string stripped = Regex.Replace(text, pattern, string.Empty, RegexOptions.Multiline);
-
-            if (Type == ScriptType.CSharp && FileContentsJoined != stripped)
-                CSharpCompiledScript = null;
-
-            FileContentsJoined = stripped;
-            return text.Split('\n');
-        }
-        catch (Exception e)
-        {
-            Log.Error($"Error reading zip script entry '{EntryPath}' in '{ZipPath}': {e}");
-            return [];
-        }
+        using var archive = ZipFile.OpenRead(ZipPath);
+        ZipArchiveEntry entry = archive.GetEntry(EntryPath)
+            ?? throw new FileNotFoundException($"Archive entry '{EntryPath}' does not exist.", EntryPath);
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+        return reader.ReadToEnd().Split('\n');
     }
 
     public override void OverrideFileContents(string contents)

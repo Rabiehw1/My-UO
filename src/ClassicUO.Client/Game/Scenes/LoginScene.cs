@@ -257,7 +257,7 @@ namespace ClassicUO.Game.Scenes
             base.Update();
 
             LoginHandshake.Instance.CheckHandshakeTimeout();
-            LoginHandshake.Instance.HandleReconnect(Settings.GlobalSettings.ReconnectTime * 1000);
+            LoginHandshake.Instance.HandleReconnect(Settings.GlobalSettings.ReconnectDelayMilliseconds);
             LoginHandshake.Instance.SendPing();
         }
 
@@ -286,6 +286,9 @@ namespace ClassicUO.Game.Scenes
 
         private Gump GetGumpForStep()
         {
+            if (_world.Player != null && CurrentLoginStep is LoginSteps.Main or LoginSteps.PopUpMessage)
+                _world.Clear();
+
             foreach (Item item in _world.Items.Values)
             {
                 _world.RemoveItem(item);
@@ -365,11 +368,13 @@ namespace ClassicUO.Game.Scenes
 
                     case LoginSteps.EnteringBritania:
                         labelText = Client.Game.UO.FileManager.Clilocs.GetString(3000001, TazLang.Get("entering_britannia")); // Entering Britania...
+                        showButtons = LoginButtons.Cancel;
 
                         break;
 
                     case LoginSteps.CharacterCreationDone:
                         labelText = TazLang.Get("creating_character");
+                        showButtons = LoginButtons.Cancel;
 
                         break;
                 }
@@ -382,7 +387,13 @@ namespace ClassicUO.Game.Scenes
         {
             var butt = (LoginButtons)buttonId;
 
-            if (butt == LoginButtons.OK || butt == LoginButtons.Cancel)
+            if (butt == LoginButtons.Cancel)
+            {
+                Reconnect = false;
+                LoginHandshake.Instance.Disconnect();
+                LoginHandshake.Instance.SetLoginStep(LoginSteps.Main);
+            }
+            else if (butt == LoginButtons.OK)
             {
                 StepBack();
             }
@@ -455,7 +466,8 @@ namespace ClassicUO.Game.Scenes
 
         public void SelectCharacter(uint index)
         {
-            if (CurrentLoginStep == LoginSteps.CharacterSelection)
+            if (CurrentLoginStep == LoginSteps.CharacterSelection && Characters != null && index < Characters.Length
+                && !string.IsNullOrEmpty(Characters[index]))
             {
                 LastCharacterManager.Save(Account, _world.ServerName, Characters[index]);
 
@@ -598,42 +610,50 @@ namespace ClassicUO.Game.Scenes
 
         private void ReceiveCharacterList()
         {
-            uint charToSelect = 0;
-            bool haveAnyCharacter = false;
             bool canLogin = CanAutologin;
+            _autoLogin = false;
 
-            if (_autoLogin)
+            string lastCharName = LastCharacterManager.GetPreferredCharacter(Account, _world.ServerName);
+            bool hasExplicitCharacter = LastCharacterManager.HasCharacterOverride;
+            (int index, bool haveAnyCharacter) = FindAutomaticCharacter(Characters, lastCharName, hasExplicitCharacter);
+            if (canLogin && index >= 0)
             {
-                _autoLogin = false;
+                SelectCharacter((uint)index);
             }
-
-            string lastCharName = LastCharacterManager.GetLastCharacter(Account, _world.ServerName);
-
-            if (Characters != null)
+            else if (canLogin && hasExplicitCharacter)
             {
-                for (byte i = 0; i < Characters.Length; i++)
-                {
-                    if (Characters[i].Length > 0)
-                    {
-                        haveAnyCharacter = true;
-
-                        if (Characters[i] == lastCharName)
-                        {
-                            charToSelect = i;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if (canLogin && haveAnyCharacter)
-            {
-                SelectCharacter(charToSelect);
+                var message = TazLang.Get("launcher_character_missing", [lastCharName]);
+                LoadingGump alert = null;
+                alert = new LoadingGump(_world, message, LoginButtons.OK, _ => alert.Dispose()) { IsModal = true };
+                UIManager.Add(alert);
             }
             else if (!haveAnyCharacter)
             {
                 StartCharCreation();
             }
+        }
+
+        /// <summary>Finds the requested character or an occupied slot when no explicit character was configured.</summary>
+        internal static (int Index, bool HasCharacters) FindAutomaticCharacter(
+            string[] characters, string preferredName, bool requirePreferred)
+        {
+            int firstOccupied = -1;
+            int caseInsensitiveMatch = -1;
+            for (int i = 0; i < (characters?.Length ?? 0); i++)
+            {
+                string name = characters[i];
+                if (string.IsNullOrEmpty(name))
+                    continue;
+
+                if (firstOccupied < 0)
+                    firstOccupied = i;
+                if (string.Equals(name, preferredName, StringComparison.Ordinal))
+                    return (i, true);
+                if (caseInsensitiveMatch < 0 && string.Equals(name, preferredName, StringComparison.OrdinalIgnoreCase))
+                    caseInsensitiveMatch = i;
+            }
+
+            return (caseInsensitiveMatch >= 0 ? caseInsensitiveMatch : requirePreferred ? -1 : firstOccupied, firstOccupied >= 0);
         }
 
         public override void Dispose()

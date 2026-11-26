@@ -80,13 +80,15 @@ namespace ClassicUO.Game.Managers
 
         private readonly HashSet<uint> _inLootQueue = [];
         private readonly HashSet<uint> _recentlyLooted = [];
+        private readonly HashSet<uint> _awaitingLockdown = [];
         private readonly PriorityQueue<(uint item, ScavengerEntry entry), ScavengerPriority> _lootItems = new();
+        private readonly HashSet<ObjectActionQueueItem> _submittedMoves = [];
         private ScavengerData _data = new();
         private ScavengerList _currentList;
         private bool _loaded;
         private long _nextLootTime = Time.Ticks;
         private long _nextClearRecents = Time.Ticks + (ProfileManager.CurrentProfile?.AutoLootRetryDelay ?? 5000);
-        private bool IsEnabled => ProfileManager.CurrentProfile.EnableScavenger;
+        private bool IsEnabled => ProfileManager.CurrentProfile?.EnableScavenger == true;
 
         private readonly World _world;
 
@@ -118,7 +120,7 @@ namespace ClassicUO.Game.Managers
 
         public void LootItem(Item item, ScavengerEntry entry = null, ScavengerPriority priority = ScavengerPriority.Normal)
         {
-            if (item == null)
+            if (item == null || _awaitingLockdown.Contains(item.Serial))
                 return;
 
             // A spam-filter of sorts, don't retry the item if it's been processed recently
@@ -129,6 +131,12 @@ namespace ClassicUO.Game.Managers
 
             if (lockdown == LockdownState.LockedDown)
                 return;
+
+            if (lockdown == LockdownState.Unknown)
+            {
+                _awaitingLockdown.Add(item.Serial);
+                return;
+            }
 
             // Mark the item as "in progress"
             if (!_inLootQueue.Add(item.Serial))
@@ -156,14 +164,22 @@ namespace ClassicUO.Game.Managers
             if (!(ProfileManager.CurrentProfile?.ScavengerSkipLockedDown ?? true))
                 return LockdownState.NotLockedDown;
 
+            if (!_world.ClientFeatures.TooltipsEnabled && ProfileManager.CurrentProfile?.ForceTooltipsOnOldClients != true)
+                return LockdownState.NotLockedDown;
+
             // This here is a double dict lookup. Not too terrible but can be reduced to one if performance is deemed inadequate.
             if (!_world.OPL.Contains(item.Serial))
                 return LockdownState.Unknown;
 
-            return _world.OPL.MatchClilocs(item.Serial, false, _lockedDownClilocs)
+            return IsKnownLockedDown(item)
                 ? LockdownState.LockedDown
                 : LockdownState.NotLockedDown;
         }
+
+        // A tooltip can arrive after an item was queued. Check the cache again before moving it.
+        private bool IsKnownLockedDown(Item item) =>
+            ProfileManager.CurrentProfile?.ScavengerSkipLockedDown == true
+            && _world.OPL.MatchClilocs(item.Serial, false, _lockedDownClilocs);
 
         /// <summary>
         /// Check a ground item against the scavenger list, if it needs to be picked up it will be.
@@ -331,6 +347,7 @@ namespace ClassicUO.Game.Managers
             Load();
             EventSink.OnItemCreatedInternal += OnItemCreatedOrUpdated;
             EventSink.OnItemUpdatedInternal += OnItemCreatedOrUpdated;
+            EventSink.OPLOnReceive += OnLockdownPropertiesReceived;
             EventSink.OnPositionChanged += OnPositionChanged;
         }
 
@@ -338,7 +355,9 @@ namespace ClassicUO.Game.Managers
         {
             EventSink.OnItemCreatedInternal -= OnItemCreatedOrUpdated;
             EventSink.OnItemUpdatedInternal -= OnItemCreatedOrUpdated;
+            EventSink.OPLOnReceive -= OnLockdownPropertiesReceived;
             EventSink.OnPositionChanged -= OnPositionChanged;
+            ClearActiveLootQueue();
             Save();
             Instance = null;
         }
@@ -351,6 +370,9 @@ namespace ClassicUO.Game.Managers
         {
             if (!_loaded || !IsEnabled) return;
 
+            _awaitingLockdown.RemoveWhere(serial => _world.Items.Get(serial) is not { OnGround: true } current
+                || current.Distance > ProfileManager.CurrentProfile.AutoOpenCorpseRange);
+
             foreach (Item item in _world.Items.Values)
                 if (item != null && item.OnGround && !item.IsLocked && !item.IsCorpse && item.Distance < 3)
                     CheckAndLoot(item);
@@ -362,6 +384,16 @@ namespace ClassicUO.Game.Managers
 
             if (sender is Item i && i.OnGround && !i.IsCorpse && !i.IsLocked && i.Distance <= ProfileManager.CurrentProfile.AutoOpenCorpseRange)
                 CheckAndLoot(i);
+        }
+
+        private void OnLockdownPropertiesReceived(object sender, OPLEventArgs e)
+        {
+            if (!_awaitingLockdown.Remove(e.Serial) || !IsEnabled)
+                return;
+
+            _recentlyLooted.Remove(e.Serial);
+            if (_world.Items.Get(e.Serial) is { } item)
+                OnItemCreatedOrUpdated(item, EventArgs.Empty);
         }
 
         public void Update()
@@ -390,7 +422,8 @@ namespace ClassicUO.Game.Managers
 
             Item moveItem = _world.Items.Get(item);
 
-            if (moveItem == null || !moveItem.OnGround)
+            if (moveItem is not { OnGround: true, IsDestroyed: false, IsLocked: false, IsCorpse: false }
+                || IsKnownLockedDown(moveItem))
                 return;
 
             if (moveItem.Distance > ProfileManager.CurrentProfile.AutoOpenCorpseRange)
@@ -438,10 +471,13 @@ namespace ClassicUO.Game.Managers
 
                 ushort amount = GetAmountToMove(moveItem, entry, destinationSerial);
                 if (amount > 0)
-                    ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
+                {
+                    var action = new ObjectActionQueueItem(() =>
                     {
-                        if (_world.Items.Get(item) is not { OnGround: true, IsDestroyed: false } current
+                        if (!IsEnabled || !ReferenceEquals(_world, World.Instance)
+                            || _world.Items.Get(item) is not { OnGround: true, IsDestroyed: false, IsLocked: false, IsCorpse: false } current
                             || current.Distance > ProfileManager.CurrentProfile.AutoOpenCorpseRange
+                            || IsKnownLockedDown(current)
                             || IsOnLootList(current) is not { } currentRule)
                             return;
                         uint destination = currentRule.DestinationContainer != 0
@@ -450,11 +486,19 @@ namespace ClassicUO.Game.Managers
                         ushort currentAmount = GetAmountToMove(current, currentRule, destination);
                         if (currentAmount > 0)
                             new MoveRequest(item, destination, currentAmount).Execute();
+                    }, completed =>
+                    {
+                        _submittedMoves.Remove(completed);
+                        _inLootQueue.Remove(completed.Serial);
                     })
                     {
                         Serial = item,
                         TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
-                    }, lootPriority);
+                    };
+                    _inLootQueue.Add(item);
+                    _submittedMoves.Add(action);
+                    ObjectActionQueue.Instance.Enqueue(action, lootPriority);
+                }
             }
             else
                 GameActions.Print("Could not find a container to loot into. Try setting a grab bag.");
@@ -537,10 +581,24 @@ namespace ClassicUO.Game.Managers
             catch (Exception e) { Console.WriteLine(e.ToString()); }
         }
 
-        public void ClearActiveLootQueue()
+        internal void SetEnabled(bool enabled)
         {
-            while (_lootItems.TryDequeue(out _, out _));
+            if (ProfileManager.CurrentProfile is not { } profile)
+                return;
+
+            profile.EnableScavenger = enabled;
+            if (!enabled)
+                ClearActiveLootQueue();
+        }
+
+        private void ClearActiveLootQueue()
+        {
+            _lootItems.Clear();
             _inLootQueue.Clear();
+            _recentlyLooted.Clear();
+            _awaitingLockdown.Clear();
+            if (_submittedMoves.Count > 0)
+                ObjectActionQueue.Instance.CancelActions(_submittedMoves.Contains);
         }
 
         private void ImportEntries(List<ScavengerEntry> entries, string source)
@@ -749,7 +807,7 @@ namespace ClassicUO.Game.Managers
                 if (compareTo.OPLData.NotNullNotEmpty())
                     search += compareTo.OPLData;
 
-                return RegexHelper.GetRegex(RegexSearch, RegexOptions.Multiline).IsMatch(search);
+                return RegexHelper.IsMatch(RegexSearch, search, RegexOptions.Multiline);
             }
 
             public bool Equals(ScavengerEntry other) => other.Graphic == Graphic && other.Hue == Hue && RegexSearch == other.RegexSearch;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Structs;
@@ -13,16 +14,26 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
 
     public int GetCurrentQueuedCount => _queue.Count;
 
-    private ItemMoveSource? _pendingMove;
-    private MoveRequest _pendingRequest;
+    private sealed class PendingMove(ItemMoveSource source, MoveRequest request, ushort graphic, ushort hue, Action retryWhenFree)
+    {
+        public readonly ItemMoveSource Source = source;
+        public readonly MoveRequest Request = request;
+        public readonly ushort Graphic = graphic;
+        public readonly ushort Hue = hue;
+        public readonly Action RetryWhenFree = retryWhenFree;
+        public readonly long Started = Environment.TickCount64;
+        public int Quantity => Math.Min(Source.Amount, Request.Amount);
+        public bool SourceChanged;
+        public bool DestinationChanged;
+    }
 
-    // How long a move may wait for the shard's confirmation before the queue carries on anyway.
-    private const long PENDING_MOVE_GIVE_UP_MS = 5000;
-    private long _moveStarted;
+    private PendingMove _pendingMove;
+    private int _unmatchedDropConfirmations;
+    private bool _waitingForFreeCursor;
     private bool _reportedTimeout;
     private bool _yieldToLoot;
 
-    public bool HasPendingMove => _pendingMove.HasValue;
+    public bool HasPendingMove => _pendingMove != null || _waitingForFreeCursor;
 
     internal ObjectActionQueue() { }
 
@@ -83,9 +94,9 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     /// </remarks>
     public bool TryGetPendingMove(out ItemMoveSource source)
     {
-        if (_pendingMove.HasValue)
+        if (_pendingMove != null)
         {
-            source = _pendingMove.Value;
+            source = _pendingMove.Source;
             return true;
         }
 
@@ -99,55 +110,178 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     /// </summary>
     public void ClearPendingMove(uint serial = 0)
     {
-        if (_pendingMove.HasValue && (serial == 0 || _pendingMove.Value.Serial == serial))
+        if (serial == 0)
+        {
+            _waitingForFreeCursor = false;
+            _unmatchedDropConfirmations = 0;
+        }
+
+        if (serial == 0 || _pendingMove?.Source.Serial == serial)
             _pendingMove = null;
     }
 
-    internal bool TryStartMove(MoveRequest moveRequest)
+    internal bool TryStartMove(MoveRequest moveRequest, Action retryWhenFree)
     {
         var hold = Client.Game.UO.GameCursor.ItemHold;
         if (HasPendingMove || hold.Enabled || hold.Dropped
             || World.Instance.Items.Get(moveRequest.Serial) is not { IsDestroyed: false } item)
             return false;
 
-        _pendingMove = ItemMoveSource.Capture(item);
-        _pendingRequest = moveRequest;
-        _moveStarted = Environment.TickCount64;
-        _reportedTimeout = false;
+        BeginMove(ItemMoveSource.Capture(item), moveRequest, item.OriginalGraphic, item.OriginalHue ?? item.Hue, retryWhenFree);
         return true;
     }
 
-    /// <summary>
-    /// Confirms the pending move when its item shows up in the container it was sent to. Shards that don't send the
-    /// "drop accepted" message would otherwise leave every later move waiting.
-    /// </summary>
-    internal void ConfirmArrived(uint serial, uint container)
+    internal void BeginMove(ItemMoveSource source, MoveRequest request, ushort graphic, ushort hue, Action retryWhenFree)
     {
-        if (HasPendingMove && _pendingMove.Value.Serial == serial && _pendingRequest.Destination == container)
-            ClearPendingMove(serial);
+        _pendingMove = new PendingMove(source, request, graphic, hue, retryWhenFree);
+        _reportedTimeout = false;
+    }
+
+    /// <summary>
+    /// Uses the original serial or both sides of a stack transfer to identify the move.
+    /// </summary>
+    internal void ObserveContainerUpdate(Item item, int? previousAmount)
+    {
+        PendingMove move = _pendingMove;
+        if (move == null || move.Request.IsEquip)
+            return;
+
+        uint serial = item.Serial;
+        if (serial == move.Source.Serial && item.Container == move.Request.Destination
+            && (item.Container != move.Source.Container
+                || item.X == move.Request.X && item.Y == move.Request.Y))
+        {
+            ConfirmDropFromInventory();
+            return;
+        }
+
+        if (serial == move.Source.Serial && item.Container == move.Source.Container
+            && move.Quantity > 0 && move.Source.Amount - item.Amount >= move.Quantity)
+            move.SourceChanged = true;
+
+        if (previousAmount is int before && move.Quantity > 0 && item.Amount - before == move.Quantity
+            && (item.Container == move.Request.Destination || serial == move.Request.Destination)
+            && item.OriginalGraphic == move.Graphic && (item.OriginalHue ?? item.Hue) == move.Hue)
+            move.DestinationChanged = true;
+
+        if (move.SourceChanged && move.DestinationChanged)
+            ConfirmDropFromInventory();
+    }
+
+    /// <summary>Records the disappearance of the original stack while tracking a move.</summary>
+    internal void ObserveSourceRemoval(uint serial)
+    {
+        if (_pendingMove is not { } move || move.Request.IsEquip || move.Source.Serial != serial)
+            return;
+
+        move.SourceChanged = true;
+        if (move.DestinationChanged)
+            ConfirmDropFromInventory();
+    }
+
+    /// <summary>Limits snapshot comparison to a container involved in the active move.</summary>
+    internal bool TracksContainer(uint container) =>
+        _pendingMove is { } move && !move.Request.IsEquip
+        && (move.Source.Container == container || move.Request.Destination == container);
+
+    /// <summary>Records a source stack absent from an authoritative container refresh.</summary>
+    internal void ObserveContainerSnapshot(World world, uint container)
+    {
+        if (_pendingMove is { } move && move.Source.Container == container
+            && world.Items.Get(move.Source.Serial)?.Container != container)
+            ObserveSourceRemoval(move.Source.Serial);
+    }
+
+    /// <summary>Confirms a queued drop at the requested ground coordinates.</summary>
+    internal void ConfirmGroundDrop(Item item)
+    {
+        if (_pendingMove is { } move && !move.Request.IsEquip && move.Source.Serial == item.Serial
+            && !SerialHelper.IsValid(move.Request.Destination)
+            && item.X == move.Request.X && item.Y == move.Request.Y
+            && (item.Container != move.Source.Container || item.X != move.Source.X || item.Y != move.Source.Y))
+            ConfirmDropFromInventory();
+    }
+
+    private void ConfirmDropFromInventory()
+    {
+        _pendingMove = null;
+        // 0x29 has no item serial. If the shard sends it after the inventory result,
+        // keep it from releasing the next move.
+        _unmatchedDropConfirmations++;
+    }
+
+    /// <summary>Consumes a generic drop acknowledgment in send order.</summary>
+    internal bool ConfirmDropAccepted()
+    {
+        if (_unmatchedDropConfirmations != 0)
+        {
+            _unmatchedDropConfirmations--;
+            return false;
+        }
+
+        if (_pendingMove is { } move && !move.Request.IsEquip)
+            _pendingMove = null;
+
+        ConfirmCursorFree();
+        return true;
+    }
+
+    /// <summary>Lets paused pickups proceed when the shard reports the held item was released.</summary>
+    internal void ConfirmCursorFree() => _waitingForFreeCursor = false;
+
+    /// <summary>Resolves an overdue move when the shard explicitly ends dragging.</summary>
+    internal void ConfirmDragEnded()
+    {
+        ConfirmCursorFree();
+        if (!_reportedTimeout || _pendingMove is not { } move)
+            return;
+
+        _pendingMove = null;
+        if (!move.Request.IsEquip)
+            _unmatchedDropConfirmations++;
+
+        // A source that is still present can be retried. If either side changed, wait for
+        // normal inventory updates instead of trying to move the same stack twice.
+        if (!move.SourceChanged && !move.DestinationChanged)
+            move.RetryWhenFree?.Invoke();
+    }
+
+    /// <summary>Completes a rejection and keeps a busy pickup eligible once the cursor is free.</summary>
+    internal void RejectPendingMove(uint serial, bool alreadyHolding)
+    {
+        if (_pendingMove is not { } move || move.Source.Serial != serial)
+            return;
+
+        _pendingMove = null;
+        if (!alreadyHolding)
+            return;
+
+        _waitingForFreeCursor = true;
+        move.RetryWhenFree?.Invoke();
     }
 
     internal void ConfirmEquip(uint serial, uint destination, Layer layer)
     {
-        if (HasPendingMove && _pendingRequest.Layer == layer && _pendingRequest.Destination == destination)
+        if (_pendingMove is { } move && move.Request.IsEquip && move.Source.Serial == serial
+            && move.Request.Destination == destination && layer != Layer.Invalid)
             ClearPendingMove(serial);
 
         var hold = Client.Game.UO.GameCursor.ItemHold;
         if (hold.Dropped && hold.Serial == serial)
+        {
             hold.Clear();
+            ConfirmCursorFree();
+        }
     }
 
     public void Update()
     {
-        if (HasPendingMove && !_reportedTimeout && Environment.TickCount64 - _moveStarted >= 3000)
+        if (_pendingMove != null && !_reportedTimeout && Environment.TickCount64 - _pendingMove.Started >= 3000)
         {
             _reportedTimeout = true;
-            GameActions.Print("Item moves paused while waiting for the shard to confirm the last move.");
+            GameActions.Print(TazLang.Get("itemmove_waiting_for_confirmation",
+                "Item moves paused while waiting for the shard to confirm the last move."));
         }
-
-        // Never wait forever: a confirmation the shard never sends must not stop every later move.
-        if (HasPendingMove && Environment.TickCount64 - _moveStarted >= PENDING_MOVE_GIVE_UP_MS)
-            ClearPendingMove();
 
         if (IsEmpty || GlobalActionCooldown.IsOnCooldown) return; //Quick bool return if empty to avoid checking the queue when unnecessary
 

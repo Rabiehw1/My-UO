@@ -332,7 +332,7 @@ namespace ClassicUO.Game.GameObjects
         public override void OnGraphicSet(ushort newGraphic)
         {
             base.OnGraphicSet(newGraphic);
-            IsHuman = HumanGraphicCheck();
+            IsHuman = IsHumanBody(Graphic);
             IsGargoyle = GargoyleGraphicCheck();
         }
 
@@ -1268,20 +1268,15 @@ namespace ClassicUO.Game.GameObjects
             }
         }
 
-        private bool HumanGraphicCheck() =>
-            Graphic >= 0x0190 && Graphic <= 0x0193
-            || Graphic >= 0x00B7 && Graphic <= 0x00BA
-            || Graphic >= 0x025D && Graphic <= 0x0260
-            || Graphic == 0x029A
-            || Graphic == 0x029B
-            || Graphic == 0x02B6
-            || Graphic == 0x02B7
-            || Graphic == 0x03DB
-            || Graphic == 0x03DF
-            || Graphic == 0x03E2
-            || Graphic == 0x02E8
-            || Graphic == 0x02E9
-            || Graphic == 0x04E5;
+        /// <summary>Checks the body graphics shared by mobile and corpse updates.</summary>
+        /// <param name="graphic">The body graphic reported by the shard.</param>
+        /// <returns>True when the body uses a recognized human-compatible graphic.</returns>
+        internal static bool IsHumanBody(ushort graphic) => graphic is
+            >= 0x0190 and <= 0x0193
+            or >= 0x00B7 and <= 0x00BA
+            or >= 0x025D and <= 0x0260
+            or 0x029A or 0x029B or 0x02B6 or 0x02B7
+            or 0x03DB or 0x03DF or 0x03E2 or 0x02E8 or 0x02E9 or 0x04E5;
 
         private bool GargoyleGraphicCheck() =>
             Client.Game.UO.Version >= ClientVersion.CV_7000

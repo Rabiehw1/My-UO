@@ -26,6 +26,11 @@ namespace ClassicUO.Game
     {
         public static World Instance { get; private set; }
         public static HashSet<EnhancedPacketDisabledFeaturesEnum> DisabledFeatures = new();
+
+        internal event Action<Gump, string[]> ServerGumpReceived;
+
+        internal void OnServerGumpReceived(Gump gump, string[] text) => ServerGumpReceived?.Invoke(gump, text);
+
         private readonly EffectManager _effectManager;
         private readonly List<uint> _toRemove = new List<uint>();
         private uint _timeToDelete;

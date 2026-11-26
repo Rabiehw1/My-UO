@@ -22,6 +22,7 @@ public partial class WorldMapGump
     private static int _desktopTextureFacet;
     private Point? _desktopPointer;
     private int _navVersion;
+    private int _navWalkVersion;
     private int _navigationFacet;
     private MapRouteStatus _navigationStatus;
 
@@ -33,12 +34,16 @@ public partial class WorldMapGump
 
     internal void WalkFromDesktop(int facet, Point tile, bool append)
     {
-        if (append && _navigationFacet == facet && _navigationStatus == MapRouteStatus.Walking
-            && World.Player?.Pathfinder?.AutoWalking == true)
+        if (append && CanAppendNavigation(facet))
             StartNavPath(facet, _navPlannedEnd.X, _navPlannedEnd.Y, _navPlannedEndZ, tile.X, tile.Y, firstAttempt: true, append: true);
         else
             BeginFreshNavTo(facet, tile.X, tile.Y);
     }
+
+    private bool CanAppendNavigation(int facet) => _navigationFacet == facet
+        && _navigationStatus == MapRouteStatus.Walking
+        && World.Player?.Pathfinder is { HasActiveComputedPath: true } pathfinder
+        && pathfinder.AutoWalkVersion == _navWalkVersion;
 
     private void UpdateNavigationState()
     {
@@ -49,10 +54,11 @@ public partial class WorldMapGump
             StopDesktopNavigation();
             return;
         }
-        if (_navigationStatus == MapRouteStatus.Walking && !World.Player.Pathfinder.AutoWalking)
+        var pathfinder = World.Player.Pathfinder;
+        if (_navigationStatus == MapRouteStatus.Walking
+            && (pathfinder.AutoWalkVersion != _navWalkVersion || !pathfinder.HasActiveComputedPath))
         {
-            bool arrived = _navDest is Point destination
-                && Math.Max(Math.Abs(World.Player.X - destination.X), Math.Abs(World.Player.Y - destination.Y)) <= 1;
+            bool arrived = pathfinder.AutoWalkVersion == _navWalkVersion && pathfinder.CompletedComputedPath;
             FinishNavigation(arrived ? MapRouteStatus.Arrived : MapRouteStatus.Idle);
         }
     }

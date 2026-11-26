@@ -152,6 +152,9 @@ namespace ClassicUO.Game.Managers
         // Returns true if this auto target should respond to the given cursor target type.
         public bool Matches(TargetType targetType) => MatchAnyTargetType || ExpectedTargetType == targetType || (AllowNeutral && targetType == TargetType.Neutral);
 
+        internal bool CanAnswer(CursorTarget cursor, TargetType type) =>
+            IsSet && TargetManager.IsLiveServerCursor(cursor, type) && Matches(type);
+
         public void Clear()
         {
             AllowNeutral = false;
@@ -244,6 +247,14 @@ namespace ClassicUO.Game.Managers
 
         public TargetType TargetingType { get; private set; }
 
+        internal static bool IsLiveServerCursor(CursorTarget cursor, TargetType type) =>
+            cursor is CursorTarget.Object or CursorTarget.Position && type is TargetType.Neutral or TargetType.Beneficial or TargetType.Harmful;
+
+        internal static bool IsBeneficialObjectCursor(CursorTarget cursor, TargetType type) =>
+            cursor == CursorTarget.Object && type is TargetType.Neutral or TargetType.Beneficial;
+
+        internal bool HasBeneficialObjectCursor => IsTargeting && IsBeneficialObjectCursor(TargetingState, TargetingType);
+
         private void ClearTargetingWithoutTargetCancelPacket()
         {
             if (TargetingState == CursorTarget.MultiPlacement)
@@ -298,7 +309,7 @@ namespace ClassicUO.Game.Managers
             }
             else if (lastTargetting)
             {
-                CancelTarget();
+                CancelTarget(preserveAutoTarget: true);
             }
 
             // https://github.com/andreakarasho/ClassicUO/issues/1373
@@ -311,7 +322,9 @@ namespace ClassicUO.Game.Managers
         public static void SetAutoTarget(uint serial, TargetType targetType, bool matchAnyTargetType = false, int timeoutMs = 0) =>
             NextAutoTarget.Set(serial, targetType, matchAnyTargetType, timeoutMs);
 
-        public void CancelTarget()
+        public void CancelTarget() => CancelTarget(preserveAutoTarget: false);
+
+        internal void CancelTarget(bool preserveAutoTarget)
         {
             if (TargetingState == CursorTarget.MultiPlacement)
             {
@@ -340,7 +353,8 @@ namespace ClassicUO.Game.Managers
             }
 
             Reset();
-            NextAutoTarget.Clear();
+            if (!preserveAutoTarget)
+                NextAutoTarget.Clear();
         }
 
         internal void SetGrabBag(uint serial)
@@ -375,14 +389,17 @@ namespace ClassicUO.Game.Managers
             );
         }
 
-        public void Target(uint serial)
+        public void Target(uint serial) => Target(serial, preserveAutoTarget: false);
+
+        internal void Target(uint serial, bool preserveAutoTarget)
         {
             if (!IsTargeting)
             {
                 return;
             }
 
-            NextAutoTarget.Clear();
+            if (!preserveAutoTarget && NextAutoTarget.CanAnswer(TargetingState, TargetingType))
+                NextAutoTarget.Clear();
 
             // Record action for script recording
             LegionScripting.ScriptRecorder.Instance.RecordTarget(serial);
@@ -620,7 +637,8 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            NextAutoTarget.Clear();
+            if (NextAutoTarget.CanAnswer(TargetingState, TargetingType))
+                NextAutoTarget.Clear();
 
             // Record action for script recording
             LegionScripting.ScriptRecorder.Instance.RecordTargetLocation(x, y, z, graphic);
@@ -740,7 +758,8 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            NextAutoTarget.Clear();
+            if (NextAutoTarget.CanAnswer(TargetingState, TargetingType))
+                NextAutoTarget.Clear();
 
             _lastDataBuffer[0] = 0x6C;
             _lastDataBuffer[1] = (byte)TargetingState;
@@ -762,7 +781,8 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            NextAutoTarget.Clear();
+            if (NextAutoTarget.CanAnswer(TargetingState, TargetingType))
+                NextAutoTarget.Clear();
 
             _lastDataBuffer[0] = 0x6C;
 

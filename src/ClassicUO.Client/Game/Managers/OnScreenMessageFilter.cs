@@ -16,7 +16,7 @@ internal sealed class OnScreenMessageFilter
     private uint? _lastAbsorption;
     private uint? _lastCooldown;
 
-    internal bool IsMuted(Profile? profile, string text, uint now)
+    internal bool IsMuted(Profile? profile, string text, uint now, string? displayedText = null)
     {
         if (!ReferenceEquals(_profile, profile))
         {
@@ -29,8 +29,10 @@ internal sealed class OnScreenMessageFilter
 
         if (profile.OnScreenMessagePhrases is { Count: > 0 } phrases)
         {
+            bool hasDifferentDisplay = displayedText != null && !string.Equals(text, displayedText, StringComparison.Ordinal);
             foreach ((string phrase, bool enabled) in phrases)
-                if (enabled && !string.IsNullOrWhiteSpace(phrase) && Contains(text, phrase))
+                if (enabled && !string.IsNullOrWhiteSpace(phrase)
+                    && (Contains(text, phrase) || (hasDifferentDisplay && Contains(displayedText!, phrase))))
                     return true;
         }
 

@@ -58,6 +58,9 @@ namespace ClassicUO.Game.Managers.Hotkeys
                && (IgnoresGlobalDisable || !HotKeys.GloballyDisabled)
                && Binding != null && Binding.IsPressed(allowAdditionalModifiers);
 
+        internal bool AcceptsBinding(HotkeyBinding binding) =>
+            binding.IsEmpty || (OnPressed == null ? !binding.WheelScroll : binding.IsTriggerable);
+
         public void ResetToDefault() => Binding = Default.Clone();
 
         /// <summary>

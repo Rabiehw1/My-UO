@@ -42,6 +42,7 @@ internal static class DenyMoveItem
         if (!world.InGame)
             return;
 
+        byte rejectReason = p.ReadUInt8();
         Item firstItem = world.Items.Get(Client.Game.UO.GameCursor.ItemHold.Serial);
 
         bool itemHoldDenial =
@@ -167,10 +168,8 @@ internal static class DenyMoveItem
         else
             Log.Warn("There was a problem with ItemHold object. It was cleared before :|");
 
-        ObjectActionQueue.Instance.ClearPendingMove(deniedSerial);
-
-        // Actually RejectMoveItemReason
-        byte rejectReason = p.ReadUInt8();
+        if (hasPendingMove)
+            ObjectActionQueue.Instance.RejectPendingMove(deniedSerial, rejectReason == (byte)RejectMoveItemReason.AlreadyHoldingSomething);
 
         if (rejectReason < 5)
             world.MessageManager.HandleMessage(

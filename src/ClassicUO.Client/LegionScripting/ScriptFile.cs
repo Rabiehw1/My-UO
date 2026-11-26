@@ -22,14 +22,15 @@ public partial class ScriptFile : IDisposable
     public string FullPath;
     public string Group = string.Empty;
     public string SubGroup = string.Empty;
-    public string[] FileContents;
-    public string FileContentsJoined;
+    public string[] FileContents = [];
+    public string FileContentsJoined = string.Empty;
     public Thread ScriptThread;
     public ScriptEngine PythonEngine;
     public ScriptScope PythonScope;
     public LegionAPI ScopedApi;
     public ScriptType Type;
     public Script<object> CSharpCompiledScript;
+    private string _csharpCompiledSource;
     public int UserCodeStartLine { get; private set; }
 
     public bool IsPlaying => ScriptThread != null;
@@ -84,7 +85,11 @@ public partial class ScriptFile : IDisposable
     protected World World;
     private bool _disposed;
 
-    public ScriptFile(World world, string path, string fileName)
+    public ScriptFile(World world, string path, string fileName) : this(world, path, fileName, readSource: true)
+    {
+    }
+
+    protected ScriptFile(World world, string path, string fileName, bool readSource)
     {
         World = world;
         Path = path;
@@ -107,13 +112,15 @@ public partial class ScriptFile : IDisposable
 
         FileName = fileName;
         FullPath = System.IO.Path.Combine(Path, FileName);
-        FileContents = ReadFromFile();
 
         // Determine script type based on extension
         if (fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             Type = ScriptType.CSharp;
         else
             Type = ScriptType.Python;
+
+        if (readSource)
+            ReadFromFile();
     }
 
     public virtual void OverrideFileContents(string contents)
@@ -133,32 +140,32 @@ public partial class ScriptFile : IDisposable
         }
     }
 
-    public virtual string[] ReadFromFile()
+    public virtual string[] ReadFromFile() => TryReadFromFile(out var lines, out _) ? lines : [];
+
+    internal bool TryReadFromFile(out string[] lines, out string error)
     {
         try
         {
-            string[] c = File.ReadAllLines(FullPath, Encoding.UTF8);
-            string newContents = string.Join("\n", c);
+            lines = ReadSourceLines();
+            string source = string.Join("\n", lines);
+            const string pattern = @"^\s*(?:from\s+[\w.]+\s+import\s+API|import\s+API)\s*$";
+            source = Regex.Replace(source, pattern, string.Empty, RegexOptions.Multiline);
 
-            // Check if contents changed for C# scripts and invalidate cache
-            if (Type == ScriptType.CSharp && FileContentsJoined != newContents)
-            {
-                CSharpCompiledScript = null;
-            }
-
-            FileContentsJoined = newContents;
-
-            string pattern = @"^\s*(?:from\s+[\w.]+\s+import\s+API|import\s+API)\s*$";
-            FileContentsJoined = System.Text.RegularExpressions.Regex.Replace(FileContentsJoined, pattern, string.Empty, System.Text.RegularExpressions.RegexOptions.Multiline);
-
-            return c;
+            FileContents = lines;
+            FileContentsJoined = source;
+            error = string.Empty;
+            return true;
         }
         catch (Exception e)
         {
-            Log.Error($"Error reading script file: {e}");
-            return [];
+            Log.Error($"Error reading script '{FullPath}': {e}");
+            lines = [];
+            error = e.Message;
+            return false;
         }
     }
+
+    protected virtual string[] ReadSourceLines() => File.ReadAllLines(FullPath, Encoding.UTF8);
 
     public virtual bool FileExists() => File.Exists(FullPath);
 
@@ -250,11 +257,13 @@ public partial class ScriptFile : IDisposable
     }
 
 
-    public void SetupCSharpScript()
+    public void SetupCSharpScript() => GetCSharpScript(FileContentsJoined);
+
+    internal Script<object> GetCSharpScript(string source)
     {
-        // Reuse cached compilation if available
-        if (CSharpCompiledScript != null && !LegionScripting.LScriptSettings.DisableModuleCache)
-            return;
+        if (CSharpCompiledScript is { } cached && _csharpCompiledSource == source
+            && !LegionScripting.LScriptSettings.DisableModuleCache)
+            return cached;
 
         // Configure script options with assemblies and imports
         ScriptOptions options = ScriptOptions.Default
@@ -278,12 +287,15 @@ public partial class ScriptFile : IDisposable
             .WithFilePath(FullPath);
 
         // Compile the script
-        (string code, int userCodeStartLine) = GenerateUserCodeWrapper(FileContentsJoined);
-        CSharpCompiledScript = CSharpScript.Create<object>(code, options, typeof(ScriptGlobals));
-        UserCodeStartLine = userCodeStartLine;
+        (string code, int userCodeStartLine) = GenerateUserCodeWrapper(source);
+        Script<object> script = CSharpScript.Create<object>(code, options, typeof(ScriptGlobals));
 
         // Pre-compile to catch compilation errors early
-        CSharpCompiledScript.Compile();
+        script.Compile();
+        UserCodeStartLine = userCodeStartLine;
+        _csharpCompiledSource = source;
+        CSharpCompiledScript = script;
+        return script;
     }
 
     public void SetupCSharpGlobals()

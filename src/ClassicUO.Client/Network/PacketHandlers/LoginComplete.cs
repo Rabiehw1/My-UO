@@ -14,8 +14,9 @@ internal static class LoginComplete
 {
     public static void Receive(World world, ref StackDataReader p)
     {
-        if (world.Player != null && Client.Game.Scene is LoginScene)
+        if (world.Player != null && Client.Game.Scene is LoginScene && AsyncNetClient.Socket.IsConnected)
         {
+            LoginHandshake.Reconnect = false;
             var scene = new GameScene(world);
             Client.Game.SetScene(scene);
             LoginScene.Instance?.Dispose();

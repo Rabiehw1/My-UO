@@ -80,22 +80,31 @@ public sealed class SupportAgentSaveTests
     }
 
     [Fact]
-    public void RangerOrder_UsesOneCursorAndDoesNotRepeatTheSameTarget()
+    public void RangerOrder_DeduplicatesOnlyAfterSendingTheTarget()
     {
         var order = new RangerPetOrder();
         order.TryBegin(1, 2, 100).Should().BeTrue();
         order.IsWaitingForCursor(101).Should().BeTrue();
         order.TryBegin(1, 3, 200).Should().BeFalse();
-        order.TakeCursor(300).Should().BeTrue();
-        order.TakeCursor(350).Should().BeFalse();
+        order.Complete();
+        order.IsWaitingForCursor(350).Should().BeFalse();
         order.TryBegin(1, 2, 400).Should().BeFalse();
         order.TryBegin(1, 3, 400).Should().BeTrue();
-        order.IsWaitingForCursor(2300).Should().BeFalse();
-        order.TakeCursor(2300).Should().BeFalse();
-        order.TryBegin(1, 3, 2500).Should().BeFalse();
-        order.TryBegin(1, 4, 2500).Should().BeTrue();
-        order.Cancel();
-        order.TakeCursor(2600).Should().BeFalse();
+        order.Reset();
+        order.IsWaitingForCursor(450).Should().BeFalse();
+        order.TryBegin(1, 2, 450).Should().BeTrue();
+    }
+
+    [Fact]
+    public void RangerOrder_RetriesOnceAfterTimeoutWithBackoff()
+    {
+        var order = new RangerPetOrder();
+        order.TryBegin(1, 2, 100).Should().BeTrue();
+        order.IsWaitingForCursor(1850).Should().BeFalse();
+        order.TryBegin(1, 2, 1850).Should().BeFalse();
+        order.TryBegin(1, 2, 2600).Should().BeTrue();
+        order.TryBegin(1, 2, 5100).Should().BeFalse();
+        order.TryBegin(1, 3, 5100).Should().BeTrue();
     }
 
     [Fact]

@@ -21,13 +21,17 @@ internal static class ItemHelpers
         ushort y,
         ushort hue,
         uint containerSerial,
-        bool incrementalUpdate = false
+        bool incrementalUpdate = false,
+        int? snapshotPreviousAmount = null
     )
     {
         var hold = Client.Game.UO.GameCursor.ItemHold;
         bool observeCarve = incrementalUpdate && world.Player?.Backpack?.Serial == containerSerial;
         if (hold.Serial == serial && hold.Dropped)
+        {
             hold.Clear();
+            ObjectActionQueue.Instance.ConfirmCursorFree();
+        }
 
         Entity container = world.Get(containerSerial);
 
@@ -40,6 +44,9 @@ internal static class ItemHelpers
         }
 
         Item item = world.Items.Get(serial);
+        int? previousAmount = snapshotPreviousAmount;
+        if (incrementalUpdate && (item == null || item.Container == containerSerial))
+            previousAmount = item?.Amount ?? 0;
         ItemMoveSource? previous = observeCarve && item is { IsDestroyed: false }
             ? ItemMoveSource.Capture(item) with { Graphic = item.OriginalGraphic, Hue = item.OriginalHue ?? item.Hue }
             : null;
@@ -78,7 +85,7 @@ internal static class ItemHelpers
         container.PushToBack(item);
         if (observeCarve)
             AutoSkinningManager.Instance.ObserveBackpackUpdate(world, item, previous);
-        ObjectActionQueue.Instance.ConfirmArrived(serial, containerSerial);
+        ObjectActionQueue.Instance.ObserveContainerUpdate(item, previousAmount);
 
         // Fire event after item is fully configured
         if (itemWasCreated)

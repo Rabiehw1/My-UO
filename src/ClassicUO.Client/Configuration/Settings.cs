@@ -26,6 +26,8 @@ namespace ClassicUO.Configuration
         [JsonIgnore] public CustomServers? CustomServer;
 
         public const string SETTINGS_FILENAME = "settings.json";
+        internal const int MinReconnectSeconds = 1;
+        internal const int MaxReconnectSeconds = int.MaxValue / 1000;
         public static Settings GlobalSettings = new Settings();
         public static string CustomSettingsFilepath = null;
 
@@ -96,7 +98,14 @@ namespace ClassicUO.Configuration
 
         [JsonPropertyName("reconnect")] public bool Reconnect { get; set; }
 
-        [JsonPropertyName("reconnect_time")] public int ReconnectTime { get; set; } = 1;
+        [JsonPropertyName("reconnect_time")]
+        public int ReconnectTime
+        {
+            get;
+            set => field = Math.Clamp(value, MinReconnectSeconds, MaxReconnectSeconds);
+        } = MinReconnectSeconds;
+
+        internal int ReconnectDelayMilliseconds => ReconnectTime * 1000;
 
         [JsonPropertyName("login_music")] public bool LoginMusic { get; set; } = true;
 

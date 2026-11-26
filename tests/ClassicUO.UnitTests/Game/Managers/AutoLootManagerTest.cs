@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using ClassicUO.Game;
+using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using FluentAssertions;
 using Xunit;
@@ -10,6 +12,21 @@ namespace ClassicUO.UnitTests.Game.Managers
 {
     public class AutoLootManagerTest
     {
+        [Theory]
+        [InlineData(0x2006, 0x0190, true)] // Human
+        [InlineData(0x2006, 0x025D, true)] // Elf
+        [InlineData(0x2006, 0x02B6, true)] // Gargoyle
+        [InlineData(0x2006, 0x04E5, true)] // Alternate human-compatible body
+        [InlineData(0x2006, 0x0001, false)] // Creature
+        [InlineData(0x0EED, 0x00B7, false)] // Gold stack with a matching quantity
+        public void HumanCorpseClassificationRequiresACorpseAndARecognizedBody(int graphic, int amount, bool expected)
+        {
+            Client.UnitTestingActive = true;
+            var item = new Item(new World()) { Graphic = (ushort)graphic, Amount = (ushort)amount };
+
+            Assert.Equal(expected, item.IsHumanCorpse);
+        }
+
         #region AutoLootConfigEntry - Default Values Tests
 
         [Fact]

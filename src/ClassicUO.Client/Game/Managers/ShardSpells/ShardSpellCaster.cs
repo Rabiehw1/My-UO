@@ -3,9 +3,13 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
+using System.Net;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Text.RegularExpressions;
 using ClassicUO.Configuration;
+using ClassicUO.Utility;
 
 namespace ClassicUO.Game.Managers.ShardSpells;
 
@@ -96,7 +100,9 @@ internal sealed class ShardSpellCaster : IDisposable
             return false;
         }
 
-        _pendingGump.Arm(GetButton(book, index), ShardSpellCatalog.Get(book).Name, Time.Ticks, onCast, canReply, requireButton: canReply != null);
+        ShardSpellBookInfo bookInfo = ShardSpellCatalog.Get(book);
+        _pendingGump.Arm(GetButton(book, index), bookInfo.Name, Time.Ticks, onCast, canReply, requireButton: true,
+            matchesSource: (gump, text) => MatchesBookGump(bookSerial, gump.LocalSerial, bookInfo, spell, text));
         GameActions.DoubleClick(_world, bookSerial, ignoreQueue: true);
         return true;
     }
@@ -142,6 +148,7 @@ internal sealed class ShardSpellCaster : IDisposable
     /// <summary>Saves settings; called when the game scene unloads.</summary>
     public void Dispose()
     {
+        _pendingGump.Clear();
         _settings?.Save();
         Instance = null!;
     }
@@ -149,6 +156,28 @@ internal sealed class ShardSpellCaster : IDisposable
     #endregion
 
     #region Private methods
+
+    internal static bool MatchesBookGump(uint bookSerial, uint sender, ShardSpellBookInfo book, ShardSpell spell, string[] text)
+    {
+        if (bookSerial != 0 && bookSerial == sender)
+            return true;
+
+        // Some shards send the dialog from the player instead of the book. Require identifiable
+        // book content in that case, since many unrelated dialogs reuse the same button numbers.
+        var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Regex markup = RegexHelper.GetRegex("<[^>]*>");
+        foreach (string line in text)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            string label = WebUtility.HtmlDecode(markup.Replace(line, string.Empty)).Trim().Replace('’', '\'');
+            labels.Add(label);
+        }
+
+        return labels.Contains(spell.Name) && (labels.Contains(book.Name)
+            || book.Spells.Any(other => other != spell && labels.Contains(other.Name)));
+    }
 
     private static string ButtonKey(ShardSpellBook book, int index) => $"{book}:{index}";
 

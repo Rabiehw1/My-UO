@@ -4248,9 +4248,7 @@ public partial class WorldMapGump : ResizableGump
                 // search from the end of the current path to the new point and append the result
                 // (A->B->C) instead of restarting from the player.
                 bool append = HotKeys.IsPressed(HotKeyRegistrar.WorldMapPathfindAppendId)
-                              && _navDest.HasValue
-                              && _world.Player?.Pathfinder != null
-                              && _world.Player.Pathfinder.AutoWalking;
+                              && CanAppendNavigation(mapIndex);
 
                 if (append)
                 {
@@ -4322,8 +4320,8 @@ public partial class WorldMapGump : ResizableGump
         }
         _navReplansLeft = MaxNavReplans;
 
-        StartNavPath(mapIndex, _world.Player.X, _world.Player.Y, _world.Player.Z, wX, wY,
-                     firstAttempt: true, append: false);
+        _world.Player.GetEndPosition(out int startX, out int startY, out sbyte startZ, out _);
+        StartNavPath(mapIndex, startX, startY, startZ, wX, wY, firstAttempt: true, append: false);
     }
 
     /// <summary>
@@ -4335,15 +4333,29 @@ public partial class WorldMapGump : ResizableGump
     /// </summary>
     private void StartNavPath(int mapIndex, int startX, int startY, sbyte startZ, int destX, int destY, bool firstAttempt, bool append)
     {
+        if (_world.Player?.Pathfinder is not { } pathfinder)
+            return;
+
         List<WorldMapPathfinder.HouseMultiSnapshot> houseMultis = BuildHouseMultiSnapshot();
         int version = _navVersion;
+        int walkVersion = pathfinder.AutoWalkVersion;
 
         WorldMapPathfinder.FindPathAsync(mapIndex, startX, startY, startZ, destX, destY, 8, path =>
         {
             // The search runs on a worker thread and can complete after the player has left
             // the world or this gump has been closed, so the world state may be gone.
-            if (IsDisposed || version != _navVersion || _world?.Player?.Pathfinder == null || _world.MapIndex != mapIndex)
+            if (IsDisposed || version != _navVersion || _world?.Player?.Pathfinder != pathfinder || _world.MapIndex != mapIndex)
                 return;
+
+            bool extendActivePath = append && pathfinder.HasActiveComputedPath;
+            _world.Player.GetEndPosition(out int x, out int y, out sbyte z, out _);
+            // A late extension can continue from a completed waypoint. A cancelled walk, a
+            // replacement walk, or movement away from the planned start invalidates the search.
+            if (!pathfinder.CanApplyComputedPath(walkVersion, append, x == startX && y == startY && z == startZ))
+            {
+                FinishNavigation(MapRouteStatus.Idle);
+                return;
+            }
 
             if (path == null || path.Count == 0)
             {
@@ -4371,7 +4383,7 @@ public partial class WorldMapGump : ResizableGump
             WorldMapPathfinder.PathPoint last = path[path.Count - 1];
 
             // Extend the active route without restarting the walk.
-            if (append && _world.Player.Pathfinder.AppendComputedPath(pathPoints))
+            if (extendActivePath)
             {
                 if (_navPath == null)
                     _navPath = navRender;
@@ -4382,6 +4394,7 @@ public partial class WorldMapGump : ResizableGump
                 _navPlannedEnd = new Point(last.X, last.Y);
                 _navPlannedEndZ = (sbyte)last.Z;
                 _navSegments++;
+                pathfinder.AppendComputedPath(pathPoints);
                 return;
             }
 
@@ -4424,12 +4437,13 @@ public partial class WorldMapGump : ResizableGump
 
                 Point dest = _navDest.Value;
                 _navigationStatus = MapRouteStatus.Planning;
-                StartNavPath(_world.Map.Index, _world.Player.X, _world.Player.Y, _world.Player.Z,
-                             dest.X, dest.Y, firstAttempt: false, append: false);
+                _world.Player.GetEndPosition(out int replanX, out int replanY, out sbyte replanZ, out _);
+                StartNavPath(_world.Map.Index, replanX, replanY, replanZ, dest.X, dest.Y, firstAttempt: false, append: false);
             };
             _world.Player.Pathfinder.OnComputedPathStepFailed += _navStepFailedHandler;
 
-            _world.Player.Pathfinder.StartComputedPath(pathPoints, run: true);
+            pathfinder.StartComputedPath(pathPoints, run: true);
+            _navWalkVersion = pathfinder.AutoWalkVersion;
         }, houseMultis);
     }
 

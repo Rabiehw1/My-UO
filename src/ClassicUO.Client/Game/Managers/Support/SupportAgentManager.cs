@@ -154,7 +154,7 @@ internal sealed class SupportAgentManager : IDisposable
         Settings.Class = supportClass;
         _runner.Reset();
         _healRequested = _blessRequested = false;
-        _petOrder.Cancel();
+        _petOrder.Reset();
     }
 
     internal Mobile? RangerPet => Settings.RangerPetSerial != 0
@@ -169,7 +169,7 @@ internal sealed class SupportAgentManager : IDisposable
         Settings.RangerPetSerial = pet.Serial;
         Settings.RangerPetName = pet.Name;
         Settings.Save();
-        _petOrder.Cancel();
+        _petOrder.Reset();
         return true;
     }
 
@@ -209,7 +209,8 @@ internal sealed class SupportAgentManager : IDisposable
 
     internal void OnPetOrderCursor(CursorTarget cursor, TargetType targetType, bool claimed)
     {
-        if (!_petOrder.TakeCursor(Time.Ticks) || claimed || cursor is not (CursorTarget.Object or CursorTarget.Position)
+        if (claimed || !_petOrder.IsWaitingForCursor(Time.Ticks) || !_world.TargetManager.IsTargeting
+            || !TargetManager.IsLiveServerCursor(cursor, targetType)
             || targetType is not (TargetType.Harmful or TargetType.Neutral)
             || _settings is not { Enabled: true, Class: SupportClass.Ranger, RangerPetEnabled: true } settings
             || _retreating || _followRequested || Time.Ticks < _followOverrideUntil
@@ -219,7 +220,9 @@ internal sealed class SupportAgentManager : IDisposable
             || !IsValidEnemy(enemy, player, settings.LeaderSerial, settings.ActiveCombat))
             return;
 
-        _world.TargetManager.Target(enemy.Serial);
+        _world.TargetManager.Target(enemy.Serial, preserveAutoTarget: true);
+        if (!_world.TargetManager.IsTargeting)
+            _petOrder.Complete();
     }
 
     /// <summary>Saves settings and detaches from game events; called when the game scene unloads.</summary>
@@ -485,7 +488,8 @@ internal sealed class SupportAgentManager : IDisposable
         if (!SupportClassPresets.CanUseRole(classSettings.Class, role)
             || now < _castUntil || _runner.IsWaiting || player.IsCasting || _world.TargetManager.IsTargeting
             || TargetManager.NextAutoTarget.IsSet || ShardSpellCaster.Instance.IsCasting
-            || BandageManager.Instance.IsBandaging || Client.Game.UO.GameCursor.ItemHold.Enabled
+            || BandageManager.Instance.IsBandaging || IsWaitingForAnotherHeal || IsWaitingForPetCursor
+            || Client.Game.UO.GameCursor.ItemHold.Enabled
             || (role != SupportRole.Emergency && now < _abilityReadyAt))
             return false;
 
@@ -522,7 +526,7 @@ internal sealed class SupportAgentManager : IDisposable
 
             if (_runner.TryUse(ability, target, now, started => StartAbility(ability, patient, started)))
             {
-                if (ability.Action != SupportActionType.CastShardSpell)
+                if (ability.Action is not (SupportActionType.CastSpell or SupportActionType.CastShardSpell))
                     StartAbility(ability, patient, now);
                 return true;
             }
@@ -650,6 +654,7 @@ internal sealed class SupportAgentManager : IDisposable
     {
         if (_world.TargetManager.IsTargeting || TargetManager.NextAutoTarget.IsSet || AutoSkinningManager.Instance.IsWaitingForCursor
             || player.IsCasting || ShardSpellCaster.Instance.IsCasting || BandageManager.Instance.IsBandaging
+            || IsWaitingForAnotherHeal
             || Client.Game.UO.GameCursor.ItemHold.Enabled || enemy.Serial == Settings.RangerPetSerial
             || RangerPet is not { } pet || string.IsNullOrWhiteSpace(pet.Name)
             || !_petOrder.TryBegin(pet.Serial, enemy.Serial, now))
@@ -657,6 +662,9 @@ internal sealed class SupportAgentManager : IDisposable
 
         GameActions.Say($"{pet.Name.Trim()} kill");
     }
+
+    private bool IsWaitingForAnotherHeal => BandageManager.Instance.IsWaitingForHealingSpellCursor
+        || SelfHealManager.IsWaitingForCursor || _world.Party.HasPendingHealCursor;
 
     private Mobile? FindNearestEnemy(PlayerMobile player, uint leaderSerial, SupportCombatSettings combat)
     {

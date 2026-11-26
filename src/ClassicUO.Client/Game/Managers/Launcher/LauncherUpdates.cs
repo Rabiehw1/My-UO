@@ -105,7 +105,7 @@ internal static class LauncherUpdates
             try
             {
                 await ClientUpdater.InstallAsync(update, progress);
-                MainThreadQueue.InvokeOnMainThread(ClientUpdater.RestartClient);
+                MainThreadQueue.InvokeOnMainThread(RestartAfterInstall);
             }
             catch (Exception e)
             {
@@ -113,7 +113,7 @@ internal static class LauncherUpdates
                 MainThreadQueue.InvokeOnMainThread(() =>
                 {
                     IsBusy = false;
-                    SetStatus(TazLang.Get("launcher_update_failed"));
+                    SetStatus(e is TimeoutException ? e.Message : TazLang.Get("launcher_update_failed"));
                 });
             }
         });
@@ -122,6 +122,21 @@ internal static class LauncherUpdates
     #endregion
 
     #region Private methods
+
+    private static void RestartAfterInstall()
+    {
+        try
+        {
+            ClientUpdater.RestartClient();
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Launcher: could not restart - {e}");
+            IsBusy = false;
+            Available = null;
+            SetStatus(TazLang.Get("updatewindow_restartmanually"));
+        }
+    }
 
     private static void SetStatus(string text)
     {

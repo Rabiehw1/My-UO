@@ -29,16 +29,17 @@ public sealed class ShopListPreset
     public List<BuySellItemConfig> Rules { get; set; } = [];
 
     /// <summary>Rules for the items currently on the item list, adding a rule for any item that has none yet.</summary>
-    /// <returns>One rule per list item, in list order; empty when no list is chosen.</returns>
+    /// <returns>One rule per graphic and hue pair, in list order; empty when no list is chosen.</returns>
     public List<BuySellItemConfig> SyncRules()
     {
         var result = new List<BuySellItemConfig>();
         if (ItemListLibrary.Resolve(ItemListId)?.Items is not { } items)
             return result;
 
+        var included = new HashSet<(ushort Graphic, ushort Hue)>();
         foreach (SharedItem item in items)
         {
-            if (item == null || item.Graphic == 0)
+            if (item == null || item.Graphic == 0 || !included.Add((item.Graphic, item.Hue)))
                 continue;
 
             BuySellItemConfig? rule = Rules.Find(existing => existing.Graphic == item.Graphic && existing.Hue == item.Hue);

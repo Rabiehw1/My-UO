@@ -15,6 +15,25 @@ namespace ClassicUO.UnitTests.Game.Managers.Hotkeys
         }
 
         [Fact]
+        public void BindingValidation_FollowsWhetherTheActionIsHeldOrTriggered()
+        {
+            var entry = new HotKeyEntry("test", "Test", new HotkeyBinding(), "Test");
+            var modifier = new HotkeyBinding { Ctrl = true };
+            var wheel = new HotkeyBinding { WheelScroll = true, WheelUp = true };
+            var button = new HotkeyBinding { MouseButton = MouseButtonType.Middle };
+
+            entry.AcceptsBinding(modifier).Should().BeTrue();
+            entry.AcceptsBinding(wheel).Should().BeFalse();
+            entry.AcceptsBinding(button).Should().BeTrue();
+
+            entry.OnPressed = () => { };
+            entry.AcceptsBinding(modifier).Should().BeFalse();
+            entry.AcceptsBinding(wheel).Should().BeFalse();
+            entry.AcceptsBinding(button).Should().BeTrue();
+            entry.AcceptsBinding(new HotkeyBinding()).Should().BeTrue();
+        }
+
+        [Fact]
         public void Constructor_NormalizesLeftRightModifiers()
         {
             var b = new HotkeyBinding(SDL.SDL_Keycode.SDLK_F1, SDL.SDL_Keymod.SDL_KMOD_LCTRL);

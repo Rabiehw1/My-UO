@@ -47,6 +47,24 @@ public sealed class ShardSpellCatalogTests
             .Should().Equal(Enumerable.Range(101, 15));
     }
 
+    [Fact]
+    public void BookGump_RecognizesTheBookSerialOrIdentifiableBookText()
+    {
+        const uint bookSerial = 0x40123456;
+        const uint otherSender = 0x123456;
+        ShardSpellBookInfo book = ShardSpellCatalog.Get(ShardSpellBook.Earth);
+        ShardSpell spell = book.Spells.Single(s => s.Name == "Nature's Touch");
+
+        ShardSpellCaster.MatchesBookGump(bookSerial, bookSerial, book, spell, []).Should().BeTrue();
+        ShardSpellCaster.MatchesBookGump(bookSerial, otherSender, book, spell,
+            [$"<b>{book.Name}</b>", "<center>Nature&#8217;s Touch</center>"]).Should().BeTrue();
+        ShardSpellCaster.MatchesBookGump(bookSerial, otherSender, book, spell,
+            ["Nature's Touch", "Earth Portal"]).Should().BeTrue();
+        ShardSpellCaster.MatchesBookGump(bookSerial, otherSender, book, spell,
+            ["Vendor", "Nature's Touch"]).Should().BeFalse();
+        ShardSpellCaster.MatchesBookGump(bookSerial, otherSender, book, spell, []).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("ShardSpellIcons.png")]
     [InlineData("ShardSpellIllustrations.png")]

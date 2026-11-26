@@ -118,7 +118,31 @@ namespace ClassicUO.Game.Managers
                 unicode = currentProfile.OverrideAllFontsIsUnicode;
             }
 
-            bool suppressOnScreen = _onScreenFilter.IsMuted(currentProfile, text, Time.Ticks);
+            string rawText = text;
+            if (type == MessageType.Spell && currentProfile != null && !string.IsNullOrEmpty(text)
+                && SpellDefinition.WordToTargettype.TryGetValue(text, out SpellDefinition spell))
+            {
+                if (currentProfile.EnabledSpellFormat && !string.IsNullOrWhiteSpace(currentProfile.SpellDisplayFormat))
+                {
+                    var sb = new ValueStringBuilder(currentProfile.SpellDisplayFormat.AsSpan());
+                    sb.Replace("{power}".AsSpan(), spell.PowerWords.AsSpan());
+                    sb.Replace("{spell}".AsSpan(), spell.GetLocalizedName().AsSpan());
+                    text = sb.ToString().Trim();
+                    sb.Dispose();
+                }
+
+                if (currentProfile.EnabledSpellHue)
+                {
+                    hue = spell.TargetType switch
+                    {
+                        TargetType.Beneficial => currentProfile.BeneficHue,
+                        TargetType.Harmful => currentProfile.HarmfulHue,
+                        _ => currentProfile.NeutralHue
+                    };
+                }
+            }
+
+            bool suppressOnScreen = _onScreenFilter.IsMuted(currentProfile, rawText, Time.Ticks, text);
             switch (type)
             {
                 case MessageType.ChatSystem:
@@ -169,49 +193,12 @@ namespace ClassicUO.Game.Managers
                     if (currentProfile.IgnoreAllianceMessages) return;
                     break;
 
-                case MessageType.Spell:
-                    {
-                        //server hue color per default
-                        if (!string.IsNullOrEmpty(text) && SpellDefinition.WordToTargettype.TryGetValue(text, out SpellDefinition spell))
-                        {
-                            if (currentProfile != null && currentProfile.EnabledSpellFormat && !string.IsNullOrWhiteSpace(currentProfile.SpellDisplayFormat))
-                            {
-                                var sb = new ValueStringBuilder(currentProfile.SpellDisplayFormat.AsSpan());
-                                {
-                                    sb.Replace("{power}".AsSpan(), spell.PowerWords.AsSpan());
-                                    sb.Replace("{spell}".AsSpan(), spell.GetLocalizedName().AsSpan());
-
-                                    text = sb.ToString().Trim();
-                                }
-                                sb.Dispose();
-                            }
-
-                            //server hue color per default if not enabled
-                            if (currentProfile != null && currentProfile.EnabledSpellHue)
-                            {
-                                if (spell.TargetType == TargetType.Beneficial)
-                                {
-                                    hue = currentProfile.BeneficHue;
-                                }
-                                else if (spell.TargetType == TargetType.Harmful)
-                                {
-                                    hue = currentProfile.HarmfulHue;
-                                }
-                                else
-                                {
-                                    hue = currentProfile.NeutralHue;
-                                }
-                            }
-                        }
-
-                        goto case MessageType.Label;
-                    }
-
                 default:
                 case MessageType.Focus:
                 case MessageType.Whisper:
                 case MessageType.Yell:
                 case MessageType.Regular:
+                case MessageType.Spell:
                 case MessageType.Label:
                     if (textType == TextType.OBJECT)
                     {

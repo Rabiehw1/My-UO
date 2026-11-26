@@ -1,4 +1,5 @@
-﻿using ClassicUO.Configuration;
+﻿using System;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.UI.Gumps;
@@ -56,10 +57,13 @@ public readonly struct MoveRequest
     public int Y { get; }
     public int Z { get; }
     public Layer Layer { get; }
+    internal bool IsEquip => _moveType == MoveType.Equip;
 
-    public void Execute()
+    public void Execute() => Execute(null);
+
+    internal void Execute(Action retryWhenFree)
     {
-        if (!ObjectActionQueue.Instance.TryStartMove(this))
+        if (!ObjectActionQueue.Instance.TryStartMove(this, retryWhenFree))
             return;
 
         AsyncNetClient.Socket.Send_PickUpRequest(Serial, Amount);

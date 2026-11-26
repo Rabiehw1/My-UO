@@ -15,21 +15,17 @@ internal static class TargetCursor
 
         world.TargetManager.SetTargeting(cursorTarget, cursorId, targetType);
 
-        bool partyTarget = world.Party.HasPendingHealCursor && world.Party.PartyHealTimer < Time.Ticks;
-        bool autoTarget = TargetManager.NextAutoTarget.IsSet;
-        if (partyTarget)
-        {
-            world.TargetManager.Target(world.Party.PartyHealTarget);
-            world.Party.PartyHealTimer = 0;
-            world.Party.PartyHealTarget = 0;
-        }
-        else if (autoTarget && TargetManager.NextAutoTarget.Matches(targetType))
+        bool liveCursor = world.TargetManager.IsTargeting && TargetManager.IsLiveServerCursor(cursorTarget, targetType);
+        uint partyTarget = liveCursor ? world.Party.TakeHealCursor(cursorTarget, targetType) : 0;
+        bool autoTarget = liveCursor && partyTarget == 0 && TargetManager.NextAutoTarget.CanAnswer(cursorTarget, targetType);
+        if (partyTarget != 0)
+            world.TargetManager.Target(partyTarget, preserveAutoTarget: true);
+        else if (autoTarget)
             world.TargetManager.Target(TargetManager.NextAutoTarget.TargetSerial);
 
-        bool skinTarget = AutoSkinningManager.Instance.TryHandleCursor(world, cursorTarget, targetType, partyTarget || autoTarget);
-        SupportAgentManager.Instance.OnPetOrderCursor(cursorTarget, targetType, partyTarget || autoTarget || skinTarget);
-
-        // Always clear after any target cursor (no queuing)
-        TargetManager.NextAutoTarget.Clear();
+        bool claimed = partyTarget != 0 || autoTarget;
+        bool skinTarget = AutoSkinningManager.Instance.TryHandleCursor(world, cursorTarget, targetType, claimed);
+        if (liveCursor)
+            SupportAgentManager.Instance.OnPetOrderCursor(cursorTarget, targetType, claimed || skinTarget);
     }
 }

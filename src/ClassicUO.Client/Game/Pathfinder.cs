@@ -71,6 +71,13 @@ namespace ClassicUO.Game
         public int PathSize => _path.Count;
 
         public bool AutoWalking { get; set; }
+        internal int AutoWalkVersion { get; private set; }
+        internal bool HasActiveComputedPath => _computedPathActive && AutoWalking;
+        internal bool CompletedComputedPath { get; private set; }
+
+        internal bool CanApplyComputedPath(int version, bool append, bool stillAtStart)
+            => AutoWalkVersion == version
+                && ((append && HasActiveComputedPath) || (!AutoWalking && (!append || CompletedComputedPath) && stillAtStart));
 
         public static bool PathFindingCanBeCancelled { get; set; }
 
@@ -1052,7 +1059,7 @@ namespace ClassicUO.Game
             if (_world.Player == null || _world.Player.IsParalyzed || points == null || points.Count == 0)
                 return;
 
-            CleanupPathfinding();
+            StopAutoWalk();
             _pointIndex = 0;
             _goalNode = null;
             _run = run;
@@ -1100,8 +1107,7 @@ namespace ClassicUO.Game
         /// Appends additional pre-computed steps onto the path currently being walked by
         /// <see cref="StartComputedPath"/>, without restarting the walk. Used by the WorldMap
         /// to chain pathfinding segments (A-&gt;B-&gt;C). Must be called on the main thread.
-        /// Returns <c>false</c> when there is no active computed path to extend (the caller
-        /// should then start a fresh path instead).
+        /// Returns <c>false</c> when there is no active computed path to extend.
         /// </summary>
         public bool AppendComputedPath(IReadOnlyList<(int X, int Y, int Z, int Direction)> points)
         {
@@ -1135,7 +1141,7 @@ namespace ClassicUO.Game
             _zLevelDiff = ProfileManager.CurrentProfile.PathfindingZLevelDiff;
             _multiBufferPenalty = ProfileManager.CurrentProfile.PathfindingMultiBuffer;
 
-            CleanupPathfinding();
+            StopAutoWalk();
             _pointIndex = 0;
             _goalNode = null;
             _run = false;
@@ -1173,7 +1179,7 @@ namespace ClassicUO.Game
 
             EventSink.InvokeOnPathFinding(null, new Vector4(x, y, z, distance));
 
-            CleanupPathfinding();
+            StopAutoWalk();
             _pointIndex = 0;
             _goalNode = null;
             _run = run;
@@ -1257,12 +1263,20 @@ namespace ClassicUO.Game
                 }
                 else
                 {
-                    StopAutoWalk();
+                    CompletedComputedPath = _computedPathActive;
+                    ClearAutoWalk();
                 }
             }
         }
 
         public void StopAutoWalk()
+        {
+            AutoWalkVersion++;
+            CompletedComputedPath = false;
+            ClearAutoWalk();
+        }
+
+        private void ClearAutoWalk()
         {
             AutoWalking = false;
             _run = false;

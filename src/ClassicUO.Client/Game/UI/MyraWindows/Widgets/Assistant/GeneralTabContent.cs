@@ -15,7 +15,6 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 
 public static class GeneralTabContent
 {
-    private const int MIN_RECONNECT_SECONDS = 1;
     private const int RECONNECT_INDENT = 18;
 
     public static Widget Build() => Build(AgentPageInteraction.InGame);
@@ -160,9 +159,14 @@ public static class GeneralTabContent
         var delay = new HorizontalStackPanel { Spacing = 4, Margin = new Thickness(RECONNECT_INDENT, 0, 0, 0) };
         delay.Widgets.Add(new LabeledIntegerInput(TazLang.Get("assistant_reconnectwait"), settings.ReconnectTime, value =>
         {
-            settings.ReconnectTime = Math.Max(MIN_RECONNECT_SECONDS, value);
+            settings.ReconnectTime = value;
             settings.Save();
-        }) { Tooltip = TazLang.Get("reconnecttooltip") });
+        })
+        {
+            MinValue = Settings.MinReconnectSeconds,
+            MaxValue = Settings.MaxReconnectSeconds,
+            Tooltip = TazLang.Get("reconnecttooltip")
+        });
         delay.Widgets.Add(new MyraLabel(TazLang.Get("assistant_seconds"), MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center });
 
         return [toggle, delay];

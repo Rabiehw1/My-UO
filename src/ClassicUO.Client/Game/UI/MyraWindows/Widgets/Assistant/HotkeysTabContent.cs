@@ -188,7 +188,15 @@ public static class HotkeysTabContent
                     row.Apply(binding);
                     BuildList();
                 },
-                capturesMouseEvents: true);
+                capturesMouseEvents: true,
+                bindingValidator: binding =>
+                {
+                    if (BindingError(row, binding) is not string error)
+                        return true;
+
+                    GameActions.Print(World.Instance, error, Constants.HUE_ERROR);
+                    return false;
+                });
         }
 
         BuildList();
@@ -442,6 +450,21 @@ public static class HotkeysTabContent
         anchor.Desktop?.ShowContextMenu(menu, anchor.ToGlobal(new Point(0, anchor.Bounds.Height)));
     }
 
+    private static string? BindingError(HotkeyRow? row, HotkeyBinding binding)
+    {
+        if (binding.IsEmpty)
+            return null;
+
+        return row?.Source switch
+        {
+            Macro when !binding.IsTriggerable && !binding.WheelScroll => TazLang.Get("macrostab_hotkey_modifiersonly"),
+            HotKeyEntry entry when !entry.AcceptsBinding(binding) =>
+                TazLang.Get(entry.OnPressed == null ? "hotkeys_held_input_required" : "hotkeys_input_required"),
+            ClassicUO.LegionScripting.ScriptFile when !binding.IsTriggerable => TazLang.Get("hotkeys_input_required"),
+            _ => null
+        };
+    }
+
     private static List<HotkeyRow> BuildRows()
     {
         var rows = new List<HotkeyRow>();
@@ -605,21 +628,15 @@ public static class HotkeysTabContent
                 ? BuildRows().Where(other => !ReferenceEquals(other.Source, row.Source)
                     && other.CheckConflicts && binding.Matches(other.GetBinding())).ToArray()
                 : [];
-            bool requiresTrigger = row?.Category == "Legion Scripts" || available != null && row?.Source is HotKeyEntry { OnPressed: not null };
-            bool invalidActionBinding = requiresTrigger && !binding.IsEmpty && !binding.IsTriggerable;
-            bool modifierOnlyMacro = row?.Source is Macro && !binding.IsEmpty && !binding.IsTriggerable && !binding.WheelScroll;
-            conflictLabel.Text = invalidActionBinding
-                ? TazLang.Get("hotkeys_input_required")
-                : modifierOnlyMacro
-                ? TazLang.Get("macrostab_hotkey_modifiersonly", "Macros cannot be bound to modifiers alone.")
-                : conflicts.Length == 0
+            string? bindingError = BindingError(row, binding);
+            conflictLabel.Text = bindingError ?? (conflicts.Length == 0
                     ? ""
                     : TazLang.GetEx("hotkeys_assigned_to", "Already assigned to {0}. Replacing will clear those bindings.",
-                        [string.Join(", ", conflicts.Select(other => $"{other.Category} · {other.Name}"))]);
+                        [string.Join(", ", conflicts.Select(other => $"{other.Category} · {other.Name}"))]));
             conflictLabel.Visible = conflictLabel.Text.Length > 0;
-            replace.Visible = !invalidActionBinding && !modifierOnlyMacro && conflicts.Length > 0;
+            replace.Visible = bindingError == null && conflicts.Length > 0;
             save.Visible = !replace.Visible;
-            save.Enabled = row != null && (available == null || !binding.IsEmpty) && !invalidActionBinding && !modifierOnlyMacro;
+            save.Enabled = row != null && (available == null || !binding.IsEmpty) && bindingError == null;
         }
 
         void Commit()

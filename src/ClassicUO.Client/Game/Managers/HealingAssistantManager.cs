@@ -22,15 +22,16 @@ internal sealed class HealingAssistantManager
     private long? _lastFishUse;
     private long? _lastSpellUse;
     private long _spellTargetDeadline;
-    private int _lastMagerySpellIndex;
+    private long _spellCastGeneration;
+    private long _spellFailureVersion;
     private bool _waitingForSpellBook;
     public long NextActionTime { get; private set; }
 
     internal bool IsWaitingForSpellCursor =>
-        (_spellTargetDeadline != 0 && Time.Ticks <= _spellTargetDeadline)
+        IsWaitingForSentSpellCursor(Time.Ticks)
         || (_waitingForSpellBook && ShardSpellCaster.Instance.IsCasting);
 
-    public bool TryHeal(World world, PlayerMobile player, Profile profile, bool needsBandage, Func<bool> tryBandage)
+    public bool TryHeal(World world, PlayerMobile player, Profile profile, bool mayStart, bool needsBandage, Func<bool> tryBandage)
     {
         long now = Time.Ticks;
         if (player.IsDead)
@@ -43,7 +44,7 @@ internal sealed class HealingAssistantManager
         if (FinishSpell(world, player, now))
             return true;
 
-        if (Client.Game.UO.GameCursor.ItemHold.Enabled)
+        if (!mayStart || Client.Game.UO.GameCursor.ItemHold.Enabled)
             return false;
 
         return TryHeal(profile, player.Hits, player.HitsMax, now, UseStack, needsBandage, tryBandage, IsKnownStack, CastHeal);
@@ -60,8 +61,7 @@ internal sealed class HealingAssistantManager
                 int spell = method == HealingMethod.HealSpell
                     ? HealthBarQuickActions.MageryHeal : HealthBarQuickActions.MageryGreaterHeal;
                 GameActions.CastSpellDirect(spell);
-                _lastMagerySpellIndex = spell;
-                _spellTargetDeadline = now + SpellTargetWaitMs;
+                WaitForSpellCursor(now);
                 return true;
             }
 
@@ -80,9 +80,8 @@ internal sealed class HealingAssistantManager
 
                 _waitingForSpellBook = false;
                 _lastSpellUse = Time.Ticks;
-                _lastMagerySpellIndex = GameActions.LastSpellIndex;
                 if (profile.EnableHealingAssistant)
-                    _spellTargetDeadline = Time.Ticks + SpellTargetWaitMs;
+                    WaitForSpellCursor(Time.Ticks);
             });
             return _waitingForSpellBook;
         }
@@ -111,25 +110,33 @@ internal sealed class HealingAssistantManager
             return _waitingForSpellBook;
         }
 
-        if (now > _spellTargetDeadline || SpellVisualRangeManager.Instance.LastCastFailedTick > _lastSpellUse.GetValueOrDefault()
-            || GameActions.LastSpellIndex != _lastMagerySpellIndex)
+        if (!IsWaitingForSentSpellCursor(now))
         {
             _spellTargetDeadline = 0;
             return false;
         }
 
         var target = world.TargetManager;
-        if (!target.IsTargeting || AutoSkinningManager.Instance.IsWaitingForCursor)
+        if (!target.HasBeneficialObjectCursor || AutoSkinningManager.Instance.IsWaitingForCursor)
             return true;
 
         _spellTargetDeadline = 0;
-        if (target.TargetingState == CursorTarget.Object && target.TargetingType is TargetType.Neutral or TargetType.Beneficial)
-        {
-            target.Target(player.Serial);
-            NextActionTime = now + Math.Max(1, GlobalActionCooldown.CooldownDuration);
-        }
+        target.Target(player.Serial, preserveAutoTarget: true);
+        NextActionTime = now + Math.Max(1, GlobalActionCooldown.CooldownDuration);
         return true;
     }
+
+    private void WaitForSpellCursor(long now)
+    {
+        _spellTargetDeadline = now + SpellTargetWaitMs;
+        _spellCastGeneration = GameActions.SpellCastGeneration;
+        _spellFailureVersion = SpellVisualRangeManager.CastFailureVersion;
+    }
+
+    private bool IsWaitingForSentSpellCursor(long now) =>
+        _spellTargetDeadline != 0 && now <= _spellTargetDeadline
+        && _spellCastGeneration == GameActions.SpellCastGeneration
+        && _spellFailureVersion == SpellVisualRangeManager.CastFailureVersion;
 
     internal bool TryHeal(
         Profile profile, int hits, int maxHits, long now, Func<uint, bool> tryUse,

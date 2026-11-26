@@ -222,13 +222,13 @@ public sealed class AutoSkinningManager
         if (!IsWithinReach(world.Items.Get(carve.Serial)))
         {
             ReleaseCursorForRetry(Time.Ticks);
-            world.TargetManager.CancelTarget();
+            world.TargetManager.CancelTarget(preserveAutoTarget: true);
             return true;
         }
 
         // Start recording materials before replying, so the shard's first inventory update is observed.
         StartCarveWatch(world);
-        world.TargetManager.Target(carve.Serial);
+        world.TargetManager.Target(carve.Serial, preserveAutoTarget: true);
         _awaitingCursor = null;
         _pending.Remove(carve.Serial);
         RememberTargetSent(carve.Serial);

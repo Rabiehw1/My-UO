@@ -3,8 +3,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using ClassicUO.Configuration;
+using ClassicUO.IO;
 using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers.Launcher;
@@ -53,8 +56,11 @@ internal sealed class LauncherSave
     #region Private members
 
     private const string FILE_NAME = "launcher.json";
+    private static readonly TimeSpan SaveTimeout = TimeSpan.FromSeconds(5);
 
     private static LauncherSave? _current;
+    private LauncherSave? _baseline;
+    private static string SavePath => Path.Combine(FolderPath, FILE_NAME);
 
     #endregion
 
@@ -96,13 +102,53 @@ internal sealed class LauncherSave
     {
         try
         {
-            Directory.CreateDirectory(FolderPath);
-            ConfigurationResolver.Save(this, Path.Combine(FolderPath, FILE_NAME), LauncherSaveJsonContext.Default.LauncherSave);
+            using var editLock = CrossProcessPathLock.TryAcquire(SavePath, SaveTimeout)
+                ?? throw new IOException("Another process is saving launcher profiles.");
+            LauncherSave baseline = _baseline ?? new LauncherSave();
+            LauncherSave latest = ReadStored() ?? baseline;
+            LauncherSave result = Merge(baseline, this, latest);
+            WriteStored(result);
+            bool selectionChanged = SelectedId != result.SelectedId;
+            bool listChanged = !Profiles.Select(profile => (profile.Id, profile.Name))
+                .SequenceEqual(result.Profiles.Select(profile => (profile.Id, profile.Name)));
+            Adopt(result);
+            _baseline = result.Snapshot();
+            if (listChanged)
+                ListChanged?.Invoke();
+            if (selectionChanged)
+                ViewChanged?.Invoke();
         }
         catch (Exception e)
         {
             Log.Error($"Launcher: could not save profiles - {e.Message}");
         }
+    }
+
+    /// <summary>Applies only changes made locally to the most recently saved document.</summary>
+    internal static LauncherSave Merge(LauncherSave baseline, LauncherSave edited, LauncherSave latest)
+    {
+        var result = latest.Snapshot();
+        result.SelectedId = LauncherProfile.EditedValue(latest.SelectedId, baseline.SelectedId, edited.SelectedId);
+        result.OpenOnStart = LauncherProfile.EditedValue(latest.OpenOnStart, baseline.OpenOnStart, edited.OpenOnStart);
+        result.KeepOpenAfterPlay = LauncherProfile.EditedValue(
+            latest.KeepOpenAfterPlay, baseline.KeepOpenAfterPlay, edited.KeepOpenAfterPlay);
+        result.OpenAssistantWithClient = LauncherProfile.EditedValue(
+            latest.OpenAssistantWithClient, baseline.OpenAssistantWithClient, edited.OpenAssistantWithClient);
+
+        result.Profiles.RemoveAll(profile => baseline.Profiles.Exists(original => original.Id == profile.Id)
+            && !edited.Profiles.Exists(local => local.Id == profile.Id));
+        foreach (LauncherProfile local in edited.Profiles)
+        {
+            LauncherProfile? original = baseline.Profiles.Find(profile => profile.Id == local.Id);
+            LauncherProfile? saved = result.Profiles.Find(profile => profile.Id == local.Id);
+            if (original == null && saved == null)
+                result.Profiles.Add(local.Snapshot());
+            else if (original != null)
+                saved?.ApplyEdits(original, local);
+        }
+
+        result.SelectedId = result.GetSelected()?.Id ?? "";
+        return result;
     }
 
     #endregion
@@ -111,16 +157,33 @@ internal sealed class LauncherSave
 
     private static LauncherSave Load()
     {
-        LauncherSave? save = ConfigurationResolver.Load(
-            Path.Combine(FolderPath, FILE_NAME),
-            LauncherSaveJsonContext.Default.LauncherSave
-        );
+        try
+        {
+            using var editLock = CrossProcessPathLock.TryAcquire(SavePath, SaveTimeout)
+                ?? throw new IOException("Another process is saving launcher profiles.");
+            LauncherSave? save = ReadStored();
+            if (save == null)
+            {
+                save = CreateDefault();
+                WriteStored(save);
+            }
 
-        if (save != null)
+            save._baseline = save.Snapshot();
             return save;
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Launcher: could not load profiles - {e.Message}");
+            LauncherSave save = CreateDefault();
+            save._baseline = save.Snapshot();
+            return save;
+        }
+    }
 
+    private static LauncherSave CreateDefault()
+    {
         // First run: start with one profile matching how this client is set up today.
-        save = new LauncherSave();
+        var save = new LauncherSave();
         Settings settings = Settings.GlobalSettings;
         var main = new LauncherProfile
         {
@@ -136,10 +199,40 @@ internal sealed class LauncherSave
         };
         save.Profiles.Add(main);
         save.SelectedId = main.Id;
-
-        // Saved now so the profile keeps its ID (and its own client settings file) from run to run.
-        save.Save();
         return save;
+    }
+
+    private static LauncherSave? ReadStored() => File.Exists(SavePath)
+        ? ConfigurationResolver.Load(SavePath, LauncherSaveJsonContext.Default.LauncherSave)
+        : null;
+
+    private static void WriteStored(LauncherSave save) =>
+        AtomicFile.Write(SavePath, JsonSerializer.Serialize(save, LauncherSaveJsonContext.Default.LauncherSave));
+
+    private LauncherSave Snapshot()
+    {
+        var snapshot = (LauncherSave)MemberwiseClone();
+        snapshot._baseline = null;
+        snapshot.Profiles = Profiles.Select(profile => profile.Snapshot()).ToList();
+        return snapshot;
+    }
+
+    private void Adopt(LauncherSave saved)
+    {
+        SelectedId = saved.SelectedId;
+        OpenOnStart = saved.OpenOnStart;
+        KeepOpenAfterPlay = saved.KeepOpenAfterPlay;
+        OpenAssistantWithClient = saved.OpenAssistantWithClient;
+        // Keep existing profile references valid for live editor callbacks.
+        Profiles = saved.Profiles.Select(profile =>
+        {
+            LauncherProfile? existing = Profiles.Find(local => local.Id == profile.Id);
+            if (existing == null)
+                return profile.Snapshot();
+
+            existing.ApplyEdits(null, profile);
+            return existing;
+        }).ToList();
     }
 
     #endregion

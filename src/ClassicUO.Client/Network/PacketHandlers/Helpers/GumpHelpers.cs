@@ -725,6 +725,7 @@ internal static class GumpHelpers
         }
 
         NextGumpConfig.Apply(gump);
+        world.OnServerGumpReceived(gump, lines);
 
         return gump;
     }

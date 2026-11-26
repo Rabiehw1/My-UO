@@ -287,7 +287,8 @@ namespace ClassicUO.Game.Managers
             if (mainList == null)
                 return 0;
 
-            Item backpack = World.Instance.Player?.Backpack;
+            World world = World.Instance;
+            Item backpack = world.Player?.Backpack;
 
             // Group items by destination (either per-item destination or config destination)
             var itemsToMoveByDestination = new Dictionary<uint, List<(Item Item, SharedItem Rule)>>();
@@ -298,7 +299,7 @@ namespace ClassicUO.Game.Managers
             // First pass: identify items to move and group by destination
             for (Item item = sourceItems; item != null; item = (Item)item.Next)
             {
-                if (ignoreList?.Find(item.Graphic, item.Hue) != null)
+                if (ignoreList?.Find(item) != null)
                     continue;
 
                 SharedItem rule = mainList.Find(item);
@@ -317,7 +318,7 @@ namespace ClassicUO.Game.Managers
             // Second pass: process each destination group
             foreach (var (destinationSerial, itemsForThisDest) in itemsToMoveByDestination)
             {
-                Item thisDestCont = World.Instance.Items.Get(destinationSerial);
+                Item thisDestCont = world.Items.Get(destinationSerial);
                 if (thisDestCont == null)
                 {
                     GameActions.Print($"Cannot find destination container {destinationSerial:X}. Using backpack as default.");
@@ -325,58 +326,32 @@ namespace ClassicUO.Game.Managers
                     if (thisDestCont == null) continue;
                 }
 
-                var destItems = (Item)thisDestCont.Items;
-                bool sameContainer = sourceCont.Serial == thisDestCont.Serial;
-
-                if (sameContainer)
+                uint sourceSerial = sourceCont.Serial;
+                uint targetSerial = thisDestCont.Serial;
+                var hasCapacity = new Dictionary<SharedItem, bool>();
+                foreach (var (item, rule) in itemsForThisDest)
                 {
-                    // Same container logic
-                    foreach (var (item, rule) in itemsForThisDest)
+                    if (sourceSerial == targetSerial)
                     {
-                        if (!item.ItemData.IsStackable) continue; // non-stackable items can't be organized in the same container
-
-                        ushort amountToMove = rule.MaxAmount > 0 ? (ushort)Math.Min(rule.MaxAmount, ushort.MaxValue) : ushort.MaxValue;
-                        ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, thisDestCont.Serial, amountToMove).ToObjectActionQueueItem(), ActionPriority.MoveItem);
-                        totalItemsMoved++;
+                        if (!item.ItemData.IsStackable)
+                            continue;
                     }
-                }
-                else
-                {
-                    // Build a lookup of existing item counts in the destination container
-                    var destItemCounts = new Dictionary<(ushort Graphic, ushort Hue), int>();
-                    for (Item item = destItems; item != null; item = (Item)item.Next)
+                    else if (rule.MaxAmount > 0)
                     {
-                        (ushort Graphic, ushort Hue) key = (item.Graphic, item.Hue);
-                        if (destItemCounts.ContainsKey(key))
-                            destItemCounts[key] += item.Amount;
-                        else
-                            destItemCounts[key] = item.Amount;
+                        if (!hasCapacity.TryGetValue(rule, out bool canMove))
+                            hasCapacity[rule] = canMove = GetRemainingCapacity(thisDestCont, rule) > 0;
+                        if (!canMove)
+                            continue;
                     }
 
-                    // Determine which items to move based on config and existing counts in destination
-                    foreach (var (item, rule) in itemsForThisDest)
+                    uint itemSerial = item.Serial;
+                    ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
+                        MoveItem(world, itemSerial, sourceSerial, targetSerial, rule, ignoreList))
                     {
-                        if (rule.MaxAmount <= 0)
-                        {
-                            // Move all items of this type
-                            ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, thisDestCont.Serial, ushort.MaxValue).ToObjectActionQueueItem(), ActionPriority.MoveItem);
-                            totalItemsMoved++;
-                        }
-                        else
-                        {
-                            // Move up to the configured amount, considering existing items in destination
-                            destItemCounts.TryGetValue((item.Graphic, item.Hue), out int existingCount);
-                            int toMove = rule.MaxAmount - existingCount;
-                            if (toMove > 0)
-                            {
-                                ushort actualAmount = (ushort)Math.Min(toMove, item.Amount);
-                                ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, thisDestCont.Serial, actualAmount).ToObjectActionQueueItem(), ActionPriority.MoveItem);
-                                // Update the count to avoid over-moving if multiple stacks exist in source
-                                destItemCounts[(item.Graphic, item.Hue)] = existingCount + actualAmount;
-                                totalItemsMoved++;
-                            }
-                        }
-                    }
+                        Serial = itemSerial,
+                        TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+                    }, ActionPriority.MoveItem);
+                    totalItemsMoved++;
                 }
             }
 
@@ -386,6 +361,47 @@ namespace ClassicUO.Game.Managers
             }
 
             return totalItemsMoved;
+        }
+
+        private static void MoveItem(World world, uint serial, uint source, uint destination, SharedItem rule, SharedItemList ignoreList)
+        {
+            if (!ReferenceEquals(World.Instance, world)
+                || world.Items.Get(serial) is not { IsDestroyed: false } item || item.Container != source
+                || world.Items.Get(destination) is not { IsDestroyed: false } container
+                || !rule.Matches(item) || ignoreList?.Find(item) != null)
+                return;
+
+            ushort amount = GetAmountToMove(item, container, rule, source == destination);
+            if (amount > 0)
+                new MoveRequest(serial, destination, amount).Execute();
+        }
+
+        internal static ushort GetAmountToMove(Item item, Item destination, SharedItem rule, bool sameContainer)
+        {
+            if (sameContainer && !item.ItemData.IsStackable)
+                return 0;
+
+            if (rule.MaxAmount <= 0)
+                return item.Amount;
+
+            int remaining = sameContainer ? rule.MaxAmount : GetRemainingCapacity(destination, rule);
+            return (ushort)Math.Min(item.Amount, remaining);
+        }
+
+        private static int GetRemainingCapacity(Item destination, SharedItem rule)
+        {
+            int remaining = rule.MaxAmount;
+            for (LinkedObject current = destination.Items; current != null; current = current.Next)
+            {
+                if (current is Item existing && rule.Matches(existing))
+                {
+                    remaining -= existing.Amount;
+                    if (remaining <= 0)
+                        return 0;
+                }
+            }
+
+            return remaining;
         }
 
         private void RunSingleOrganizer(OrganizerConfig config, uint source = 0, uint dest = 0)

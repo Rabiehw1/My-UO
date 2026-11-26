@@ -7,6 +7,7 @@ using System.IO.Compression;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using ClassicUO.Configuration;
 using ClassicUO.Utility.Logging;
 
 namespace ClassicUO.Game.Managers.Updates;
@@ -27,6 +28,8 @@ internal static class UpdateInstaller
     public const string BACKUP_SUFFIX = ".update-old";
 
     private const int DOWNLOAD_BUFFER_SIZE = 81920;
+    private const string PendingUpdateMarker = ".update-in-progress";
+    private static readonly TimeSpan DownloadIdleTimeout = TimeSpan.FromSeconds(60);
 
     /// <summary>
     /// Player-owned files and folders (relative to the install folder). Existing files here are never overwritten,
@@ -72,7 +75,19 @@ internal static class UpdateInstaller
             progress.Report(1f);
 
             ZipFile.ExtractToDirectory(zipPath, extractedDirectory);
+            using var installLock = CrossProcessPathLock.TryAcquire(installDirectory, TimeSpan.Zero)
+                ?? throw new IOException(TazLang.Get("launcher_update_busy"));
+            string marker = Path.Combine(installDirectory, "v.txt");
+            string pendingMarker = Path.Combine(installDirectory, PendingUpdateMarker);
+            if (!File.Exists(pendingMarker) && File.Exists(marker)
+                && Version.TryParse(File.ReadAllText(marker).Trim(), out Version? installed)
+                && installed >= update.Version)
+                return;
+
+            // A process that dies during replacement leaves its backup files available for recovery.
+            File.WriteAllText(pendingMarker, update.Version.ToString());
             ReplaceFiles(extractedDirectory, installDirectory);
+            File.Delete(pendingMarker);
         }
         finally
         {
@@ -88,8 +103,15 @@ internal static class UpdateInstaller
     {
         try
         {
+            using var installLock = CrossProcessPathLock.TryAcquire(installDirectory, TimeSpan.Zero);
+            if (installLock == null || File.Exists(Path.Combine(installDirectory, PendingUpdateMarker)))
+                return;
+
             foreach (string file in Directory.EnumerateFiles(installDirectory, "*" + BACKUP_SUFFIX, SearchOption.AllDirectories))
             {
+                if (IsPreserved(Path.GetRelativePath(installDirectory, file)))
+                    continue;
+
                 try
                 {
                     File.Delete(file);
@@ -114,29 +136,34 @@ internal static class UpdateInstaller
         CancellationToken cancellationToken
     )
     {
-        using HttpResponseMessage response = await httpClient.GetAsync(
-            update.DownloadUrl,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken
-        );
-
-        response.EnsureSuccessStatusCode();
-
-        long totalBytes = response.Content.Headers.ContentLength ?? update.Size;
-        await using Stream source = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using FileStream destination = File.Create(zipPath);
-
-        var buffer = new byte[DOWNLOAD_BUFFER_SIZE];
-        long received = 0;
-        int read;
-
-        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        using var inactivity = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        inactivity.CancelAfter(DownloadIdleTimeout);
+        CancellationToken token = inactivity.Token;
+        try
         {
-            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-            received += read;
+            using HttpResponseMessage response = await httpClient.GetAsync(
+                update.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, token);
+            response.EnsureSuccessStatusCode();
 
-            if (totalBytes > 0)
-                progress.Report(Math.Min(1f, (float)received / totalBytes));
+            long totalBytes = response.Content.Headers.ContentLength ?? update.Size;
+            await using Stream source = await response.Content.ReadAsStreamAsync(token);
+            await using FileStream destination = File.Create(zipPath);
+
+            var buffer = new byte[DOWNLOAD_BUFFER_SIZE];
+            long received = 0;
+            int read;
+            while ((read = await source.ReadAsync(buffer, token)) > 0)
+            {
+                inactivity.CancelAfter(DownloadIdleTimeout);
+                await destination.WriteAsync(buffer.AsMemory(0, read), token);
+                received += read;
+                if (totalBytes > 0)
+                    progress.Report(Math.Min(1f, (float)received / totalBytes));
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && inactivity.IsCancellationRequested)
+        {
+            throw new TimeoutException(TazLang.Get("launcher_update_timedout"));
         }
     }
 

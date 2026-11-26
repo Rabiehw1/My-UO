@@ -89,6 +89,22 @@ public sealed class UpdateInstallerTests : IDisposable
         Directory.GetFiles(_install, "*" + UpdateInstaller.BACKUP_SUFFIX, SearchOption.AllDirectories).Should().BeEmpty();
     }
 
+    [Fact]
+    public void DeleteBackups_DoesNotRemovePlayerFilesOrUncommittedUpdateBackups()
+    {
+        Write(_install, "LordBritishKW.dll" + UpdateInstaller.BACKUP_SUFFIX, "old");
+        Write(_install, "Data/Profiles/character" + UpdateInstaller.BACKUP_SUFFIX, "player backup");
+        Write(_install, ".update-in-progress", "26.100.1");
+
+        UpdateInstaller.DeleteBackups(_install);
+        File.Exists(Path.Combine(_install, "LordBritishKW.dll" + UpdateInstaller.BACKUP_SUFFIX)).Should().BeTrue();
+
+        File.Delete(Path.Combine(_install, ".update-in-progress"));
+        UpdateInstaller.DeleteBackups(_install);
+        File.Exists(Path.Combine(_install, "LordBritishKW.dll" + UpdateInstaller.BACKUP_SUFFIX)).Should().BeFalse();
+        File.Exists(Path.Combine(_install, "Data/Profiles/character" + UpdateInstaller.BACKUP_SUFFIX)).Should().BeTrue();
+    }
+
     private static void Write(string directory, string relativePath, string content)
     {
         string path = Path.Combine(directory, relativePath);

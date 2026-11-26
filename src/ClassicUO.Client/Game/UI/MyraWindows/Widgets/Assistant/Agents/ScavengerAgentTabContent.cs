@@ -28,7 +28,7 @@ public static class ScavengerAgentTabContent
         var topRow = new HorizontalStackPanel { Spacing = 8 };
         topRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
             profile.EnableScavenger,
-            b => profile.EnableScavenger = b,
+            b => ScavengerManager.Instance.SetEnabled(b),
             TazLang.Get("scavenger_enable", "Enable Scavenger"),
             TazLang.Get("scavenger_enable_tooltip", "Scavenger automatically picks up items on the ground based on configured criteria.")));
         topRow.Widgets.Add(new MyraButton(TazLang.Get("scavenger_setgrabbag", "Set Grab Bag"), () =>

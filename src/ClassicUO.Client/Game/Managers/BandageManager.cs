@@ -226,9 +226,6 @@ namespace ClassicUO.Game.Managers
 
         public void Update()
         {
-            if (Support.SupportAgentManager.Instance.IsUsingAbility)
-                return;
-
             bool bandagesEnabled = IsEnabled;
             if (!bandagesEnabled && (_pendingHeals.Count > 0 || _retryDeadlines.Count > 0))
                 ClearAllPendingHeals();
@@ -249,7 +246,7 @@ namespace ClassicUO.Game.Managers
             if (TryHealPlayer(player))
                 return;
 
-            if (bandagesEnabled && _pendingHeals.Count > 0)
+            if (bandagesEnabled && _pendingHeals.Count > 0 && CanStartHeal(World.Instance))
                 ProcessPendingHeals();
         }
 
@@ -266,8 +263,16 @@ namespace ClassicUO.Game.Managers
                     || HasUnexpiredBandageBuff(player, BuffIconType.Veterinary)))
                 return true;
 
-            return _healing.TryHeal(World.Instance, player, profile, profile.EnableBandageAgent && ShouldAttemptHeal(player),
+            World world = World.Instance;
+            return _healing.TryHeal(world, player, profile, CanStartHeal(world), profile.EnableBandageAgent && ShouldAttemptHeal(player),
                 () => IsReadyToBandage() && SendBandage(player));
+        }
+
+        private static bool CanStartHeal(World world)
+        {
+            var support = Support.SupportAgentManager.Instance;
+            return !support.IsUsingAbility && !support.IsWaitingForPetCursor
+                && !SelfHealManager.IsWaitingForCursor && !world.Party.HasPendingHealCursor;
         }
 
         private bool HasUnexpiredBandageBuff(PlayerMobile player, BuffIconType type) =>
@@ -425,7 +430,8 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         private bool IsReadyToBandage() =>
             Time.Ticks >= _nextBandageTime
-            && !Support.SupportAgentManager.Instance.IsUsingAbility
+            && CanStartHeal(World.Instance)
+            && !_healing.IsWaitingForSpellCursor
             && Time.Ticks >= _healing.NextActionTime
             && !(CheckForBuff && IsBandagingBuffActive)
             && !Client.Game.UO.GameCursor.ItemHold.Enabled;

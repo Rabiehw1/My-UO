@@ -102,11 +102,14 @@ namespace ClassicUO.Game.Managers
         private int _sharedListRevision;
         private AutoLootList _currentList;
         private bool _loaded = false;
+        private bool _pausedForDeath;
         private long _nextClearRecents = Time.Ticks + (ProfileManager.CurrentProfile?.AutoLootRetryDelay ?? 5000);
         private ProgressBarGump _progressBarGump;
         private int _currentLootTotalCount = 0;
         private int _pendingLootCount = 0;
         internal bool IsEnabled => ProfileManager.CurrentProfile?.EnableAutoLoot == true;
+        private bool CanLoot => _world.Player is { IsDead: false };
+        private bool CanScanCorpses => _loaded && IsEnabled && CanLoot;
 
         private readonly World _world;
 
@@ -127,9 +130,9 @@ namespace ClassicUO.Game.Managers
         public void LootItem(Item item, AutoLootConfigEntry entry = null, AutoLootPriority priority = AutoLootPriority.Normal) =>
             QueueLootItem(item, entry, priority, automatic: true);
 
-        private void QueueLootItem(Item item, AutoLootConfigEntry entry, AutoLootPriority priority, bool automatic)
+        private void QueueLootItem(Item item, AutoLootConfigEntry entry, AutoLootPriority priority, bool automatic, bool isRetry = false)
         {
-            if (item == null || (automatic && IsIgnored(item))) return;
+            if (!CanLoot || item == null || (automatic && IsAutomaticLootExcluded(item))) return;
             if (!_recentlyLooted.Add(item.Serial) || !_quickContainsLookup.Add(item.Serial)) return;
 
             if (entry != null)
@@ -137,12 +140,15 @@ namespace ClassicUO.Game.Managers
 
             uint serial = item.Serial;
             uint originalContainer = item.Container;
+            AutoLootList preset = _currentList;
+            bool requiresEnabledPreset = IsEnabled;
+            Action retryWhenFree = automatic && !isRetry ? RetryAfterHeldItem : null;
 
             var action = new ObjectActionQueueItem(
                 () =>
                 {
                     if (_world.Items.Get(serial) is { IsDestroyed: false } current && current.Container == originalContainer)
-                        MoveLootItem(serial, entry, automatic);
+                        MoveLootItem(serial, entry, automatic, retryWhenFree);
                 },
                 completed =>
                 {
@@ -162,16 +168,35 @@ namespace ClassicUO.Game.Managers
             _pendingLootCount++;
             _nextClearRecents = Time.Ticks + (ProfileManager.CurrentProfile?.AutoLootRetryDelay ?? 5000);
             CreateProgressBar();
+
+            void RetryAfterHeldItem()
+            {
+                _recentlyLooted.Remove(serial);
+                if (ReferenceEquals(preset, _currentList) && (!requiresEnabledPreset || IsEnabled)
+                    && _world.Items.Get(serial) is { IsDestroyed: false } current
+                    && current.Container == originalContainer)
+                    QueueLootItem(current, entry, priority, automatic: true, isRetry: true);
+            }
         }
 
         private bool IsIgnored(Item item) =>
-            ItemListLibrary.Resolve(_currentList?.IgnoreItemListId)?.Find(item.Graphic, item.Hue) != null;
+            ItemListLibrary.Resolve(_currentList?.IgnoreItemListId)?.Find(item) != null;
+
+        private bool IsExcludedCorpse(Item corpse) =>
+            corpse is { IsHumanCorpse: true } && _currentList?.LootHumanCorpses != true;
+
+        private bool IsAutomaticLootExcluded(Item item)
+        {
+            uint rootSerial = item.RootContainer;
+            // Wait until the container chain is known. A nested item can arrive before its corpse.
+            return rootSerial == 0 || IsExcludedCorpse(_world.Items.Get(rootSerial)) || IsIgnored(item);
+        }
 
         public void ForceLootContainer(uint serial)
         {
             Item cont = _world.Items.Get(serial);
 
-            if (cont == null) return;
+            if (!CanLoot || cont == null) return;
 
             for (LinkedObject i = cont.Items; i != null; i = i.Next) CheckAndLoot((Item)i);
         }
@@ -181,7 +206,7 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         private void CheckAndLoot(Item i)
         {
-            if (!_loaded || i == null || _quickContainsLookup.Contains(i.Serial)) return;
+            if (!_loaded || !CanLoot || i == null || _quickContainsLookup.Contains(i.Serial)) return;
 
             if(i.IsCorpse)
             {
@@ -290,7 +315,7 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (corpse.IsHumanCorpse && !_currentList.LootHumanCorpses) return;
+            if (IsExcludedCorpse(corpse)) return;
 
             for (LinkedObject i = corpse.Items; i != null; i = i.Next)
                 CheckAndLoot((Item)i);
@@ -499,7 +524,7 @@ namespace ClassicUO.Game.Managers
             }
 
             Item root = _world.Items.Get(i.RootContainer);
-            if (root != null && root.IsCorpse)
+            if (root is { IsCorpse: true } && !IsExcludedCorpse(root))
             {
                 // Each corpse item raises its own event, so only check the triggering item (avoids O(N²)).
                 CheckAndLoot(i);
@@ -543,12 +568,17 @@ namespace ClassicUO.Game.Managers
         {
             if (!_loaded) return;
 
-            if (!IsEnabled)
+            if (!CanScanCorpses)
             {
                 _scannedCorpsesInRange.Clear();
                 return;
             }
 
+            ScanNearbyCorpses();
+        }
+
+        private void ScanNearbyCorpses()
+        {
             int lootRange = ProfileManager.CurrentProfile.AutoOpenCorpseRange;
 
             foreach (Item corpse in _world.GetCorpseSnapshot())
@@ -580,14 +610,14 @@ namespace ClassicUO.Game.Managers
 
         private void OnOpenContainer(object sender, uint e)
         {
-            if (!_loaded || !IsEnabled) return;
+            if (!CanScanCorpses) return;
 
             CheckCorpse((Item)sender);
         }
 
         private void OnItemCreatedOrUpdated(object sender, EventArgs e)
         {
-            if (!_loaded || !IsEnabled) return;
+            if (!CanScanCorpses) return;
 
             if (sender is Item i)
                 CheckCorpse(i);
@@ -595,7 +625,7 @@ namespace ClassicUO.Game.Managers
 
         private void OnOPLReceived(object sender, OPLEventArgs e)
         {
-            if (!_loaded || !IsEnabled) return;
+            if (!CanScanCorpses) return;
             Item item = _world.Items.Get(e.Serial);
             if (item != null)
                 CheckCorpse(item);
@@ -604,6 +634,25 @@ namespace ClassicUO.Game.Managers
         public void Update()
         {
             if (!_loaded || !_world.InGame) return;
+
+            if (!CanLoot)
+            {
+                if (!_pausedForDeath)
+                {
+                    _pausedForDeath = true;
+                    ClearActiveLootQueue();
+                }
+                return;
+            }
+
+            if (_pausedForDeath)
+            {
+                _pausedForDeath = false;
+                _recentlyLooted.Clear();
+                InvalidateScannedCorpses();
+                if (CanScanCorpses)
+                    ScanNearbyCorpses();
+            }
 
             if (IsEnabled && (_currentList.MainItemListId != null || _currentList.IgnoreItemListId != null) &&
                 _sharedListRevision != ItemListLibrary.Instance.Revision)
@@ -640,15 +689,20 @@ namespace ClassicUO.Game.Managers
         /// </summary>
         /// <param name="serial">Serial of the item to move</param>
         /// <param name="entry">The loot list entry that matched, if any</param>
-        /// <param name="automatic">Whether to apply the Auto Loot ignore list</param>
-        private void MoveLootItem(uint serial, AutoLootConfigEntry entry, bool automatic)
+        /// <param name="automatic">Whether to apply the active preset's automatic loot exclusions</param>
+        /// <param name="retryWhenFree">Requeues one attempt if the shard reports its cursor is occupied.</param>
+        private void MoveLootItem(uint serial, AutoLootConfigEntry entry, bool automatic, Action retryWhenFree)
         {
+            // The character can die after queueing, before the game loop processes the move.
+            if (!CanLoot)
+                return;
+
             Item moveItem = _world.Items.Get(serial);
 
             if (moveItem == null)
                 return;
 
-            if (automatic && IsIgnored(moveItem))
+            if (automatic && IsAutomaticLootExcluded(moveItem))
             {
                 _recentlyLooted.Remove(serial);
                 return;
@@ -689,7 +743,7 @@ namespace ClassicUO.Game.Managers
             if (amount <= 0)
                 return;
 
-            new MoveRequest(moveItem.Serial, destinationSerial, amount).Execute();
+            new MoveRequest(moveItem.Serial, destinationSerial, amount).Execute(retryWhenFree);
         }
 
         /// <summary>
@@ -1161,7 +1215,7 @@ namespace ClassicUO.Game.Managers
                 if (compareTo.OPLData.NotNullNotEmpty())
                     search += compareTo.OPLData;
 
-                return RegexHelper.GetRegex(RegexSearch, RegexOptions.Multiline).IsMatch(search);
+                return RegexHelper.IsMatch(RegexSearch, search, RegexOptions.Multiline);
             }
 
             public bool Equals(AutoLootConfigEntry other) => other.Graphic == Graphic && other.Hue == Hue && RegexSearch == other.RegexSearch;

@@ -98,9 +98,11 @@ public sealed partial class AutoUnequipActionManager : IDisposable
     ///     Attempts to intercept a spell cast
     /// </summary>
     /// <param name="spellIndex">The spell being intercepted</param>
+    /// <param name="onSending">Runs just before the queued cast is sent.</param>
+    /// <param name="canSend">Checks whether the queued cast still applies.</param>
     /// <returns>True if the spell was intercepted, false otherwise</returns>
-    public bool TryInterceptSpellCast(int spellIndex) =>
-        ShouldInterceptCast(spellIndex) && _flushChannel.Writer.TryWrite(() => GameActions.CastSpellDirect(spellIndex));
+    public bool TryInterceptSpellCast(int spellIndex, Action onSending = null, Func<bool> canSend = null) =>
+        ShouldInterceptCast(spellIndex) && _flushChannel.Writer.TryWrite(() => GameActions.CastSpellDirect(spellIndex, onSending, canSend));
 
     /// <summary>
     ///     Attempts to intercept a double click

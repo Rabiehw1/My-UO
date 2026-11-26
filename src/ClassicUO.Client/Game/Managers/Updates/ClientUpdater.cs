@@ -143,6 +143,8 @@ internal static class ClientUpdater
     /// <exception cref="InvalidOperationException">The executable path is unknown.</exception>
     public static void RestartClient()
     {
+        using var installLock = CrossProcessPathLock.TryAcquire(CUOEnviroment.ExecutablePath, TimeSpan.Zero)
+            ?? throw new IOException(TazLang.Get("launcher_update_busy"));
         ProcessStartInfo startInfo = ClientProcess.CreateStartInfo();
         string[] arguments = Environment.GetCommandLineArgs();
 
@@ -154,8 +156,11 @@ internal static class ClientUpdater
     }
 
     /// <summary>Removes files replaced by the previous update, on a background thread.</summary>
-    public static void DeleteLeftoversInBackground() =>
-        Task.Run(() => UpdateInstaller.DeleteBackups(CUOEnviroment.ExecutablePath));
+    public static void DeleteLeftoversInBackground()
+    {
+        if (IsSupported)
+            Task.Run(() => UpdateInstaller.DeleteBackups(CUOEnviroment.ExecutablePath));
+    }
 
     private static AvailableUpdate? ToAvailableUpdate(GitHubRelease? release)
     {
@@ -209,8 +214,8 @@ internal static class ClientUpdater
 
     private static HttpClient CreateHttpClient()
     {
-        // No overall timeout: a large download on a slow line can legitimately take minutes. The check applies
-        // its own deadline; downloads are cancelled by the player.
+        // A large download can legitimately take minutes. Checks have their own deadline and
+        // the installer limits the time a download may spend without receiving any data.
         var client = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
 
         // GitHub's API rejects requests without a User-Agent.

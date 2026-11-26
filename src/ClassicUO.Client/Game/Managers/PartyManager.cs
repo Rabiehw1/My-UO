@@ -4,6 +4,7 @@ using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.Managers.SpellVisualRange;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.IO;
 
@@ -27,11 +28,54 @@ namespace ClassicUO.Game.Managers
         public PartyMember[] Members { get; } = new PartyMember[PARTY_SIZE];
 
 
-        public long PartyHealTimer { get; set; }
-        public uint PartyHealTarget { get; set; }
+        private long _healCursorDeadline;
+        private long _healSendDeadline;
+        private long _healRequestId;
+        private long _healCastGeneration;
+        private long _healFailureVersion;
+        private uint _healTarget;
+        private bool _healAllowsPosition;
 
         /// <summary>Bounds the quick-heal cursor wait when a spell fails without returning a cursor.</summary>
-        internal bool HasPendingHealCursor => PartyHealTarget != 0 && Time.Ticks < PartyHealTimer + HealCursorTimeoutMs;
+        private bool HasSentHealCast => _healTarget != 0 && Time.Ticks < _healCursorDeadline
+            && _healCastGeneration == GameActions.SpellCastGeneration
+            && _healFailureVersion == SpellVisualRangeManager.CastFailureVersion;
+
+        internal bool HasPendingHealCursor => Time.Ticks < _healSendDeadline || HasSentHealCast;
+
+        internal bool TryReserveHealCast(out long requestId)
+        {
+            requestId = 0;
+            if (HasPendingHealCursor)
+                return false;
+
+            _healSendDeadline = (long)Time.Ticks + HealCursorTimeoutMs;
+            requestId = ++_healRequestId;
+            return true;
+        }
+
+        internal bool IsReservedHealCast(long requestId) => requestId == _healRequestId && Time.Ticks < _healSendDeadline;
+
+        internal void BeginHealCast(uint target, bool allowPosition = false)
+        {
+            _healSendDeadline = 0;
+            _healTarget = target;
+            _healAllowsPosition = allowPosition;
+            _healCursorDeadline = (long)Time.Ticks + HealCursorTimeoutMs;
+            _healCastGeneration = GameActions.SpellCastGeneration;
+            _healFailureVersion = SpellVisualRangeManager.CastFailureVersion;
+        }
+
+        internal uint TakeHealCursor(CursorTarget cursor, TargetType type)
+        {
+            if (!HasSentHealCast || type is not (TargetType.Neutral or TargetType.Beneficial)
+                || (cursor != CursorTarget.Object && (!_healAllowsPosition || cursor != CursorTarget.Position)))
+                return 0;
+
+            uint target = _healTarget;
+            _healTarget = 0;
+            return target;
+        }
 
         public void ParsePacket(ref StackDataReader p)
         {
@@ -74,14 +118,14 @@ namespace ClassicUO.Game.Managers
                             }
                         }
 
-                        Clear();
+                        ClearMembers();
 
                         UIManager.GetGump<PartyGump>()?.RequestUpdateContents();
 
                         break;
                     }
 
-                    Clear();
+                    ClearMembers();
 
                     uint to_remove = 0xFFFF_FFFF;
 
@@ -220,6 +264,13 @@ namespace ClassicUO.Game.Managers
         }
 
         public void Clear()
+        {
+            _healSendDeadline = 0;
+            _healTarget = 0;
+            ClearMembers();
+        }
+
+        private void ClearMembers()
         {
             Leader = 0;
             Inviter = 0;

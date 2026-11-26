@@ -116,8 +116,9 @@ internal sealed class LauncherBar : MyraGrid
         combo.ListView.SelectedIndex = selected == null ? null : save.Profiles.IndexOf(selected);
         combo.ListView.SelectedIndexChanged += (_, _) =>
         {
-            if (combo.ListView.SelectedIndex is int index && index < save.Profiles.Count)
-                save.Select(save.Profiles[index]);
+            if (combo.ListView.SelectedIndex is int index && index < _items.Count
+                && save.Profiles.Find(profile => profile.Id == _items[index].Profile.Id) is { } current)
+                save.Select(current);
         };
 
         return combo;

@@ -580,6 +580,30 @@ namespace ClassicUO.Game.Managers
             return obj;
         }
 
+        internal static bool TryParseUseType(string text, out ushort graphic, out ushort? hue)
+        {
+            graphic = 0;
+            hue = null;
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            string[] parts = text.Split((char[])null, 3, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length > 2 || !StringHelper.TryParseInt(parts[0], out int parsedGraphic)
+                || (uint)parsedGraphic > ushort.MaxValue)
+                return false;
+
+            if (parts.Length == 2)
+            {
+                if (!StringHelper.TryParseInt(parts[1], out int parsedHue) || (uint)parsedHue > ushort.MaxValue)
+                    return false;
+
+                hue = (ushort)parsedHue;
+            }
+
+            graphic = (ushort)parsedGraphic;
+            return true;
+        }
+
         public void SetMacroToExecute(MacroObject macro)
         {
             // If this exact macro is already running and it contains a loop,
@@ -2401,38 +2425,12 @@ namespace ClassicUO.Game.Managers
                     break;
 
                 case MacroType.UseType:
-                    var useTypeString = (MacroObjectString)macro;
-                    string typePattern = useTypeString.Text;
-
-                    if (!string.IsNullOrEmpty(typePattern))
+                    if (macro is MacroObjectString useType
+                        && TryParseUseType(useType.Text, out ushort graphic, out ushort? itemHue)
+                        && _world.Player.FindItemByGraphicAndHue(graphic, itemHue) is { } foundItem)
                     {
-                        // Parse pattern: format is "graphic hue" or just "graphic"
-                        // Example: "0x0F0E 0" for graphic 0x0F0E with hue 0
-                        // Example: "0x0F0E" for graphic 0x0F0E with any hue
-                        string[] parts = typePattern.Split(' ');
-                        ushort graphic = 0;
-                        ushort? hue = null;
-
-                        int parsed = 0;
-
-                        if (parts.Length >= 1)
-                            if (!StringHelper.TryParseInt(parts[0], out parsed))
-                                break; // Invalid graphic, exit
-
-                        graphic = (ushort)parsed;
-
-                        if (parts.Length == 2)
-                            // Hue is optional
-                            if (StringHelper.TryParseInt(parts[1], out int h))
-                                hue = (ushort)h;
-
-                        Item foundItem = _world.Player.FindItemByGraphicAndHue(graphic, hue);
-
-                        if (foundItem != null)
-                        {
-                            GameActions.DoubleClick(_world, foundItem);
-                            ScriptRecorder.Instance.RecordUseItem(foundItem);
-                        }
+                        GameActions.DoubleClick(_world, foundItem);
+                        ScriptRecorder.Instance.RecordUseItem(foundItem);
                     }
 
                     break;
@@ -2574,8 +2572,7 @@ namespace ClassicUO.Game.Managers
 
                 case MacroType.ToggleScavenging:
                     bool newScavengerStatus = !ProfileManager.CurrentProfile.EnableScavenger;
-                    ProfileManager.CurrentProfile.EnableScavenger = newScavengerStatus;
-                    if (!newScavengerStatus) ScavengerManager.Instance.ClearActiveLootQueue();
+                    ScavengerManager.Instance.SetEnabled(newScavengerStatus);
                     GameActions.Print($"Scavenging {(newScavengerStatus ? "enabled" : "disabled")}.", newScavengerStatus ? Constants.HUE_SUCCESS : Constants.HUE_ERROR);
                     break;
 

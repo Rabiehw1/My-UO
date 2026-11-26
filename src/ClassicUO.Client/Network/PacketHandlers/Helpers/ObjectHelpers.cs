@@ -282,11 +282,13 @@ public static class ObjectHelpers
                 //ItemHold.Clear();
                 Client.Game.UO.GameCursor.ItemHold.Enabled = false;
                 Client.Game.UO.GameCursor.ItemHold.Dropped = false;
+                ObjectActionQueue.Instance.ConfirmCursorFree();
             }
 
             if (item.OnGround)
             {
                 item.SetInWorldTile(item.X, item.Y, item.Z);
+                ObjectActionQueue.Instance.ConfirmGroundDrop(item);
 
                 if (graphic == 0x2006)
                 {

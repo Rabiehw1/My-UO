@@ -364,9 +364,9 @@ namespace ClassicUO
 
                         case "reconnect_time":
 
-                            if (!int.TryParse(value, out int reconnectTime) || reconnectTime < 1)
+                            if (!int.TryParse(value, out int reconnectTime))
                             {
-                                reconnectTime = 1;
+                                reconnectTime = Settings.MinReconnectSeconds;
                             }
 
                             Settings.GlobalSettings.ReconnectTime = reconnectTime;

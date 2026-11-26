@@ -16,70 +16,55 @@ namespace ClassicUO.Network
 {
     sealed class AsyncSocketWrapper(AsyncNetClient client) : IDisposable
     {
-        private AsyncNetClient _client = client;
         private TcpClient _socket;
         private NetworkStream _stream;
-        private CancellationTokenSource _cancellationTokenSource;
+        private readonly CancellationTokenSource _shutdown = new();
         private Task _receiveTask;
-        public bool IsConnected => _socket?.Client?.Connected ?? false;
+        private int _closed;
+        public bool IsConnected => Volatile.Read(ref _closed) == 0 && _socket?.Connected == true;
         public EndPoint LocalEndPoint => _socket?.Client?.LocalEndPoint;
         public EndPoint RemoteEndPoint => _socket?.Client?.RemoteEndPoint;
+        public Task ReceiveCompletion => _receiveTask ?? Task.CompletedTask;
 
-        public event EventHandler OnConnected, OnDisconnected;
+        public event EventHandler OnDisconnected;
         public event EventHandler<SocketError> OnError;
 
-        public async Task<bool> ConnectAsync(string ip, int port, CancellationToken cancellationToken = default, int timeoutS = 2)
+        public async Task<SocketError> ConnectAsync(string ip, int port, CancellationToken cancellationToken)
         {
             if (IsConnected)
-                return true;
+                return SocketError.Success;
+
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(2));
 
             try
             {
-                _socket = new TcpClient();
-                _socket.NoDelay = true;
-                _cancellationTokenSource = new CancellationTokenSource();
-
-                Task connectTask = _socket.ConnectAsync(ip, port);
-                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(timeoutS), _cancellationTokenSource.Token); // set your timeout here
-
-                Task completedTask = await Task.WhenAny(connectTask, timeoutTask);
-
-                if (completedTask == timeoutTask)
-                {
-                    _socket.Close(); // optional: cleanup
-
-                    return false;
-                }
-
-                if (!IsConnected)
-                {
-                    OnError?.Invoke(this, SocketError.NotConnected);
-
-                    return false;
-                }
-
-                _stream = _socket.GetStream();
-
-                // Start background receive task
-                _receiveTask = Task.Run(() => ReceiveLoopAsync(_cancellationTokenSource.Token), _cancellationTokenSource.Token);
-
-                OnConnected?.Invoke(this, EventArgs.Empty);
-
-                return true;
+                deadline.Token.ThrowIfCancellationRequested();
+                TcpClient socket = _socket = new TcpClient { NoDelay = true };
+                await socket.ConnectAsync(ip, port, deadline.Token).ConfigureAwait(false);
+                deadline.Token.ThrowIfCancellationRequested();
+                _stream = socket.GetStream();
+                _receiveTask = ReceiveLoopAsync(_shutdown.Token);
+                return SocketError.Success;
+            }
+            catch (OperationCanceledException)
+            {
+                _socket?.Dispose();
+                return cancellationToken.IsCancellationRequested || _shutdown.IsCancellationRequested
+                    ? SocketError.OperationAborted
+                    : SocketError.TimedOut;
             }
             catch (SocketException socketEx)
             {
+                _socket?.Dispose();
                 Log.Error($"Error while connecting {socketEx}");
-                OnError?.Invoke(this, socketEx.SocketErrorCode);
-
-                return false;
+                return socketEx.SocketErrorCode;
             }
             catch (Exception ex)
             {
+                _socket?.Dispose();
                 Log.Error($"Error while connecting {ex}");
-                OnError?.Invoke(this, SocketError.SocketError);
-
-                return false;
+                return SocketError.SocketError;
             }
         }
 
@@ -90,13 +75,19 @@ namespace ClassicUO.Network
 
             try
             {
-                await _stream.WriteAsync(buffer, offset, count, cancellationToken);
-                await _stream.FlushAsync(cancellationToken);
+                await _stream.WriteAsync(buffer.AsMemory(offset, count), cancellationToken).ConfigureAwait(false);
+                await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception) when (cancellationToken.IsCancellationRequested || _shutdown.IsCancellationRequested)
+            {
             }
             catch (Exception ex)
             {
-                Log.Error($"Error while sending {ex}");
-                OnError?.Invoke(this, SocketError.SocketError);
+                if (Close())
+                {
+                    Log.Error($"Error while sending {ex}");
+                    OnError?.Invoke(this, SocketError.SocketError);
+                }
             }
         }
 
@@ -112,12 +103,12 @@ namespace ClassicUO.Network
                     // when the remote closes the connection (FIN); gating on Available > 0 meant a
                     // graceful/half-open close was never detected, leaving the socket "connected"
                     // forever. ReadAsync also yields naturally, so no busy-wait delay is needed.
-                    int bytesRead = await _stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                    int bytesRead = await _stream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false);
 
                     if (bytesRead == 0)
                     {
-                        OnDisconnected?.Invoke(this, EventArgs.Empty);
-                        Disconnect();
+                        if (Close())
+                            OnDisconnected?.Invoke(this, EventArgs.Empty);
 
                         break;
                     }
@@ -126,34 +117,28 @@ namespace ClassicUO.Network
                     {
                         byte[] data = new byte[bytesRead];
                         Array.Copy(buffer, data, bytesRead);
-                        _client.OnDataReceived(data);
-                        //OnDataReceived?.Invoke(this, data);
+                        client.OnDataReceived(data);
                     }
                 }
             }
+            catch (Exception) when (cancellationToken.IsCancellationRequested)
+            {
+            }
             catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx)
             {
-                Disconnect();
-
-                switch (socketEx.SocketErrorCode)
+                if (Close())
                 {
-                    case SocketError.OperationAborted: OnError?.Invoke(this, SocketError.Success); break;
-                    default:
-                        Log.Error($"Socket error in receive loop: {socketEx.SocketErrorCode} - {socketEx.Message}");
-                        OnError?.Invoke(this, socketEx.SocketErrorCode); break;
+                    Log.Error($"Socket error in receive loop: {socketEx.SocketErrorCode} - {socketEx.Message}");
+                    OnError?.Invoke(this, socketEx.SocketErrorCode);
                 }
-
-            }
-            catch (OperationCanceledException)
-            {
-                Disconnect();
-                OnError?.Invoke(this, SocketError.Success);
             }
             catch (Exception ex)
             {
-                Log.Error($"Error in receive loop {ex}");
-                Disconnect();
-                OnError?.Invoke(this, SocketError.SocketError);
+                if (Close())
+                {
+                    Log.Error($"Error in receive loop {ex}");
+                    OnError?.Invoke(this, SocketError.SocketError);
+                }
             }
             finally
             {
@@ -161,28 +146,18 @@ namespace ClassicUO.Network
             }
         }
 
-        private bool _isDisconnecting;
-        public void Disconnect()
+        // Either loop may be the first to detect closure. Closing the socket must not join either loop.
+        private bool Close()
         {
-            if (_isDisconnecting)
-                return;
+            if (Interlocked.Exchange(ref _closed, 1) != 0)
+                return false;
 
-            _isDisconnecting = true;
-
-            _cancellationTokenSource?.Cancel();
-            _receiveTask?.Wait(5000);
-            _stream?.Close();
-            _socket?.Close();
-        }
-
-        public void Dispose()
-        {
-            _cancellationTokenSource?.Cancel();
-            _receiveTask?.Wait(5000);
-            _stream?.Dispose();
+            _shutdown.Cancel();
             _socket?.Dispose();
-            _cancellationTokenSource?.Dispose();
+            return true;
         }
+
+        public void Dispose() => Close();
     }
 
     public sealed class AsyncNetClient : IDisposable
@@ -208,7 +183,9 @@ namespace ClassicUO.Network
 
         private readonly ConcurrentQueue<byte[]> _incomingMessages = new();
         private Task _networkTask;
-        private CancellationTokenSource _cancellationTokenSource = new();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly object _connectionLock = new();
+        private Task _disconnectTask;
         public static PacketsTable PacketsTable { get; private set; }
 #nullable enable
         public static EncryptionHelper? Encryption { get; private set; }
@@ -229,12 +206,6 @@ namespace ClassicUO.Network
             Statistics = new NetStatistics(this);
 
             _socket = new AsyncSocketWrapper(this);
-
-            _socket.OnConnected += (o, e) =>
-            {
-                Statistics.Reset();
-                Connected?.Invoke(this, EventArgs.Empty);
-            };
 
             _socket.OnDisconnected += (o, e) => Disconnected?.Invoke(this, SocketError.Success);
             _socket.OnError += (o, e) => Disconnected?.Invoke(this, e);
@@ -295,53 +266,58 @@ namespace ClassicUO.Network
         public event EventHandler Connected;
         public event EventHandler<SocketError> Disconnected;
 
-        public async Task<bool> Connect(string ip, ushort port, CancellationToken cancellationToken = new ())
+        public async Task<bool> Connect(string ip, ushort port, CancellationToken cancellationToken = default)
         {
             ClearSendQueue();
             _huffman.Reset();
             Statistics.Reset();
 
-            bool success = await _socket.ConnectAsync(ip, port, cancellationToken);
+            SocketError result = await _socket.ConnectAsync(ip, port, cancellationToken).ConfigureAwait(false);
+            if (_cancellationTokenSource.IsCancellationRequested || cancellationToken.IsCancellationRequested)
+                return false;
 
-            if (success)
+            if (result != SocketError.Success)
             {
-                _cancellationTokenSource = new CancellationTokenSource();
-                _networkTask = Task.Run(() => SendLoopAsync(_cancellationTokenSource.Token), _cancellationTokenSource.Token);
-            }
-            else
-            {
-                Disconnected?.Invoke(this, SocketError.NotConnected);
+                Disconnected?.Invoke(this, result);
+                return false;
             }
 
-            return success;
+            lock (_connectionLock)
+            {
+                if (_disconnectTask != null || !IsConnected)
+                    return false;
+
+                _networkTask = SendLoopAsync(_cancellationTokenSource.Token);
+            }
+
+            Connected?.Invoke(this, EventArgs.Empty);
+            return true;
         }
 
-        private bool _isDisconnecting;
-        public async Task Disconnect()
+        public Task Disconnect()
         {
-            if (_isDisconnecting)
-                return;
+            lock (_connectionLock)
+                return _disconnectTask ??= DisconnectCore();
+        }
 
-            _isDisconnecting = true;
-
+        private async Task DisconnectCore()
+        {
             SDL.SDL_CaptureMouse(false);
-            _isCompressionEnabled = false;
-            Statistics.Reset();
+            _cancellationTokenSource.Cancel();
+            _socket.Dispose();
 
-            _cancellationTokenSource?.Cancel();
-
-            if(_networkTask != null)
+            try
             {
-                try
-                {
-                    await Task.WhenAny(_networkTask,Task.Delay(5000));
-                }
-                catch { }
+                await Task.WhenAll(_networkTask ?? Task.CompletedTask, _socket.ReceiveCompletion).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Error closing network connection {ex}");
             }
 
             ClearIncomingMessages();
-
-            _socket.Disconnect();
+            _isCompressionEnabled = false;
+            Statistics.Reset();
             _huffman.Reset();
             ClearSendQueue();
         }
@@ -507,17 +483,7 @@ namespace ClassicUO.Network
             return _uncompressedBuffer.AsSpan(0, size);
         }
 
-        public void Dispose()
-        {
-            _cancellationTokenSource?.Cancel();
-            try
-            {
-                _networkTask?.Wait(5000);
-            }
-            catch { }
-            ClearSendQueue();
-            _socket?.Dispose();
-        }
+        public void Dispose() => _ = Disconnect();
 
         /// <summary>
         ///     One queued outgoing packet: a pooled buffer plus the number of valid bytes in it.

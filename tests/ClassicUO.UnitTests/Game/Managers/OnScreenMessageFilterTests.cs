@@ -53,4 +53,19 @@ public class OnScreenMessageFilterTests
         Assert.True(filter.IsMuted(oldProfile, Cooldown, 1));
         Assert.False(filter.IsMuted(newProfile, Cooldown, 2));
     }
+
+    [Fact]
+    public void CustomPhrasesMatchBothFormattedOverheadTextAndOriginalWords()
+    {
+        var profile = new Profile();
+        var filter = new OnScreenMessageFilter();
+
+        profile.OnScreenMessagePhrases.Add("Greater Heal", true);
+        Assert.True(filter.IsMuted(profile, "In Vas Mani", 0, "Casting Greater Heal"));
+        Assert.False(filter.IsMuted(profile, "In Vas Mani", 1));
+
+        profile.OnScreenMessagePhrases.Clear();
+        profile.OnScreenMessagePhrases.Add("In Vas Mani", true);
+        Assert.True(filter.IsMuted(profile, "In Vas Mani", 2, "Casting Greater Heal"));
+    }
 }

@@ -103,6 +103,7 @@ internal static class UpdateObject
             item.CheckGraphicChange();
 
             obj.PushToBack(item);
+            ObjectActionQueue.Instance.ConfirmEquip(item.Serial, item.Container, item.Layer);
 
             itemSerial = p.ReadUInt32BE();
         }

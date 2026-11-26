@@ -1,4 +1,5 @@
 using ClassicUO.Game;
+using ClassicUO.Game.Managers;
 using ClassicUO.IO;
 
 namespace ClassicUO.Network.PacketHandlers;
@@ -10,6 +11,7 @@ internal static class EndDraggingItem
         if (!world.InGame)
             return;
 
+        ObjectActionQueue.Instance.ConfirmDragEnded();
         if (Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
             return;
 

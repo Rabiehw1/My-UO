@@ -50,6 +50,7 @@ namespace ClassicUO.Game.Managers.SpellVisualRange
         /// and react immediately instead of waiting out a timeout.
         /// </summary>
         public long LastCastFailedTick { get; private set; }
+        internal static long CastFailureVersion { get; private set; }
 
         /// <summary>
         /// An instance of a cast timer bar. May be null, depending on profile settings
@@ -108,6 +109,7 @@ namespace ClassicUO.Game.Managers.SpellVisualRange
                 // already cleared isCasting before this disrupt cliloc arrives (packet ordering),
                 // and consumers still need to know the cast just failed.
                 LastCastFailedTick = ClassicUO.Time.Ticks;
+                CastFailureVersion++;
                 if (isCasting) ClearCasting();
             });
         }

@@ -180,10 +180,10 @@ namespace ClassicUO.Game.Managers
             // Only the active buy list is used.
             if (ShopLists.Buy.GetActive() is not { } activeList) return;
 
-            var buyList = new List<Tuple<uint, ushort>>();
+            var buyList = new Dictionary<uint, ushort>();
             long val = 0;
-            ushort total_count = 0;
-            ushort unique_items = 0;
+            int total_count = 0;
+            int unique_items = 0;
             int max_total_items = ProfileManager.CurrentProfile.BuyAgentMaxItems;
             bool limit_total_items = max_total_items > 0;
             int max_unique_items = ProfileManager.CurrentProfile.BuyAgentMaxUniques;
@@ -193,19 +193,22 @@ namespace ClassicUO.Game.Managers
             {
                 if (!buyConfigEntry.Enabled) continue;
 
-                ushort current_count = 0;
-                ushort maxToBuy = activeList.TakeAll ? ushort.MaxValue : buyConfigEntry.MaxAmount;
+                int current_count = 0;
+                int maxToBuy = activeList.TakeAll ? ushort.MaxValue : buyConfigEntry.MaxAmount;
 
                 // Check restock functionality
                 if (buyConfigEntry.RestockUpTo > 0)
                 {
-                    ushort currentBackpackAmount = GetItemCount(buyConfigEntry.Graphic, buyConfigEntry.Hue);
+                    int currentBackpackAmount = GetItemCount(buyConfigEntry.Graphic, buyConfigEntry.Hue);
                     if (currentBackpackAmount >= buyConfigEntry.RestockUpTo)
                     {
                         continue; // Already have enough, skip this item
                     }
-                    maxToBuy = Math.Min((ushort)(buyConfigEntry.RestockUpTo - currentBackpackAmount), maxToBuy);
+                    maxToBuy = Math.Min(buyConfigEntry.RestockUpTo - currentBackpackAmount, maxToBuy);
                 }
+
+                if (!activeList.TakeAll || buyConfigEntry.RestockUpTo > 0)
+                    maxToBuy -= items.Sum(item => buyConfigEntry.IsMatch(item.Graphic, item.Hue) ? buyList.GetValueOrDefault(item.Serial) : 0);
 
                 foreach (Item item in items)
                 {
@@ -214,24 +217,21 @@ namespace ClassicUO.Game.Managers
                     // Skip if item price exceeds configured max price
                     if (buyConfigEntry.MaxPrice > 0 && item.Price > buyConfigEntry.MaxPrice) continue;
 
-                    if (current_count >= maxToBuy) continue;
+                    if (current_count >= maxToBuy) break;
 
                     if (limit_unique_items && unique_items >= max_unique_items) break;
 
                     if (limit_total_items && current_count + total_count >= max_total_items) break;
 
-                    int amount_buyable = Math.Min(item.Amount, maxToBuy - current_count);
+                    int amount_buyable = maxToBuy - current_count;
                     if (limit_total_items)
                     {
                         amount_buyable = Math.Min(amount_buyable, max_total_items - total_count - current_count);
                     }
 
-                    if (amount_buyable > 0)
-                    {
-                        buyList.Add(new Tuple<uint, ushort>(item.Serial, (ushort)amount_buyable));
-                        current_count += (ushort)amount_buyable;
-                        val += item.Price * (ushort)amount_buyable;
-                    }
+                    int reserved = ReserveStock(buyList, item.Serial, item.Amount, amount_buyable);
+                    current_count += reserved;
+                    val += (long)item.Price * reserved;
                 }
 
                 if (current_count > 0)
@@ -242,19 +242,19 @@ namespace ClassicUO.Game.Managers
 
             if (buyList.Count == 0) return;
 
-            AsyncNetClient.Socket.Send_BuyRequest(shopSerial, buyList.ToArray());
+            AsyncNetClient.Socket.Send_BuyRequest(shopSerial, buyList.Select(item => Tuple.Create(item.Key, item.Value)).ToArray());
             GameActions.Print(Client.Game.UO.World, $"Purchased {total_count} items for {val} gold.");
             UIManager.GetGump(shopSerial)?.Dispose();
         }
 
-        private ushort GetItemCount(ushort graphic, ushort hue, Item container = null)
+        private int GetItemCount(ushort graphic, ushort hue, Item container = null)
         {
             Item searchContainer = container ?? World.Instance.Player?.Backpack;
             if (searchContainer == null) return 0;
 
             bool subContainers = ProfileManager.CurrentProfile.BuyAgentSubContainers;
 
-            ushort count = 0;
+            int count = 0;
             var item = (Item)searchContainer.Items;
             while (item != null)
             {
@@ -293,10 +293,13 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            var sellList = new List<Tuple<uint, ushort>>();
+            if (!sellPackets.Remove(vendorSerial, out VendorSellInfo vendorStock))
+                return;
+
+            var sellList = new Dictionary<uint, ushort>();
             long val = 0;
-            ushort total_count = 0;
-            ushort unique_items = 0;
+            int total_count = 0;
+            int unique_items = 0;
             int max_total_items = ProfileManager.CurrentProfile.SellAgentMaxItems;
             bool limit_total_items = max_total_items > 0;
             int max_unique_items = ProfileManager.CurrentProfile.SellAgentMaxUniques;
@@ -306,52 +309,39 @@ namespace ClassicUO.Game.Managers
             {
                 if (!sellConfig.Enabled) continue;
 
-                ushort current_count = 0;
-                ushort maxToSell = activeList.TakeAll ? ushort.MaxValue : sellConfig.MaxAmount;
+                int current_count = 0;
+                int maxToSell = activeList.TakeAll ? ushort.MaxValue : sellConfig.MaxAmount;
 
                 // Check minimum on hand logic
-                ushort backpackTotal = 0;
                 if (sellConfig.RestockUpTo > 0)
                 {
-                    backpackTotal = GetItemCount(sellConfig.Graphic, sellConfig.Hue);
-                    if (backpackTotal <= sellConfig.RestockUpTo)
-                    {
-                        continue; // Skip selling this item type - already at or below minimum
-                    }
+                    int backpackTotal = GetItemCount(sellConfig.Graphic, sellConfig.Hue);
+                    maxToSell = Math.Min(maxToSell, backpackTotal - sellConfig.RestockUpTo);
                 }
 
-                foreach (VendorSellItemData item in sellPackets[vendorSerial].AvailableItems)
+                if (!activeList.TakeAll || sellConfig.RestockUpTo > 0)
+                    maxToSell -= vendorStock.AvailableItems.Sum(item => sellConfig.IsMatch(item.Graphic, item.Hue)
+                        ? sellList.GetValueOrDefault(item.Serial) : 0);
+
+                foreach (VendorSellItemData item in vendorStock.AvailableItems)
                 {
                     if (!sellConfig.IsMatch(item.Graphic, item.Hue)) continue;
 
-                    if (current_count >= maxToSell) continue;
+                    if (current_count >= maxToSell) break;
 
                     if (limit_unique_items && unique_items >= max_unique_items) break;
 
                     if (limit_total_items && current_count + total_count >= max_total_items) break;
 
-                    int amount_sellable = Math.Min(item.Amount, maxToSell - current_count);
+                    int amount_sellable = maxToSell - current_count;
                     if (limit_total_items)
                     {
                         amount_sellable = Math.Min(amount_sellable, max_total_items - total_count - current_count);
                     }
 
-                    // Apply minimum on hand restriction
-                    if (sellConfig.RestockUpTo > 0 && backpackTotal > 0)
-                    {
-                        int maxSellableBeforeMin = backpackTotal - sellConfig.RestockUpTo;
-                        amount_sellable = Math.Min(amount_sellable, maxSellableBeforeMin - current_count);
-
-                        if (amount_sellable <= 0)
-                            break; // Can't sell more without going below minimum
-                    }
-
-                    if (amount_sellable > 0)
-                    {
-                        sellList.Add(new Tuple<uint, ushort>(item.Serial, (ushort)amount_sellable));
-                        current_count += (ushort)amount_sellable;
-                        val += item.Price * (ushort)amount_sellable;
-                    }
+                    int reserved = ReserveStock(sellList, item.Serial, item.Amount, amount_sellable);
+                    current_count += reserved;
+                    val += (long)item.Price * reserved;
                 }
 
                 if (current_count > 0)
@@ -359,14 +349,21 @@ namespace ClassicUO.Game.Managers
 
                 total_count += current_count;
             }
-            sellPackets.Remove(vendorSerial);
-
             if (sellList.Count == 0) return;
 
-            AsyncNetClient.Socket.Send_SellRequest(vendorSerial, sellList.ToArray());
+            AsyncNetClient.Socket.Send_SellRequest(vendorSerial, sellList.Select(item => Tuple.Create(item.Key, item.Value)).ToArray());
             GameActions.Print(Client.Game.UO.World, $"Sold {total_count} items for {val} gold.");
             UIManager.ForEach<ModernShopGump>(g => g.Dispose(), vendorSerial);
             UIManager.ForEach<ShopGump>(g => g.Dispose(), vendorSerial);
+        }
+
+        internal static int ReserveStock(Dictionary<uint, ushort> order, uint serial, ushort available, int requested)
+        {
+            ushort alreadyReserved = order.GetValueOrDefault(serial);
+            int amount = Math.Max(0, Math.Min(available - alreadyReserved, requested));
+            if (amount > 0)
+                order[serial] = (ushort)(alreadyReserved + amount);
+            return amount;
         }
     }
 

@@ -1169,6 +1169,9 @@ namespace ClassicUO.Game.Scenes
                 {
                     if (macro.Items is MacroObject mac)
                     {
+                        if (HotKeys.GloballyDisabled && mac.Code != MacroType.ToggleHotkeys)
+                            return false;
+
                         if (mac.Code == MacroType.LookAtMouse)
                         {
                             Client.Game.Scene.Camera.PeekingToMouse = true;
@@ -1414,12 +1417,7 @@ namespace ClassicUO.Game.Scenes
             switch (key)
             {
                 case SDL.SDL_Keycode.SDLK_ESCAPE:
-
-                    if (_world.Player.Pathfinder.AutoWalking)
-                    {
-                        _world.Player.Pathfinder.StopAutoWalk();
-                    }
-
+                    _world.Player.Pathfinder.StopAutoWalk();
                     break;
 
                 case SDL.SDL_Keycode.SDLK_TAB when !ProfileManager.CurrentProfile.DisableTabBtn:

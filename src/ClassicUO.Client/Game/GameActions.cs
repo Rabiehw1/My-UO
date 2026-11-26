@@ -27,6 +27,7 @@ using NewOptionsWindow = UI.MyraWindows.Options.OptionsWindow;
 internal static class GameActions
 {
     public static int LastSpellIndex { get; set; } = 1;
+    internal static long SpellCastGeneration { get; private set; }
     public static int LastSkillIndex { get; set; } = 1;
 
 
@@ -1206,6 +1207,7 @@ internal static class GameActions
         if (index >= 0)
         {
             LastSpellIndex = index;
+            SpellCastGeneration++;
             SpellVisualRangeManager.Instance.ClearCasting();
             Socket.Send_CastSpellFromBook(index, bookSerial);
             SpellVisualRangeManager.Instance.BeginCastingFromClient(index);
@@ -1221,8 +1223,7 @@ internal static class GameActions
     /// <summary>
     /// Performs the configured quick heal/cure <paramref name="action"/> on <paramref name="target"/>.
     /// Bandages are applied via <see cref="UseBandageOnTarget"/>; spells are cast and the target is
-    /// auto-selected once the server sends the target cursor (see the party heal timer consumed by the
-    /// target cursor handler).
+    /// auto-selected once the server sends a compatible target cursor.
     /// </summary>
     internal static void QuickAction(World world, uint target, HealthBarQuickAction action)
     {
@@ -1233,9 +1234,13 @@ internal static class GameActions
             return;
         }
 
-        CastSpell(action.GetSpellId());
-        world.Party.PartyHealTimer = Time.Ticks + 50;
-        world.Party.PartyHealTarget = target;
+        int spellId = action.GetSpellId();
+        if (spellId >= 0 && world.Party.TryReserveHealCast(out long requestId))
+        {
+            bool allowsGroundTarget = action is HealthBarQuickAction.ArchCure or HealthBarQuickAction.CleansingWinds;
+            CastSpell(spellId, () => world.Party.BeginHealCast(target, allowsGroundTarget),
+                () => world.InGame && world.Party.IsReservedHealCast(requestId));
+        }
     }
 
     /// <summary>
@@ -1250,7 +1255,7 @@ internal static class GameActions
     /// <param name="target">Serial of the mobile to bandage.</param>
     /// <param name="autoTargetTimeoutMs">
     /// When double-clicking (old packet mode), how long to wait for the bandage's target cursor before giving up
-    /// on auto-targeting it. Zero waits indefinitely.
+    /// on auto-targeting it. Nonpositive values use the default wait.
     /// </param>
     /// <returns>False if no bandage was found.</returns>
     internal static bool UseBandageOnTarget(World world, uint target, int autoTargetTimeoutMs = 0)
@@ -1273,7 +1278,7 @@ internal static class GameActions
                 target,
                 profile?.BandageAgentTargetType ?? TargetType.Beneficial,
                 matchAnyTargetType: true,
-                autoTargetTimeoutMs
+                autoTargetTimeoutMs > 0 ? autoTargetTimeoutMs : 2_000
             );
 
             // Sent straight away: bandages must not wait in the manual item-use queue.
@@ -1286,26 +1291,30 @@ internal static class GameActions
     internal static bool UsesBandageTargetCursor(Profile profile, ClientVersion version) =>
         version < ClientVersion.CV_5020 || profile?.BandageAgentUseNewPacket == false;
 
-    internal static void CastSpell(int index)
+    internal static void CastSpell(int index) => CastSpell(index, null);
+
+    internal static void CastSpell(int index, Action onSending, Func<bool> canSend = null)
     {
         if (index >= 0)
         {
             // Check if auto unequip manager wants to intercept
-            if (AutoUnequipActionManager.Instance?.TryInterceptSpellCast(index) ?? false)
+            if (AutoUnequipActionManager.Instance?.TryInterceptSpellCast(index, onSending, canSend) ?? false)
             {
                 return; // Manager will handle the cast via queue
             }
 
-            CastSpellDirect(index);
+            CastSpellDirect(index, onSending, canSend);
         }
     }
 
-    internal static void CastSpellDirect(int index)
+    internal static void CastSpellDirect(int index, Action onSending = null, Func<bool> canSend = null)
     {
-        if (index >= 0)
+        if (index >= 0 && (canSend?.Invoke() ?? true))
         {
             LastSpellIndex = index;
+            SpellCastGeneration++;
             SpellVisualRangeManager.Instance.ClearCasting();
+            onSending?.Invoke();
             Socket.Send_CastSpell(index);
             SpellVisualRangeManager.Instance.BeginCastingFromClient(index);
 

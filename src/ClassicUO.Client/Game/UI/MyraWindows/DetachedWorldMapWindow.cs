@@ -211,31 +211,88 @@ internal sealed class DetachedWorldMapWindow
             case SDL_EventType.SDL_EVENT_TEXT_INPUT:
                 string? text = e.type == (uint)SDL_EventType.SDL_EVENT_TEXT_INPUT
                     ? Marshal.PtrToStringUTF8((nint)e.text.text) : null;
-                bool mouseButton = (SDL_EventType)e.type is SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN
-                    or SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP;
+                bool navigationClick = ((SDL_EventType)e.type is SDL_EventType.SDL_EVENT_MOUSE_BUTTON_DOWN
+                    or SDL_EventType.SDL_EVENT_MOUSE_BUTTON_UP) && e.button.button == (byte)MouseButtonType.Left;
                 mapWindow._events.Enqueue((e, text,
-                    mouseButton && IsMapBindingHeld(HotKeyRegistrar.WorldMapPathfindId),
-                    mouseButton && IsMapBindingHeld(HotKeyRegistrar.WorldMapPathfindAppendId)));
+                    navigationClick && IsMapBindingHeld(HotKeyRegistrar.WorldMapPathfindId, e.button.button),
+                    navigationClick && IsMapBindingHeld(HotKeyRegistrar.WorldMapPathfindAppendId, e.button.button)));
                 break;
         }
         return true;
     }
 
-    private static bool IsMapBindingHeld(string id)
+    private static bool IsMapBindingHeld(string id, byte eventButton)
     {
         var entry = HotKeys.Get(id);
-        if (entry is not { Enabled: true, Binding: { IsEmpty: false } binding } || HotKeys.GloballyDisabled
-            || binding.HasMouseButton || binding.HasController || binding.WheelScroll)
+        if (entry is not { Enabled: true, Binding: { IsEmpty: false } binding } || HotKeys.GloballyDisabled)
             return false;
+
+        if (binding.HasController)
+            return ProfileManager.CurrentProfile?.ControllerEnabled == true && AreGamepadButtonsHeld(binding.ControllerButtons);
 
         var mods = HotkeyUtil.NormalizeMods(SDL_GetModState());
         if ((mods & binding.Mod) != binding.Mod)
+            return false;
+        if (binding.HasMouseButton)
+            return IsMapMouseBindingHeld(binding.MouseButton, eventButton, SDL_GetMouseState(out _, out _));
+        if (binding.WheelScroll)
             return false;
         if (!binding.HasKey)
             return true;
         int scan = (int)SDL_GetScancodeFromKey((uint)binding.Key, 0);
         nint keys = SDL_GetKeyboardState(out int length);
         return keys != 0 && scan > 0 && scan < length && Marshal.ReadByte(keys, scan) != 0;
+    }
+
+    internal static bool IsMapMouseBindingHeld(MouseButtonType button, byte eventButton, SDL_MouseButtonFlags heldButtons)
+    {
+        // SDL's mouse state no longer contains the released button by the time its event is handled.
+        return button is >= MouseButtonType.Left and <= MouseButtonType.XButton2
+            && ((byte)button == eventButton || ((uint)heldButtons & (1u << ((int)button - 1))) != 0);
+    }
+
+    private static unsafe bool AreGamepadButtonsHeld(SDL_GamepadButton[] buttons)
+    {
+        // The main game window ignores controller events while it is unfocused. Read from SDL
+        // so controller bindings also work while the detached window has focus.
+        nint ids = SDL_GetGamepads(out int count);
+        if (ids == 0)
+            return false;
+
+        try
+        {
+            foreach (uint id in new ReadOnlySpan<uint>((void*)ids, count))
+            {
+                nint pad = SDL_GetGamepadFromID(id);
+                if (pad == 0)
+                    continue;
+
+                bool allHeld = true;
+                foreach (SDL_GamepadButton button in buttons)
+                {
+                    bool held = SDL_GetGamepadButton(pad, button) || (button switch
+                    {
+                        SDL_GamepadButton.SDL_GAMEPAD_BUTTON_BACK => SDL_GetGamepadAxis(pad, SDL_GamepadAxis.SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 32000,
+                        SDL_GamepadButton.SDL_GAMEPAD_BUTTON_GUIDE => SDL_GetGamepadAxis(pad, SDL_GamepadAxis.SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 32000,
+                        _ => false
+                    });
+                    if (!held)
+                    {
+                        allHeld = false;
+                        break;
+                    }
+                }
+
+                if (allHeld)
+                    return true;
+            }
+
+            return false;
+        }
+        finally
+        {
+            SDL_free(ids);
+        }
     }
 
     internal static void Update(GraphicsDevice device, UltimaBatcher2D batcher)
@@ -438,7 +495,7 @@ internal sealed class DetachedWorldMapWindow
                 {
                     if (_walkClick && walk && e.button.clicks == 2)
                         TryWalkTo(tile, append);
-                    else if (!_walkClick && !walk && (SDL_GetModState() & SDL_Keymod.SDL_KMOD_CTRL) == 0)
+                    else if (!_walkClick && !walk)
                         _map.TryTargetDesktopTile(tile);
                 }
                 _dragging = false;

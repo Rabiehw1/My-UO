@@ -28,7 +28,10 @@ env:
 
 jobs:
   version:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.head_repository.full_name == github.repository) }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.VERSION }}
@@ -130,6 +133,11 @@ jobs:
       - name: Create release
         shell: bash
         run: |
+          MAIN_SHA="$(git ls-remote --exit-code origin refs/heads/main | cut -f1)"
+          if [ "$SHA" != "$MAIN_SHA" ]; then
+            echo "::notice::Skipping release because a newer commit is on main."
+            exit 0
+          fi
           gh release create "v$VERSION" artifacts/*/*.zip \
             --target "$SHA" \
             --title "LordBritishKW Client $VERSION" \

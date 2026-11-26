@@ -161,7 +161,7 @@ internal sealed class PacketParser
                 _ = stream.Dequeue(packetBuffer, 0, packetLength);
 
                 // Timestamp rather than a Stopwatch instance: this runs per packet, and only the delta is needed.
-                bool measureProcessing = PacketLogger.Default?.Enabled == true;
+                bool measureProcessing = PacketLogger.Default.ShouldLog(packetId);
                 long processingStart = measureProcessing ? Stopwatch.GetTimestamp() : 0;
 
                 // A specialized profiler overload to avoid string heap allocations in hot path
@@ -178,11 +178,8 @@ internal sealed class PacketParser
                 //
                 // That said, processing time is important to log, and since the logger can be called from multiple threads, it's better to keep a packet's metadata in one call
                 // rather than composing it by appending processing time later.
-                PacketLogger.Default?.Log(
-                    packetBuffer.AsSpan(0, packetLength),
-                    false,
-                    measureProcessing ? Stopwatch.GetElapsedTime(processingStart).TotalMilliseconds : null
-                );
+                if (measureProcessing)
+                    PacketLogger.Default.Log(packetBuffer.AsSpan(0, packetLength), false, Stopwatch.GetElapsedTime(processingStart).TotalMilliseconds);
             }
         }
 

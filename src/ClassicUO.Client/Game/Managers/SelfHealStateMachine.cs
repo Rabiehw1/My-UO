@@ -60,11 +60,13 @@ namespace ClassicUO.Game.Managers
 
         internal bool IsWaitingForCursor => _state == State.WaitingForCursor;
 
+        internal void Reset() => _state = State.Idle;
+
         public void Tick(ISelfHealEnv env, bool held)
         {
             if (!env.CanAct)
             {
-                _state = State.Idle;
+                Reset();
                 return;
             }
 

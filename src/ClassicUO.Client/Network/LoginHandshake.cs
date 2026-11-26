@@ -2,8 +2,10 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Threading.Tasks;
 using ClassicUO.Configuration;
 using ClassicUO.Game;
+using ClassicUO.Game.Managers;
 using ClassicUO.Game.Scenes;
 using ClassicUO.IO;
 using ClassicUO.Network.Encryption;
@@ -33,14 +35,17 @@ namespace ClassicUO.Network
         // A reconnect that lands while the server is still starting up can complete the TCP
         // connect but never receive a reply, leaving us pinned in VerifyingAccount with no way
         // out. This watchdog forces a fallback so the reconnect loop can retry.
-        private const int HANDSHAKE_TIMEOUT_MS = 8000;
-
-        private ushort _retries;
+        private const int HandshakeTimeoutMs = 8_000;
+        private const int WorldEntryTimeoutMs = 20_000;
+        private const int MaxRelayAttempts = 6;
         private int _reconnectTryCounter = 1;
         private long _reconnectTime;
         private long _handshakeTimeout;
         private bool _isDisposed;
         private uint _pingTime;
+        private RelayConnection _relayConnection;
+        private bool _connectedToRelay;
+        private (AsyncNetClient Connection, SocketError Error, long ReceivedAt)? _pendingDisconnect;
 
         private LoginHandshake() { }
 
@@ -79,6 +84,7 @@ namespace ClassicUO.Network
                 return;
             }
 
+            Task previousConnectionClosed = StopLoginConnection();
             ClassicUO.Network.PacketHandlers.PacketParser.Instance.ClearBuffers();
 
             Account = account;
@@ -95,21 +101,46 @@ namespace ClassicUO.Network
 
             SetLoginStep(LoginSteps.Connecting);
 
-            AsyncNetClient.Socket.Connected -= OnNetClientConnected;
-            AsyncNetClient.Socket.Disconnected -= OnNetClientDisconnected;
-            AsyncNetClient.Socket?.Disconnect();
-            AsyncNetClient.Socket = new AsyncNetClient();
-            AsyncNetClient.Socket.Connected += OnNetClientConnected;
-            AsyncNetClient.Socket.Disconnected += OnNetClientDisconnected;
-            System.Threading.Tasks.Task<bool> status = AsyncNetClient.Socket.Connect(ip, port);
+            var connection = new AsyncNetClient();
+            AsyncNetClient.Socket = connection;
+            connection.Connected += OnNetClientConnected;
+            connection.Disconnected += OnNetClientDisconnected;
+            _ = ConnectAfterClose(previousConnectionClosed, connection, ip, port);
+        }
+
+        private static async Task ConnectAfterClose(Task previousConnectionClosed, AsyncNetClient connection, string ip, ushort port)
+        {
+            await previousConnectionClosed.ConfigureAwait(false);
+            await connection.Connect(ip, port).ConfigureAwait(false);
         }
 
         public void Disconnect()
         {
             Log.TraceDebug("[HandShake] Disconnecting...");
-            AsyncNetClient.Socket.Connected -= OnNetClientConnected;
-            AsyncNetClient.Socket.Disconnected -= OnNetClientDisconnected;
-            AsyncNetClient.Socket?.Disconnect();
+            _ = StopLoginConnection();
+        }
+
+        private Task StopLoginConnection()
+        {
+            _connectedToRelay = false;
+            return Task.WhenAll(CancelRelay(), CloseLoginSocket());
+        }
+
+        private Task CloseLoginSocket()
+        {
+            _pendingDisconnect = null;
+            AsyncNetClient connection = AsyncNetClient.Socket;
+            connection.Connected -= OnNetClientConnected;
+            connection.Disconnected -= OnNetClientDisconnected;
+            return connection.Disconnect();
+        }
+
+        private Task CancelRelay()
+        {
+            RelayConnection relay = _relayConnection;
+            _relayConnection = null;
+            return relay == null ? Task.CompletedTask
+                : Task.WhenAll(relay.PreviousConnectionClosed, relay.Connection?.Disconnect() ?? Task.CompletedTask);
         }
 
         private void SetError(byte packet = byte.MaxValue, byte code = byte.MaxValue, string msg = "")
@@ -259,6 +290,9 @@ namespace ClassicUO.Network
 
         public void HandleRelayServerPacket(ref StackDataReader p, bool ignoreRelay)
         {
+            if (CurrentLoginStep != LoginSteps.LoginInToServer || _relayConnection != null || _connectedToRelay)
+                return;
+
             Log.TraceDebug($"[HandShake] Got server relay packet.");
             uint ip = p.ReadUInt32LE(); // use LittleEndian here
             ushort port = p.ReadUInt16BE();
@@ -281,7 +315,9 @@ namespace ClassicUO.Network
                 port = Port;
             }
 
-            AfterRelayConnect(finalIP, port, seed);
+            _relayConnection = new RelayConnection(finalIP, port, seed, CloseLoginSocket());
+            ClassicUO.Network.PacketHandlers.PacketParser.Instance.ClearBuffers();
+            ArmHandshakeTimeout(CurrentLoginStep);
         }
 
         public int GetServerIndexByName(string name)
@@ -344,15 +380,7 @@ namespace ClassicUO.Network
         internal void SetLoginStep(LoginSteps step)
         {
             _pingTime = Time.Ticks + 60000;
-
-            // Arm the handshake watchdog while we're waiting on the server during the initial
-            // handshake, disarm it otherwise. Each step change re-arms the timer, so a stage only
-            // times out if it stalls with no progress. Scoped to Connecting/VerifyingAccount to
-            // avoid interfering with the relay/server-selection flow which has its own retry logic.
-            if (step is LoginSteps.Connecting or LoginSteps.VerifyingAccount)
-                _handshakeTimeout = (long)Time.Ticks + HANDSHAKE_TIMEOUT_MS;
-            else
-                _handshakeTimeout = 0;
+            ArmHandshakeTimeout(step);
 
             Log.TraceDebug($"[HandShake] Set login step to {step}.");
             CurrentLoginStep = step;
@@ -367,6 +395,19 @@ namespace ClassicUO.Network
             }
         }
 
+        private void ArmHandshakeTimeout(LoginSteps step)
+        {
+            int timeout = GetHandshakeTimeout(step);
+            _handshakeTimeout = timeout > 0 ? (long)Time.Ticks + timeout : 0;
+        }
+
+        internal static int GetHandshakeTimeout(LoginSteps step) => step switch
+        {
+            LoginSteps.Connecting or LoginSteps.VerifyingAccount or LoginSteps.LoginInToServer => HandshakeTimeoutMs,
+            LoginSteps.EnteringBritania or LoginSteps.CharacterCreationDone => WorldEntryTimeoutMs,
+            _ => 0
+        };
+
         /// <summary>
         /// Call in Update() of the login scene. If a handshake stage stalls (e.g. a reconnect that
         /// connects to a server which is still restarting and never replies), force a disconnect and
@@ -374,6 +415,11 @@ namespace ClassicUO.Network
         /// </summary>
         public void CheckHandshakeTimeout()
         {
+            if (_pendingDisconnect is { } disconnected && ApplySocketFailure(disconnected))
+                return;
+
+            AdvanceRelayConnection();
+
             if (_handshakeTimeout == 0 || Time.Ticks < _handshakeTimeout)
                 return;
 
@@ -384,12 +430,16 @@ namespace ClassicUO.Network
             HandleConnectionFailure(SocketError.TimedOut);
         }
 
-        private void OnNetClientConnected(object sender, EventArgs e)
+        private void OnNetClientConnected(object sender, EventArgs e) => MainThreadQueue.InvokeOnMainThread(() =>
         {
+            if (_isDisposed || sender is not AsyncNetClient connection || !ReferenceEquals(connection, AsyncNetClient.Socket)
+                || CurrentLoginStep != LoginSteps.Connecting || !connection.IsConnected)
+                return;
+
             Log.Info("Connected!");
             SetLoginStep(LoginSteps.VerifyingAccount);
 
-            uint address = AsyncNetClient.Socket.LocalIP;
+            uint address = connection.LocalIP;
 
             AsyncNetClient.Encryption?.Initialize(true, address);
 
@@ -402,31 +452,44 @@ namespace ClassicUO.Network
                 byte build = (byte)(clientVersion >> 8);
                 byte extra = (byte)clientVersion;
 
-                AsyncNetClient.Socket.Send_Seed(address, major, minor, build, extra);
+                connection.Send_Seed(address, major, minor, build, extra);
             }
             else
             {
-                AsyncNetClient.Socket.Send_Seed_Old(address);
+                connection.Send_Seed_Old(address);
             }
 
-            AsyncNetClient.Socket.Send_FirstLogin(Account, Password);
-        }
+            connection.Send_FirstLogin(Account, Password);
+        });
 
-        private void OnNetClientDisconnected(object sender, SocketError e)
+        private void OnNetClientDisconnected(object sender, SocketError e) => MainThreadQueue.InvokeOnMainThread(() =>
         {
-            Log.Warn($"Socket disconnected - {e.ToString()}");
-
-            if (CurrentLoginStep == LoginSteps.CharacterCreation)
-            {
+            if (_isDisposed || sender is not AsyncNetClient connection || !ReferenceEquals(connection, AsyncNetClient.Socket)
+                || _relayConnection != null
+                || CurrentLoginStep is LoginSteps.Main or LoginSteps.PopUpMessage)
                 return;
+
+            // The login server can send the relay packet immediately before closing TCP.
+            // Let the frame process received packets before deciding that the close was unexpected.
+            _pendingDisconnect = (connection, e, Environment.TickCount64);
+        });
+
+        private bool ApplySocketFailure((AsyncNetClient Connection, SocketError Error, long ReceivedAt) disconnected)
+        {
+            if (!ReferenceEquals(disconnected.Connection, AsyncNetClient.Socket) || _relayConnection != null)
+            {
+                _pendingDisconnect = null;
+                return false;
             }
 
-            if (e == SocketError.Success)
-            {
-                return;
-            }
+            if (Environment.TickCount64 - disconnected.ReceivedAt < 1_000
+                && (disconnected.Connection.HasPendingPackets || ClassicUO.Network.PacketHandlers.PacketParser.Instance.HasBufferedData))
+                return false;
 
-            HandleConnectionFailure(e);
+            Log.Warn($"Socket disconnected - {disconnected.Error}");
+            Disconnect();
+            HandleConnectionFailure(disconnected.Error == SocketError.Success ? SocketError.ConnectionReset : disconnected.Error);
+            return true;
         }
 
         private void HandleConnectionFailure(SocketError e)
@@ -455,55 +518,68 @@ namespace ClassicUO.Network
             ConnectionFailed?.Invoke(this, e);
         }
 
-        private void AfterRelayConnect(string ip, ushort port, uint seed)
+        private void AdvanceRelayConnection()
         {
-            AsyncNetClient.Socket.Connected -= OnNetClientConnected;
-            AsyncNetClient.Socket.Disconnected -= OnNetClientDisconnected;
-            AsyncNetClient.Socket.Disconnect().Wait();
-            AsyncNetClient.Socket = new AsyncNetClient();
+            if (_relayConnection is not { } relay || !relay.PreviousConnectionClosed.IsCompleted)
+                return;
 
-            ClassicUO.Network.PacketHandlers.PacketParser.Instance.ClearBuffers();
-
-            _retries++;
-            Log.TraceDebug($"[HandShake] Reconnecting to relay server...");
-            AsyncNetClient.Socket.Connect(ip, port).Wait(3000);
-
-            if (AsyncNetClient.Socket.IsConnected)
+            if (relay.Connecting == null)
             {
-                EncryptionHelper.Instance?.Initialize(false, seed);
-                AsyncNetClient.Socket.EnableCompression();
-                unsafe
+                if (relay.Attempts >= MaxRelayAttempts)
                 {
-                    Span<byte> b = stackalloc byte[4]
-                    {
-                        (byte)(seed >> 24),
-                        (byte)(seed >> 16),
-                        (byte)(seed >> 8),
-                        (byte)seed
-                    };
-                    AsyncNetClient.Socket.Send(b, true, true);
-                }
-
-                AsyncNetClient.Socket.Send_SecondLogin(Account, Password, seed);
-                Log.TraceDebug($"[HandShake] Sent second login.");
-
-                if (Settings.GlobalSettings.CustomServer == Settings.CustomServers.Eventine || Settings.GlobalSettings.CustomServer == Settings.CustomServers.LOCAL_SERVER)
-                    AsyncNetClient.Socket.Send_TazUO();
-            }
-            else
-            {
-                Log.TraceDebug($"[HandShake] Failed to connect, trying again.");
-                if (_retries > 5)
-                {
-                    _retries = 0;
-                    SetError(msg: "Failed to connect to game server after multiple attempts.");
-                    SetLoginStep(LoginSteps.PopUpMessage);
+                    _relayConnection = null;
+                    HandleConnectionFailure(SocketError.NotConnected);
                     ErrorOccurred?.Invoke(this, ErrorMessage);
                     return;
                 }
 
-                AfterRelayConnect(ip, port, seed);
+                relay.Attempts++;
+                Log.TraceDebug($"[HandShake] Connecting to relay server (attempt {relay.Attempts}).");
+                EncryptionHelper.Instance?.Initialize(false, relay.Seed);
+                relay.Connection = new AsyncNetClient();
+                relay.Connection.EnableCompression();
+                relay.Connecting = relay.Connection.Connect(relay.Address, relay.Port);
+                ArmHandshakeTimeout(CurrentLoginStep);
+                return;
             }
+
+            if (!relay.Connecting.IsCompleted)
+                return;
+
+            AsyncNetClient connection = relay.Connection;
+            if (relay.Connecting.IsCompletedSuccessfully && relay.Connecting.Result && connection.IsConnected)
+            {
+                _relayConnection = null;
+                _connectedToRelay = true;
+                AsyncNetClient.Socket = connection;
+                connection.Disconnected += OnNetClientDisconnected;
+                ArmHandshakeTimeout(CurrentLoginStep);
+
+                Span<byte> seed = stackalloc byte[sizeof(uint)];
+                System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(seed, relay.Seed);
+                connection.Send(seed, true, true);
+                connection.Send_SecondLogin(Account, Password, relay.Seed);
+                Log.TraceDebug("[HandShake] Sent second login.");
+
+                if (Settings.GlobalSettings.CustomServer is Settings.CustomServers.Eventine or Settings.CustomServers.LOCAL_SERVER)
+                    connection.Send_TazUO();
+                return;
+            }
+
+            relay.PreviousConnectionClosed = connection.Disconnect();
+            relay.Connecting = null;
+            relay.Connection = null;
+        }
+
+        private sealed class RelayConnection(string address, ushort port, uint seed, Task previousConnectionClosed)
+        {
+            public string Address { get; } = address;
+            public ushort Port { get; } = port;
+            public uint Seed { get; } = seed;
+            public Task PreviousConnectionClosed { get; set; } = previousConnectionClosed;
+            public AsyncNetClient Connection { get; set; }
+            public Task<bool> Connecting { get; set; }
+            public int Attempts { get; set; }
         }
 
         private void ParseCharacterList(ref StackDataReader p)
@@ -614,6 +690,8 @@ namespace ClassicUO.Network
             }
 
             _isDisposed = true;
+
+            _ = CancelRelay();
 
             AsyncNetClient.Socket.Disconnected -= OnNetClientDisconnected;
             AsyncNetClient.Socket.Connected -= OnNetClientConnected;

@@ -53,6 +53,7 @@ namespace ClassicUO.Game.Managers
             if (!_loaded) return;
             Keyboard.KeyUpEvent -= OnKeyUp;
             _held = false;
+            _machine.Reset();
             _loaded = false;
         }
 
@@ -70,8 +71,13 @@ namespace ClassicUO.Game.Managers
             if (entry != null && entry.Binding != null && !entry.Binding.HasKey && !entry.Binding.IsEmpty)
                 held = entry.IsPressed();
 
-            _machine.Tick(_env, held && Client.Game.IsActive && !Support.SupportAgentManager.Instance.IsUsingAbility
-                && !BandageManager.Instance.IsBandaging && !AutoSkinningManager.Instance.IsWaitingForCursor);
+            World world = Client.Game.UO.World;
+            var support = Support.SupportAgentManager.Instance;
+            _machine.Tick(_env, held && Client.Game.IsActive && !support.IsUsingAbility
+                && !BandageManager.Instance.IsBandaging && !AutoSkinningManager.Instance.IsWaitingForCursor
+                && !BandageManager.Instance.IsWaitingForHealingSpellCursor && !TargetManager.NextAutoTarget.IsSet
+                && !support.IsWaitingForPetCursor && world is { InGame: true }
+                && !world.Party.HasPendingHealCursor && !world.TargetManager.IsTargeting);
         }
 
         /// <summary>Called from GameSceneInputHandler.OnKeyDown (already focus-gated).</summary>
@@ -171,22 +177,8 @@ namespace ClassicUO.Game.Managers
             public int CureSpellId =>
                 UseChivalry ? SelfHealStateMachine.ChivalryCureSpellId : SelfHealStateMachine.MageryCureSpellId;
 
-            public bool IsTargetingAfterCast
-            {
-                get
-                {
-                    if (AutoSkinningManager.Instance.IsWaitingForCursor)
-                        return false;
-
-                    // Prefer the spell-visual detector (it respects cast timing), but fall back to
-                    // the raw target-cursor flag so self-heal also works when Spell Indicators are
-                    // disabled. Only consulted right after our own cast, so the raw flag is safe.
-                    if (SpellVisualRangeManager.Instance?.IsTargetingAfterCasting() ?? false)
-                        return true;
-
-                    return Client.Game?.UO?.World?.TargetManager?.IsTargeting ?? false;
-                }
-            }
+            public bool IsTargetingAfterCast => !AutoSkinningManager.Instance.IsWaitingForCursor
+                && Client.Game?.UO?.World?.TargetManager?.HasBeneficialObjectCursor == true;
 
             public void Cast(int spellId) => GameActions.CastSpell(spellId);
 
@@ -194,7 +186,7 @@ namespace ClassicUO.Game.Managers
             {
                 var world = Client.Game?.UO?.World;
                 if (world?.Player != null)
-                    world.TargetManager.Target(world.Player.Serial);
+                    world.TargetManager.Target(world.Player.Serial, preserveAutoTarget: true);
             }
         }
     }

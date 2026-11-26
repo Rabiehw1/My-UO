@@ -11,8 +11,7 @@ internal static class DropItemAccepted
         if (!world.InGame)
             return;
 
-        ObjectActionQueue.Instance.ClearPendingMove();
-        if (Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
+        if (!ObjectActionQueue.Instance.ConfirmDropAccepted() || Client.Game.UO.GameCursor.ItemHold.PickupDeferred)
             return;
 
         Client.Game.UO.GameCursor.ItemHold.Enabled = false;

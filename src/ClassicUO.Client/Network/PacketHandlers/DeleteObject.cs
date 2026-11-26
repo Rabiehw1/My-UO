@@ -133,6 +133,7 @@ internal static class DeleteObject
                 UIManager.GetGump<MiniMapGump>()?.RequestUpdateContents();
 
             world.RemoveItem(serial, true);
+            ObjectActionQueue.Instance.ObserveSourceRemoval(serial);
 
             if (updateAbilities)
                 world.Player.UpdateAbilities();

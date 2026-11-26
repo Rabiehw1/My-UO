@@ -2,7 +2,6 @@
 
 using System;
 using ClassicUO.Configuration;
-using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.UI.Controls;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.Utility.Logging;
@@ -22,6 +21,8 @@ internal sealed class PendingGumpButton
     private readonly Action<string>? _reportNoGump;
     private int _button = -1;
     private Gump? _gumpBeforeUse;
+    private Gump? _receivedGump;
+    private Func<Gump, string[], bool>? _matchesSource;
     private long _deadline;
     private Action? _onPressed;
     private Func<bool>? _canReply;
@@ -40,22 +41,26 @@ internal sealed class PendingGumpButton
     /// <summary>Whether a button is waiting for its gump.</summary>
     public bool IsArmed => _button >= 0;
 
-    /// <summary>Waits for the next gump and presses <paramref name="button" /> on it.</summary>
+    /// <summary>Waits for a new gump, optionally restricted to a known source.</summary>
     /// <param name="button">Gump button to press.</param>
     /// <param name="sourceName">What was used, for the message if no gump opens.</param>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
-    public void Arm(int button, string sourceName, long now, Action? onPressed = null, Func<bool>? canReply = null, bool requireButton = false)
+    public void Arm(int button, string sourceName, long now, Action? onPressed = null, Func<bool>? canReply = null,
+        bool requireButton = false, Func<Gump, string[], bool>? matchesSource = null)
     {
+        Clear();
         _onPressed = onPressed;
         _canReply = canReply;
         _requireButton = requireButton;
-        PlayerMobile? player = _world.Player;
-
-        // Remember the gump showing now, so only a newly opened one is answered.
-        _gumpBeforeUse = player == null ? null : UIManager.GetGumpServer(player.LastGumpID);
+        _matchesSource = matchesSource;
         _button = button;
         _sourceName = sourceName;
         _deadline = now + GUMP_WAIT_MS;
+
+        if (_matchesSource != null)
+            _world.ServerGumpReceived += ObserveGump;
+        else if (_world.Player is { } player)
+            _gumpBeforeUse = UIManager.GetGumpServer(player.LastGumpID);
     }
 
     /// <summary>Presses the button once the gump appears, or gives up after a few seconds. Call every frame.</summary>
@@ -71,8 +76,20 @@ internal sealed class PendingGumpButton
             return;
         }
 
-        PlayerMobile? player = _world.Player;
-        Gump? gump = player == null ? null : UIManager.GetGumpServer(player.LastGumpID);
+        if (now > _deadline)
+        {
+            Log.Warn($"No matching gump opened after using '{_sourceName}'; button {_button} not pressed.");
+            if (_reportNoGump != null)
+                _reportNoGump(_sourceName);
+            else
+                GameActions.Print(TazLang.Get("gumpbutton_nogump", [_sourceName]), Constants.HUE_WARN);
+            Clear();
+            return;
+        }
+
+        Gump? gump = _matchesSource != null
+            ? _receivedGump
+            : _world.Player is { } player ? UIManager.GetGumpServer(player.LastGumpID) : null;
 
         if (gump is { IsDisposed: false } && !ReferenceEquals(gump, _gumpBeforeUse)
             && (!_requireButton || HasButton(gump, _button)))
@@ -82,24 +99,23 @@ internal sealed class PendingGumpButton
             Action? onPressed = _onPressed;
             Clear();
             onPressed?.Invoke();
-            return;
         }
+    }
 
-        if (now > _deadline)
-        {
-            Log.Warn($"No gump opened after using '{_sourceName}'; button {_button} not pressed.");
-            if (_reportNoGump != null)
-                _reportNoGump(_sourceName);
-            else
-                GameActions.Print(TazLang.Get("gumpbutton_nogump", [_sourceName]), Constants.HUE_WARN);
-            Clear();
-        }
+    private void ObserveGump(Gump gump, string[] text)
+    {
+        if (!gump.IsDisposed && _matchesSource?.Invoke(gump, text) == true && HasButton(gump, _button))
+            _receivedGump = gump;
+        else if (ReferenceEquals(_receivedGump, gump))
+            _receivedGump = null;
     }
 
     private static bool HasButton(Control parent, int button)
     {
         foreach (var child in parent.Children)
-            if (child is Control control && (control is Button candidate && candidate.ButtonID == button || HasButton(control, button)))
+            if (child is Control control
+                && (control is Button { IsDisposed: false, ButtonAction: ButtonAction.Activate } candidate && candidate.ButtonID == button
+                    || HasButton(control, button)))
                 return true;
 
         return false;
@@ -108,9 +124,14 @@ internal sealed class PendingGumpButton
     /// <summary>Stops waiting.</summary>
     public void Clear()
     {
+        if (_matchesSource != null)
+            _world.ServerGumpReceived -= ObserveGump;
+
         _button = -1;
         _onPressed = null;
         _canReply = null;
         _gumpBeforeUse = null;
+        _receivedGump = null;
+        _matchesSource = null;
     }
 }

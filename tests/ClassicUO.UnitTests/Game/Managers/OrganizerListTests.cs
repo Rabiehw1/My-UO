@@ -68,4 +68,26 @@ public class OrganizerListTests
         Assert.Null(list.Find(item));
         world.Clear();
     }
+
+    [Fact]
+    public void OrganizerMaximumCountsAllDestinationHuesThatMatchTheSelectedRule()
+    {
+        Client.UnitTestingActive = true;
+        var world = new World();
+        var destination = new Item(world);
+        var firstStack = new Item(world) { Graphic = 0x0EED, Hue = 1, Amount = 3, OPLName = "Reward gold" };
+        var secondStack = new Item(world) { Graphic = 0x0EED, Hue = 2, Amount = 4, OPLName = "Reward gold" };
+        var unmatchedStack = new Item(world) { Graphic = 0x0EED, Hue = 2, Amount = 20, OPLName = "Ordinary gold" };
+        destination.PushToBack(firstStack);
+        destination.PushToBack(secondStack);
+        destination.PushToBack(unmatchedStack);
+        var sourceItem = new Item(world) { Graphic = 0x0EED, Hue = 3, Amount = 30, OPLName = "Reward gold" };
+        var limit = new SharedItem(0x0EED, ushort.MaxValue, "Reward gold") { RegexSearch = "^Reward gold$", MaxAmount = 10 };
+
+        Assert.Equal((ushort)3, OrganizerAgent.GetAmountToMove(sourceItem, destination, limit, sameContainer: false));
+
+        secondStack.Amount = 7;
+        Assert.Equal((ushort)0, OrganizerAgent.GetAmountToMove(sourceItem, destination, limit, sameContainer: false));
+        world.Clear();
+    }
 }

@@ -257,9 +257,17 @@ internal static class LauncherTabContent
     )
     {
         var box = new MyraInputBox { Text = value, MinWidth = width };
+        string displayedValue = value;
         box.LostFocus = () =>
         {
-            commit(box.Text ?? "");
+            string entered = box.Text ?? "";
+            // The saved profile may have merged newer fields since this control was drawn.
+            // Passing through an unchanged box must not write its old display value back.
+            if (string.Equals(displayedValue, entered, StringComparison.Ordinal))
+                return;
+
+            commit(entered);
+            displayedValue = entered;
             if (notifyList)
                 save.SaveAndNotify();
             else

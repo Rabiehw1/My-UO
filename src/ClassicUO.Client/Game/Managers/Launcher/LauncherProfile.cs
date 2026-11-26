@@ -1,6 +1,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 
 namespace ClassicUO.Game.Managers.Launcher;
 
@@ -57,4 +58,43 @@ internal sealed class LauncherProfile
         IncludeInPlayAll = IncludeInPlayAll,
         Reconnect = Reconnect
     };
+
+    /// <summary>Snapshots the fields while keeping this profile's identity.</summary>
+    internal LauncherProfile Snapshot() => (LauncherProfile)MemberwiseClone();
+
+    /// <summary>Applies edits made since the baseline without reverting fields changed in another process.</summary>
+    internal void ApplyEdits(LauncherProfile? baseline, LauncherProfile edited)
+    {
+        if (baseline == null)
+        {
+            Name = edited.Name;
+            UltimaOnlineDirectory = edited.UltimaOnlineDirectory;
+            ClientVersion = edited.ClientVersion;
+            ShardName = edited.ShardName;
+            Address = edited.Address;
+            Port = edited.Port;
+            Account = edited.Account;
+            EncryptedPassword = edited.EncryptedPassword;
+            Character = edited.Character;
+            IncludeInPlayAll = edited.IncludeInPlayAll;
+            Reconnect = edited.Reconnect;
+            return;
+        }
+
+        Name = EditedValue(Name, baseline.Name, edited.Name);
+        UltimaOnlineDirectory = EditedValue(UltimaOnlineDirectory, baseline.UltimaOnlineDirectory, edited.UltimaOnlineDirectory);
+        ClientVersion = EditedValue(ClientVersion, baseline.ClientVersion, edited.ClientVersion);
+        ShardName = EditedValue(ShardName, baseline.ShardName, edited.ShardName);
+        Address = EditedValue(Address, baseline.Address, edited.Address);
+        Port = EditedValue(Port, baseline.Port, edited.Port);
+        Account = EditedValue(Account, baseline.Account, edited.Account);
+        EncryptedPassword = EditedValue(EncryptedPassword, baseline.EncryptedPassword, edited.EncryptedPassword);
+        Character = EditedValue(Character, baseline.Character, edited.Character);
+        IncludeInPlayAll = EditedValue(IncludeInPlayAll, baseline.IncludeInPlayAll, edited.IncludeInPlayAll);
+        Reconnect = EditedValue(Reconnect, baseline.Reconnect, edited.Reconnect);
+    }
+
+    /// <summary>Uses the edit only when it differs from the starting value.</summary>
+    internal static T EditedValue<T>(T current, T baseline, T edited) =>
+        EqualityComparer<T>.Default.Equals(baseline, edited) ? current : edited;
 }

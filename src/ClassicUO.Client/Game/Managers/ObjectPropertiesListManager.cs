@@ -35,8 +35,6 @@ namespace ClassicUO.Game.Managers
             prop.NameCliloc = namecliloc;
             prop.Clilocs = clilocs;
 
-            EventSink.InvokeOPLOnReceive(null, new OPLEventArgs(serial, name, data));
-
             Entity ent = _world.Get(serial);
             ent?.OPLUpdated(prop);
 
@@ -46,6 +44,8 @@ namespace ClassicUO.Game.Managers
                 item.OPLData = data;
                 ItemDatabaseManager.Instance.AddOrUpdateItem(item, _world);
             }
+
+            EventSink.InvokeOPLOnReceive(null, new OPLEventArgs(serial, name, data));
         }
 
         public bool Contains(uint serial)

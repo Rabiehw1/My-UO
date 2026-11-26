@@ -8,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using ClassicUO.Configuration;
+using ClassicUO.IO;
 using ClassicUO.Setup;
 using ClassicUO.Utility.Logging;
 
@@ -123,6 +124,13 @@ internal static class ClientLauncher
 
         try
         {
+            using var installLock = CrossProcessPathLock.TryAcquire(CUOEnviroment.ExecutablePath, TimeSpan.Zero);
+            if (installLock == null)
+                return TazLang.Get("launcher_update_busy");
+
+            if (IsRunning(profile))
+                return TazLang.Get("launcher_already_running", [profile.Name]);
+
             string settingsPath = WriteSettings(profile);
             ProcessStartInfo startInfo = ClientProcess.CreateStartInfo();
             startInfo.ArgumentList.Add("-settings");
@@ -187,10 +195,10 @@ internal static class ClientLauncher
         settings.SaveAccount = true;
         settings.AutoLogin = true;
         settings.Reconnect = profile.Reconnect;
-        settings.ProfilesPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(settings.ProfilesPath))
+            settings.ProfilesPath = Settings.GlobalSettings.ProfilesPath;
 
-        Directory.CreateDirectory(LauncherSave.FolderPath);
-        ConfigurationResolver.Save(settings, path, SettingsJsonContext.RealDefault.Settings);
+        AtomicFile.Write(path, JsonSerializer.Serialize(settings, SettingsJsonContext.RealDefault.Settings));
         return path;
     }
 

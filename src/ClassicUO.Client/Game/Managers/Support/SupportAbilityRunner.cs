@@ -23,6 +23,7 @@ internal sealed class SupportAbilityRunner
 
     /// <summary>Extra time, beyond the cast time, for a spell's target cursor to arrive.</summary>
     private const int TARGET_CURSOR_GRACE_MS = 2000;
+    private const int SPELL_SEND_TIMEOUT_MS = 5000;
 
     private const ushort DEFAULT_BANDAGE_GRAPHIC = 0x0E21;
 
@@ -37,6 +38,7 @@ internal sealed class SupportAbilityRunner
     private long? _spellStarted;
     private int _spellResponseWindow;
     private long _bookDeadline;
+    private long _spellSendDeadline;
 
     private void ReportNoGump(string name, Action<string> report)
     {
@@ -44,7 +46,8 @@ internal sealed class SupportAbilityRunner
         report(name);
     }
 
-    internal bool IsWaiting => _pendingGump.IsArmed || OwnsTarget || (_waitingForBook && ShardSpellCaster.Instance.IsCasting);
+    internal bool IsWaiting => _pendingGump.IsArmed || OwnsTarget || Time.Ticks < _spellSendDeadline
+        || (_waitingForBook && ShardSpellCaster.Instance.IsCasting);
 
     private bool OwnsTarget => _targetSerial != 0 && TargetManager.NextAutoTarget.IsSet
         && TargetManager.NextAutoTarget.TargetSerial == _targetSerial
@@ -112,15 +115,17 @@ internal sealed class SupportAbilityRunner
     /// <param name="ability">Ability to perform.</param>
     /// <param name="targetSerial">Mobile to aim at; 0 for abilities without a target.</param>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
-    /// <returns>True if something was sent to the shard.</returns>
-    public bool TryUse(SupportAbility ability, uint targetSerial, long now, Action<long> onBookCast)
+    /// <param name="onCast">Called when the spell or book action is sent.</param>
+    /// <returns>True if the ability was sent or queued.</returns>
+    public bool TryUse(SupportAbility ability, uint targetSerial, long now, Action<long> onCast)
     {
         if (ability.Action == SupportActionType.CastShardSpell)
-            return CastShardSpell(ability, targetSerial, onBookCast);
+            return CastShardSpell(ability, targetSerial, onCast);
+        if (ability.Action == SupportActionType.CastSpell)
+            return CastSpell(ability, targetSerial, now, onCast);
 
         bool sent = ability.Action switch
         {
-            SupportActionType.CastSpell => CastSpell(ability, targetSerial),
             SupportActionType.UseItemAndGumpButton => UseItemAndPressButton(ability, now),
             SupportActionType.UseItem => UseItem(ability, targetSerial),
             SupportActionType.Bandage => targetSerial != 0 && GameActions.UseBandageOnTarget(_world, targetSerial, TARGET_CURSOR_GRACE_MS),
@@ -131,8 +136,6 @@ internal sealed class SupportAbilityRunner
         if (sent)
         {
             _lastUsed[ability.Id] = now;
-            if (ability.Action == SupportActionType.CastSpell)
-                TrackSpell(now, ability.CastTimeMs);
             if (ability.Action == SupportActionType.Bandage && TargetManager.NextAutoTarget.IsSet)
                 RememberTarget();
             Log.Debug($"Support Agent action: {ability.Action} ({ability.Id}), target 0x{targetSerial:X8}.");
@@ -178,6 +181,7 @@ internal sealed class SupportAbilityRunner
     {
         _generation++;
         _spellStarted = null;
+        _spellSendDeadline = 0;
         _waitingForBook = false;
         _pendingGump.Clear();
         if (OwnsTarget)
@@ -189,12 +193,34 @@ internal sealed class SupportAbilityRunner
 
     #region Private methods
 
-    private bool CastSpell(SupportAbility ability, uint targetSerial)
+    private bool CastSpell(SupportAbility ability, uint targetSerial, long now, Action<long> onCast)
     {
-        if (targetSerial != 0)
-            SetAutoTarget(ability, targetSerial);
+        int generation = _generation;
+        long deadline = _spellSendDeadline = now + SPELL_SEND_TIMEOUT_MS;
+        GameActions.CastSpell(ability.SpellId, () =>
+        {
+            _spellSendDeadline = 0;
+            if (targetSerial != 0)
+                SetAutoTarget(ability, targetSerial);
 
-        GameActions.CastSpell(ability.SpellId);
+            long started = Time.Ticks;
+            _lastUsed[ability.Id] = started;
+            TrackSpell(started, ability.CastTimeMs);
+            onCast(started);
+            Log.Debug($"Support Agent action: {ability.Action} ({ability.Id}), target 0x{targetSerial:X8}.");
+        }, () =>
+        {
+            if (generation != _generation || _spellSendDeadline != deadline)
+                return false;
+
+            if (Time.Ticks < deadline && SupportAgentManager.Instance.Settings.Enabled
+                && _world.Player is { IsDead: false } && !_world.TargetManager.IsTargeting
+                && !TargetManager.NextAutoTarget.IsSet && !_world.Party.HasPendingHealCursor)
+                return true;
+
+            _spellSendDeadline = 0;
+            return false;
+        });
         return true;
     }
 

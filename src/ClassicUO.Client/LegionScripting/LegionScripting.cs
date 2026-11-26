@@ -435,17 +435,22 @@ namespace ClassicUO.LegionScripting
 
             if (script.ScriptThread == null || !script.ScriptThread.IsAlive)
             {
-                script.ReadFromFile();
+                if (!script.TryReadFromFile(out _, out string error))
+                {
+                    GameActions.Print(_world, TazLang.GetEx("scriptmanager_read_failed", "Could not run script \"{0}\": {1}", [script.FileName, error]), Constants.HUE_ERROR);
+                    return;
+                }
 
-                WarnAboutUninterruptibleLoops(script);
+                string source = script.FileContentsJoined;
+                WarnAboutUninterruptibleLoops(script, source);
 
                 script.ZombieThread = null;
 
                 // Route to correct executor based on script type
                 if (script.Type == ScriptFile.ScriptType.CSharp)
-                    script.ScriptThread = new Thread(() => ExecuteCSharpScript(script)) { Name = $"Legion: {script.FileName}", IsBackground = true };
+                    script.ScriptThread = new Thread(() => ExecuteCSharpScript(script, source)) { Name = $"Legion: {script.FileName}", IsBackground = true };
                 else
-                    script.ScriptThread = new Thread(() => ExecutePythonScript(script)) { Name = $"Legion: {script.FileName}", IsBackground = true };
+                    script.ScriptThread = new Thread(() => ExecutePythonScript(script, source)) { Name = $"Legion: {script.FileName}", IsBackground = true };
 
                 if(!PyThreads.TryAdd(script.ScriptThread.ManagedThreadId, script))
                     PyThreads[script.ScriptThread.ManagedThreadId] = script;
@@ -462,10 +467,8 @@ namespace ClassicUO.LegionScripting
         /// check API.StopRequested (or block via API.Pause/API.ProcessCallbacks), since a pure CPU
         /// loop never blocks and therefore can't be interrupted by the stop logic.
         /// </summary>
-        private static void WarnAboutUninterruptibleLoops(ScriptFile script)
+        private static void WarnAboutUninterruptibleLoops(ScriptFile script, string code)
         {
-            string code = script.FileContentsJoined;
-
             if (code.IndexOf("while True", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 code.IndexOf("while (true)", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 code.IndexOf("while(true)", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -505,7 +508,7 @@ namespace ClassicUO.LegionScripting
             }
         }
 
-        private static void ExecutePythonScript(ScriptFile script)
+        private static void ExecutePythonScript(ScriptFile script, string code)
         {
             bool completed = false;
             try
@@ -513,7 +516,7 @@ namespace ClassicUO.LegionScripting
                 script.SetupPythonEngine();
                 script.SetupPythonScope();
 
-                ScriptSource source = script.PythonEngine.CreateScriptSourceFromString(script.FileContentsJoined, script.FullPath, SourceCodeKind.File);
+                ScriptSource source = script.PythonEngine.CreateScriptSourceFromString(code, script.FullPath, SourceCodeKind.File);
                 source?.Execute(script.PythonScope);
                 completed = true;
             }
@@ -537,16 +540,16 @@ namespace ClassicUO.LegionScripting
             EnqueueThreadFinishedStop(script, completed);
         }
 
-        private static void ExecuteCSharpScript(ScriptFile script)
+        private static void ExecuteCSharpScript(ScriptFile script, string source)
         {
             bool completed = false;
             try
             {
-                script.SetupCSharpScript();
+                Script<object> compiledScript = script.GetCSharpScript(source);
                 script.SetupCSharpGlobals();
 
                 // Execute with cancellation support
-                Task<ScriptState<object>> task = script.CSharpCompiledScript.RunAsync(
+                Task<ScriptState<object>> task = compiledScript.RunAsync(
                     new ScriptGlobals { GlobalApiInstance = script.ScopedApi },
                     script.ScopedApi.CancellationToken.Token
                 );

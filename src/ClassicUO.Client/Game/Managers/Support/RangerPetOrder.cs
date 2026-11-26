@@ -5,7 +5,12 @@ namespace ClassicUO.Game.Managers.Support;
 internal sealed class RangerPetOrder
 {
     private const int CursorWaitMs = 1750;
+    private const int RetryDelayMs = 750;
+    private const int MaximumAttempts = 2;
     private long _deadline;
+    private long _retryAt;
+    private int _attempts;
+    private bool _submitted;
 
     internal uint Pet { get; private set; }
     internal uint Enemy { get; private set; }
@@ -13,27 +18,36 @@ internal sealed class RangerPetOrder
 
     internal bool TryBegin(uint pet, uint enemy, long now)
     {
-        if (IsWaitingForCursor(now) || (Pet == pet && Enemy == enemy))
+        if (IsWaitingForCursor(now))
             return false;
 
-        Pet = pet;
-        Enemy = enemy;
+        if (Pet != pet || Enemy != enemy)
+        {
+            Reset();
+            Pet = pet;
+            Enemy = enemy;
+        }
+
+        if (_submitted || _attempts >= MaximumAttempts || now < _retryAt)
+            return false;
+
+        _attempts++;
         _deadline = now + CursorWaitMs;
+        _retryAt = _deadline + RetryDelayMs;
         return true;
     }
 
-    internal bool TakeCursor(long now)
+    internal void Complete()
     {
-        bool waiting = IsWaitingForCursor(now);
         _deadline = 0;
-        return waiting;
+        _submitted = true;
     }
-
-    internal void Cancel() => _deadline = 0;
 
     internal void Reset()
     {
-        Cancel();
+        _deadline = _retryAt = 0;
+        _attempts = 0;
+        _submitted = false;
         Pet = Enemy = 0;
     }
 }

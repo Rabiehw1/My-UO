@@ -348,41 +348,35 @@ namespace ClassicUO.Game.Managers
         /// <summary>Equips the set one item at a time through the action queue, clearing conflicting slots first.</summary>
         private void DressNormally(DressConfig config)
         {
-            if (World.Instance?.Player == null)
+            World world = World.Instance;
+            if (world?.Player == null)
                 return;
 
-            // Collect layers that need to be unequipped
-            var layersToUnequip = new List<byte>();
+            var replacements = new List<(uint Serial, Layer Layer)>();
+            var layersToUnequip = new HashSet<Layer>();
             foreach (DressItem dressItem in config.Items)
             {
-                if (dressItem == null) continue;
-                if(_forbiddenLayers.Contains((Layer)dressItem.Layer)) continue;
+                if (dressItem == null || !IsAvailableReplacement(world, dressItem.Serial))
+                    continue;
 
-                if (!layersToUnequip.Contains(dressItem.Layer))
-                {
-                    if (dressItem.Layer == (byte)Layer.TwoHanded && !layersToUnequip.Contains((byte)Layer.OneHanded))
-                        layersToUnequip.Add((byte)Layer.OneHanded);
-                    if (dressItem.Layer == (byte)Layer.OneHanded && !layersToUnequip.Contains((byte)Layer.TwoHanded))
-                        layersToUnequip.Add((byte)Layer.TwoHanded);
-                    layersToUnequip.Add(dressItem.Layer);
-                }
+                var layer = (Layer)dressItem.Layer;
+                if (layer == Layer.Invalid || _forbiddenLayers.Contains(layer))
+                    continue;
+
+                replacements.Add((dressItem.Serial, layer));
+                layersToUnequip.Add(layer);
+                if (layer is Layer.OneHanded or Layer.TwoHanded)
+                    layersToUnequip.Add(layer == Layer.OneHanded ? Layer.TwoHanded : Layer.OneHanded);
             }
 
-            // First, unequip all conflicting layers
-            if (layersToUnequip.Count > 0)
-                UnequipLayers(layersToUnequip, config);
-
-            foreach (DressItem dressItem in config.Items)
-            {
-                if (dressItem == null) continue;
-
-                // Check if the item is already equipped on the player
-                Item item = World.Instance.Items.Get(dressItem.Serial);
-                if (item != null && item.Container == World.Instance.Player?.Serial) continue;
-
-                ObjectActionQueue.Instance.Enqueue(ObjectActionQueueItem.EquipItem(dressItem.Serial, (Layer)dressItem.Layer), ActionPriority.EquipItem);
-            }
+            UnequipLayers(world, layersToUnequip, replacements, config);
+            foreach (var (serial, layer) in replacements)
+                ObjectActionQueue.Instance.Enqueue(ObjectActionQueueItem.EquipItem(serial, layer), ActionPriority.EquipItem);
         }
+
+        private static bool IsAvailableReplacement(World world, uint serial) =>
+            world.Player is { } player && world.Items.Get(serial) is { IsDestroyed: false } item
+            && item.Container != player.Serial;
 
         private void Undress(DressConfig config)
         {
@@ -446,19 +440,34 @@ namespace ClassicUO.Game.Managers
             }
         }
 
-        private void UnequipLayers(List<byte> layers, DressConfig config)
+        private void UnequipLayers(World world, HashSet<Layer> layers, List<(uint Serial, Layer Layer)> replacements, DressConfig config)
         {
             uint undressBag = GetUndressBag(config);
 
-            foreach (byte layer in layers)
+            foreach (Layer layer in layers)
             {
-                if(_forbiddenLayers.Contains((Layer)layer)) continue;
+                Item currentlyEquipped = world.Player?.FindItemByLayer(layer);
+                if (currentlyEquipped == null || config.Contains(currentlyEquipped.Serial))
+                    continue;
 
-                Item currentlyEquipped = World.Instance.Player?.FindItemByLayer((Layer)layer);
-                if (currentlyEquipped != null && !config.Contains(currentlyEquipped.Serial))
-                    ObjectActionQueue.Instance.Enqueue(new MoveRequest(currentlyEquipped, undressBag).ToObjectActionQueueItem(), ActionPriority.UnequipItem);
+                var move = new MoveRequest(currentlyEquipped, undressBag);
+                ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
+                {
+                    if (ReferenceEquals(World.Instance, world) && world.Player?.FindItemByLayer(layer)?.Serial == move.Serial
+                        && replacements.Any(replacement => IsConflictingLayer(layer, replacement.Layer)
+                            && IsAvailableReplacement(world, replacement.Serial)))
+                        move.Execute();
+                })
+                {
+                    Serial = move.Serial,
+                    TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+                }, ActionPriority.UnequipItem);
             }
         }
+
+        private static bool IsConflictingLayer(Layer equipped, Layer replacement) =>
+            equipped == replacement || ((equipped is Layer.OneHanded or Layer.TwoHanded)
+                && (replacement is Layer.OneHanded or Layer.TwoHanded));
 
         private void UnequipItemAsync(uint serial, DressConfig config)
         {

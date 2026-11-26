@@ -14,6 +14,36 @@ public static class RegexHelper
 {
     private static readonly Regex _neverMatch = new("(?!)", RegexOptions.Compiled);
     private static readonly ConcurrentDictionary<(string Pattern, RegexOptions Options), Regex> _regexes = new();
+    private static readonly ConcurrentDictionary<(string Pattern, RegexOptions Options), Regex> _itemRuleRegexes = new();
+    private static readonly ConcurrentDictionary<string, byte> _reportedTimeouts = new();
+
+    /// <summary>Matches an item rule with a time budget suitable for the game thread.</summary>
+    public static bool IsMatch(string pattern, string text, RegexOptions options)
+    {
+        Regex regex = _itemRuleRegexes.GetOrAdd((pattern, options | RegexOptions.Compiled), static key =>
+        {
+            try
+            {
+                return new Regex(key.Pattern, key.Options, TimeSpan.FromMilliseconds(10));
+            }
+            catch (ArgumentException)
+            {
+                return _neverMatch;
+            }
+        });
+
+        try
+        {
+            return regex.IsMatch(text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            if (_reportedTimeouts.TryAdd(pattern, 0))
+                Log.Warn($"Skipping an item rule that took too long to match: '{pattern}'.");
+
+            return false;
+        }
+    }
 
     /// <summary>
     /// Returns a compiled regex for <paramref name="pattern"/>, compiling and caching it on first use.

@@ -175,19 +175,8 @@ internal sealed class SharedItemList
     {
         string? search = null;
         foreach (SharedItem rule in Items ?? [])
-        {
-            if (rule == null || rule.Graphic == 0
-                || (rule.Graphic != ushort.MaxValue && rule.Graphic != item.Graphic)
-                || (rule.Hue != ushort.MaxValue && rule.Hue != item.Hue))
-                continue;
-
-            if (string.IsNullOrEmpty(rule.RegexSearch))
+            if (rule != null && rule.Matches(item, ref search))
                 return rule;
-
-            search ??= (string.IsNullOrEmpty(item.OPLName) ? item.GetNormalizedName(false) : item.OPLName) + item.OPLData;
-            if (RegexHelper.GetRegex(rule.RegexSearch, RegexOptions.Multiline).IsMatch(search))
-                return rule;
-        }
 
         return null;
     }
@@ -212,6 +201,24 @@ internal sealed record SharedItem(ushort Graphic, ushort Hue, string Name)
     public int MaxAmount { get; init; }
     public uint DestinationContainer { get; init; }
 
+    internal bool Matches(Item item)
+    {
+        string? search = null;
+        return Matches(item, ref search);
+    }
+
+    internal bool Matches(Item item, ref string? search)
+    {
+        if (Graphic == 0 || (Graphic != ushort.MaxValue && Graphic != item.Graphic)
+            || (Hue != ushort.MaxValue && Hue != item.Hue))
+            return false;
+
+        if (string.IsNullOrEmpty(RegexSearch))
+            return true;
+
+        search ??= (string.IsNullOrEmpty(item.OPLName) ? item.GetNormalizedName(false) : item.OPLName) + item.OPLData;
+        return RegexHelper.IsMatch(RegexSearch, search, RegexOptions.Multiline);
+    }
 }
 
 internal static class GatheringListRules
