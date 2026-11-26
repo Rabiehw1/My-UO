@@ -11,6 +11,7 @@ using ClassicUO.Game;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Scenes;
 using ClassicUO.IO;
 using ClassicUO.Assets;
 using ClassicUO.Utility;
@@ -117,7 +118,10 @@ namespace ClassicUO.Network
             writer.Dispose();
         }
 
-        public static void Send_DoubleClick(this AsyncNetClient socket, uint serial)
+        public static void Send_DoubleClick(this AsyncNetClient socket, uint serial) =>
+            Send_DoubleClick(socket, serial, fromHealingAssistant: false);
+
+        internal static void Send_DoubleClick(this AsyncNetClient socket, uint serial, bool fromHealingAssistant)
         {
             const byte ID = 0x06;
 
@@ -142,6 +146,9 @@ namespace ClassicUO.Network
             {
                 writer.WriteZero(length - writer.BytesWritten);
             }
+
+            if (MainThreadQueue.IsMainThread && socket.IsConnected && ProfileManager.CurrentProfile is { } profile)
+                GameScene.Instance?.PotionTrace.Begin(World.Instance, profile, serial, fromHealingAssistant);
 
             socket.Send(writer.BufferWritten);
 

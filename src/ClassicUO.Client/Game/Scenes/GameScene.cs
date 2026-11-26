@@ -111,6 +111,7 @@ namespace ClassicUO.Game.Scenes
 
         private readonly World _world;
         internal WeaponSwitchManager WeaponSwitch { get; } = new();
+        internal PotionUseTrace PotionTrace { get; } = new();
 
         internal void SwitchWeapon() => WeaponSwitch.Start(_world);
 
@@ -243,6 +244,7 @@ namespace ClassicUO.Game.Scenes
 
             AsyncNetClient.Socket.Disconnected += SocketOnDisconnected;
             EventSink.MessageReceived += ChatOnMessageReceived;
+            EventSink.OnItemCreatedInternal += PotionTrace.OnItemCreated;
             UIManager.ContainerScale = ProfileManager.CurrentProfile.ContainersScale / 100f;
 
             Plugin.OnConnected();
@@ -407,6 +409,8 @@ namespace ClassicUO.Game.Scenes
             }
 
             Instance = null;
+            EventSink.OnItemCreatedInternal -= PotionTrace.OnItemCreated;
+            PotionTrace.EndSession();
             DetachedWorldMapWindow.Close(restoreMap: false);
             _world.MapSightings.Flush();
 
@@ -1171,6 +1175,7 @@ namespace ClassicUO.Game.Scenes
             ObjectActionQueue.Instance.Update();
             AutoLootManager.Instance.Update();
             ScavengerManager.Instance.Update();
+            PotionTrace.Observe(_world);
             BandageManager.Instance.Update();
             SupportAgentManager.Instance.Update();
             LegionScripting.ScriptSequence.Update();

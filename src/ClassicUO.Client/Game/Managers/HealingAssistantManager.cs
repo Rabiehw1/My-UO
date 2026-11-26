@@ -88,7 +88,7 @@ internal sealed class HealingAssistantManager
                 return false;
 
             // Send now so the item use cannot remain queued after a bandage starts.
-            AsyncNetClient.Socket.Send_DoubleClick(serial);
+            AsyncNetClient.Socket.Send_DoubleClick(serial, fromHealingAssistant: true);
             Log.Debug($"Healing Assistant sent double-click for item 0x{serial:X8}.");
             NextActionTime = now + Math.Max(1, GlobalActionCooldown.CooldownDuration);
             GlobalActionCooldown.BeginCooldown();
