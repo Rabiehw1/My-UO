@@ -27,6 +27,18 @@ namespace ClassicUO.LegionScripting
         protected override string FileName => LScriptSettingsFileName;
 
         protected override JsonTypeInfo<LScriptSettings> TypeInfo => LScriptJsonContext.Default.LScriptSettings;
+
+        protected override bool MergeIndependentChanges => true;
+
+        protected override void ApplyMergedChanges(LScriptSettings saved)
+        {
+            GlobalAutoStartScripts = saved.GlobalAutoStartScripts;
+            CharAutoStartScripts = saved.CharAutoStartScripts;
+            AutoRunScriptPaths = saved.AutoRunScriptPaths;
+            ScriptSequences = saved.ScriptSequences;
+            GroupCollapsed = saved.GroupCollapsed;
+            DisableModuleCache = saved.DisableModuleCache;
+        }
     }
 
     [JsonSerializable(typeof(LScriptSettings))]

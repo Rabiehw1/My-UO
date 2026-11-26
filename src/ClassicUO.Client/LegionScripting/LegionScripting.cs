@@ -339,16 +339,14 @@ namespace ClassicUO.LegionScripting
             SaveScriptSettings();
         }
 
-        public static List<string> GetSequence()
+        public static IReadOnlyList<string> GetSequence() =>
+            LScriptSettings.ScriptSequences.TryGetValue(CharacterKey(), out var paths) ? paths : [];
+
+        internal static void SaveSequence(List<string> paths)
         {
-            string key = CharacterKey();
-            if (!LScriptSettings.ScriptSequences.TryGetValue(key, out var paths))
-                LScriptSettings.ScriptSequences[key] = paths = [];
-
-            return paths;
+            LScriptSettings.ScriptSequences[CharacterKey()] = paths;
+            SaveScriptSettings();
         }
-
-        internal static void SaveSequence() => SaveScriptSettings();
 
         private static void StartAutoRun()
         {
@@ -358,16 +356,20 @@ namespace ClassicUO.LegionScripting
                 Profile profile = ProfileManager.CurrentProfile;
                 var characterLegacy = LScriptSettings.CharAutoStartScripts.GetValueOrDefault(profile.Username + profile.CharacterName);
                 var legacy = LScriptSettings.GlobalAutoStartScripts.Concat(characterLegacy ?? []).ToHashSet(StringComparer.Ordinal);
+                if (legacy.Count == 0)
+                    return;
+
                 var candidates = LoadedScripts.Where(script => legacy.Contains(script.FileName)).ToArray();
                 path = legacy.Count == 1 && candidates.Length == 1 ? candidates[0].RelativePath : "";
                 LScriptSettings.AutoRunScriptPaths[key] = path;
                 SaveScriptSettings();
+                path = AutoRunPath;
 
-                if (legacy.Count != 0 && path.Length == 0)
+                if (path.Length == 0)
                     GameActions.Print(_world, "Choose one startup script in Script Executor.", Constants.HUE_WARN);
             }
 
-            if (path.Length > 0 && LoadedScripts.FirstOrDefault(script => script.RelativePath == path) is { } startup)
+            if (!string.IsNullOrEmpty(path) && LoadedScripts.FirstOrDefault(script => script.RelativePath == path) is { } startup)
                 PlayScript(startup);
         }
 

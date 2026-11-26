@@ -87,6 +87,13 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     /// <remarks>Opt-in system, off by default - an untouched profile keeps no file.</remarks>
     protected virtual bool PersistFreshDefaults => true;
 
+    /// <summary>Skips unchanged saves and merges concurrent edits to independent JSON properties.</summary>
+    protected virtual bool MergeIndependentChanges => false;
+
+    /// <summary>Applies the committed result to an instance that opts into merging.</summary>
+    /// <param name="saved">The settings after resolving concurrent changes.</param>
+    protected virtual void ApplyMergedChanges(T saved) { }
+
     /// <summary>The directory this file is saved in, resolved from <see cref="Scope" />.</summary>
     [JsonIgnore]
     public string SaveDirectory => JsonSaveLocationHelper.GetScopeDirectory(Scope);
@@ -124,6 +131,7 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     ///     against it.
     /// </summary>
     private string? _fingerprintPath;
+    private JsonObject? _mergeBaseline;
 
     /// <summary>
     ///     How two file paths are compared: case-insensitively on Windows, whose filesystem folds
@@ -186,6 +194,12 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     /// <param name="filePath">The file to write.</param>
     private void SaveChecked(string filePath)
     {
+        if (_mergeBaseline != null && string.Equals(filePath, _fingerprintPath, PathComparison))
+        {
+            SaveMerged(filePath);
+            return;
+        }
+
         bool conflicted = false;
         DateTime diskModifiedUtc = default;
 
@@ -196,9 +210,8 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
                 conflicted = true;
                 diskModifiedUtc = disk.LastWriteUtc;
             }
-            else
+            else if (SaveCore(filePath))
             {
-                SaveCore(filePath);
                 CaptureFingerprint(filePath);
             }
         }
@@ -206,6 +219,78 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
         if (conflicted)
             RaiseConflict(filePath, diskModifiedUtc);
     }
+
+    private void SaveMerged(string filePath, (FileFingerprint Disk, bool KeepSession)? answer = null)
+    {
+        JsonSaveConflict? conflict = null;
+        DateTime? unreadableDisk = null;
+
+        try
+        {
+            if (_mergeBaseline is not { } baseline)
+                return;
+
+            JsonObject session = MergeSnapshot((T)this);
+            if (JsonNode.DeepEquals(baseline, session))
+                return;
+
+            using var guard = AcquireLock(filePath);
+            if (!guard.IsAcquired)
+                return;
+
+            if (!HasExternalChange(filePath, out FileFingerprint fingerprint))
+            {
+                if (SaveCore(filePath))
+                    CaptureFingerprint(filePath);
+                return;
+            }
+
+            TryLoad(filePath, false, out T? latest);
+            if (latest == null)
+            {
+                // Preserve the existing backup and choice behavior for removed or unreadable files.
+                unreadableDisk = fingerprint.LastWriteUtc;
+            }
+            else
+            {
+                JsonObject disk = MergeSnapshot(latest);
+                var (keepSession, keepDisk) = JsonObjectMerge.Merge(baseline, session, disk);
+                if (JsonNode.DeepEquals(keepSession, keepDisk))
+                    AcceptMergedVersion(filePath, disk, keepSession);
+                else if (answer is { } choice && !choice.Disk.DiffersFrom(fingerprint))
+                    AcceptMergedVersion(filePath, disk, choice.KeepSession ? keepSession : keepDisk);
+                else
+                    conflict = new JsonSaveConflict(filePath, fingerprint.LastWriteUtc, JsonDiff.Compare(keepDisk, keepSession),
+                        keepDisk.ToJsonString(TypeInfo.Options), keepSession.ToJsonString(TypeInfo.Options),
+                        keepMine => SaveMerged(filePath, (fingerprint, keepMine)));
+            }
+        }
+        catch (Exception e)
+        {
+            Log.Error($"Failed to merge JSON save '{filePath}': {e}");
+            return;
+        }
+
+        if (conflict != null && !JsonSaveConflictHandler.Request(conflict))
+            conflict.Resolve(false);
+        else if (unreadableDisk is { } modified)
+            RaiseConflict(filePath, modified);
+    }
+
+    private void AcceptMergedVersion(string filePath, JsonObject disk, JsonObject selected)
+    {
+        T saved = selected.Deserialize(TypeInfo) ?? throw new JsonException("The merged settings could not be read.");
+        if (!JsonNode.DeepEquals(disk, selected))
+        {
+            string json = selected.ToJsonString(TypeInfo.Options);
+            WriteJson(filePath, MigrationPipeline?.Stamp(json) ?? json);
+        }
+
+        ApplyMergedChanges(saved);
+        CaptureFingerprint(filePath);
+    }
+
+    private JsonObject MergeSnapshot(T value) => (JsonObject)JsonSerializer.SerializeToNode(value, TypeInfo)!;
 
     /// <summary>
     ///     Remembers the current file identity so a later external change can be told apart from our
@@ -216,6 +301,8 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     {
         _fingerprintPath = filePath;
         _fingerprint = FileFingerprint.Capture(filePath);
+        if (MergeIndependentChanges && !_savesSuppressed)
+            _mergeBaseline = MergeSnapshot((T)this);
     }
 
     /// <summary>
@@ -342,9 +429,8 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
                 conflicted = true;
                 diskModifiedUtc = disk.LastWriteUtc;
             }
-            else
+            else if (SaveCore(filePath))
             {
-                SaveCore(filePath);
                 CaptureFingerprint(filePath);
             }
         }
@@ -507,12 +593,13 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
     ///     the file lock.
     /// </summary>
     /// <param name="filePath">The file to write.</param>
-    private void SaveCore(string filePath)
+    /// <returns>Whether the write succeeded.</returns>
+    private bool SaveCore(string filePath)
     {
         if (_savesSuppressed)
         {
             Log.Trace($"Skipping save of '{filePath}': the file on disk is newer than this build can read.");
-            return;
+            return false;
         }
 
         try
@@ -522,12 +609,14 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
 
             // Stamped rather than serialized off a property, which could drift from the migration list.
             WriteJson(filePath, pipeline == null ? json : pipeline.Stamp(json));
+            return true;
         }
         catch (Exception e)
         {
             // Mirrors the existing resolver behaviour: never let a save failure crash the client,
             // e.g. when multiple instances point at the same file.
             Log.Error($"Failed to save JSON '{filePath}': {e}");
+            return false;
         }
     }
 
@@ -834,7 +923,7 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
         private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
         private readonly Mutex _mutex;
-        private readonly bool _acquired;
+        public bool IsAcquired { get; }
 
         public CrossProcessLock(string key)
         {
@@ -842,21 +931,21 @@ public abstract class JsonSave<T> where T : JsonSave<T>, INotifyPropertyChanged,
 
             try
             {
-                _acquired = _mutex.WaitOne(Timeout);
+                IsAcquired = _mutex.WaitOne(Timeout);
 
-                if (!_acquired)
-                    Log.Warn($"Timed out acquiring cross-process lock for '{key}'; proceeding anyway.");
+                if (!IsAcquired)
+                    Log.Warn($"Timed out acquiring cross-process lock for '{key}'.");
             }
             catch (AbandonedMutexException)
             {
                 // A previous owner crashed without releasing; we now own the mutex.
-                _acquired = true;
+                IsAcquired = true;
             }
         }
 
         public void Dispose()
         {
-            if (_acquired)
+            if (IsAcquired)
                 try { _mutex.ReleaseMutex(); }
                 catch
                 {

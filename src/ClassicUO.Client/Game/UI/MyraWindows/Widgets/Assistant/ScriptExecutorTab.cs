@@ -70,7 +70,7 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
     private void Build()
     {
         Widgets.Clear();
-        var paths = Legion.GetSequence();
+        var paths = Legion.GetSequence().ToList();
         ScriptFile[] scripts = Legion.LoadedScripts.OrderBy(script => script.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray();
         var queue = new ListView { Height = 200, HorizontalAlignment = HorizontalAlignment.Stretch };
         var addChoices = Combo("Select a script", scripts);
@@ -128,8 +128,9 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
 
         void SaveAndShow(int index)
         {
-            Legion.SaveSequence();
-            ShowQueue(index);
+            Legion.SaveSequence(paths);
+            paths = Legion.GetSequence().ToList();
+            ShowQueue(Math.Min(index, paths.Count - 1));
             Refresh();
         }
 
