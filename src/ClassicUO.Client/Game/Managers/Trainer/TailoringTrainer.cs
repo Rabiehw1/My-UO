@@ -9,15 +9,14 @@ using ClassicUO.Network;
 
 namespace ClassicUO.Game.Managers.Trainer;
 
-/// <summary>One craft, dress, unstitch and undress cycle on the main game thread.</summary>
+/// <summary>One craft and unstitch cycle on the main game thread.</summary>
 internal static class TailoringTrainer
 {
-    private enum Step { Idle, LeatherCursor, Category, Recipe, Craft, Dress, UnstitchCursor, Recover, Undress, Finish }
+    private enum Step { Idle, LeatherCursor, Category, Recipe, Craft, UnstitchCursor, Recover }
     private static Step _step;
     private static readonly HashSet<uint> Existing = new();
     private static Profile? _profile;
-    private static DressConfig? _outfit;
-    private static bool _dressed, _paused;
+    private static bool _paused;
     private static uint _tool, _leather, _unstitch, _piece, _player;
     private static int _initialAmount;
     private static long _ready, _deadline;
@@ -27,10 +26,36 @@ internal static class TailoringTrainer
     private static int _menuIndex;
     private static ushort _menuGraphic, _hue;
 
-    // Honor explicit selections saved by the earlier two-recipe prototype.
-    internal static string RecipePath(TrainerSettings settings) =>
-        !string.IsNullOrWhiteSpace(settings.TailorRecipePath) ? settings.TailorRecipePath :
-        settings.TailorStuddedTunic is bool tunic ? "Studded Leather Armors > " + (tunic ? "Studded Tunic" : "Studded Leggings") : "";
+    // Zulu Hotel Omega Info Vault: Tailoring (leather armor) and Hides.
+    internal sealed record Recipe(string Name, int Skill, int Cost);
+    private static readonly Recipe[] Armor =
+    [
+        new("Leather Cap", 17, 2), new("Leather Gloves", 62, 3), new("Leather Gorget", 64, 4),
+        new("Leather Skirt", 68, 6), new("Leather Shorts", 72, 8), new("Leather Leggings", 76, 10),
+        new("Leather Tunic", 80, 12), new("Studded Gorget", 89, 6), new("Studded Gloves", 93, 8),
+        new("Studded Sleeves", 97, 10), new("Studded Leggings", 101, 12), new("Studded Tunic", 105, 14)
+    ];
+    private static readonly (string Name, int Difficulty)[] Hides =
+    [
+        ("silver dragon", 145), ("golden dragon", 130), ("ice crystal", 110), ("normal", 0),
+        ("rat", 10), ("wolf", 20), ("bear", 30), ("serpent", 40), ("lizard", 50), ("orc", 55),
+        ("troll", 60), ("terathan", 65), ("ostard", 70), ("necromancer", 80), ("lava", 90),
+        ("liche", 100), ("daemon", 105), ("dragon", 115), ("wyrm", 120), ("balron", 125),
+        ("balrog", 135), ("angel", 150)
+    ];
+
+    internal static int HideDifficulty(string name, ushort hue)
+    {
+        string words = " " + name.Trim().ToLowerInvariant() + " ";
+        foreach (var hide in Hides)
+            if (words.Contains(" " + hide.Name + " "))
+                return hide.Difficulty;
+        return hue == 0 ? 0 : -1;
+    }
+
+    internal static Recipe? SelectRecipe(int skillFixed, int difficulty, int amount) =>
+        difficulty < 0 ? null : Array.FindLast(Armor, r =>
+            (r.Skill + difficulty) * 10 <= skillFixed && r.Cost <= amount);
 
     internal static bool MatchesOutput(ushort graphic, ushort hue, string name, ushort menuGraphic,
         ushort materialHue, string recipe) => hue == materialHue && (menuGraphic != 0
@@ -46,33 +71,52 @@ internal static class TailoringTrainer
             return false;
         var profile = ProfileManager.CurrentProfile;
         var settings = profile.Trainer;
-        string[] path = RecipePath(settings).Split('>', StringSplitOptions.TrimEntries);
-        var leather = Carried(world, settings.DragonLeather);
-        var outfit = DressAgentManager.Instance.CurrentPlayerConfigs.Find(c => c.Name == settings.TailorOutfit);
-        if (Carried(world, tool) == null || Carried(world, settings.UnstitchTool) == null ||
-            leather == null || leather.Amount == 0 || path.Any(string.IsNullOrWhiteSpace) ||
-            (leather.Graphic is not (0x1067 or 0x1068 or 0x1078 or 0x1079) &&
-             !leather.GetNormalizedName(false).Contains("leather", StringComparison.OrdinalIgnoreCase) &&
-             !leather.GetNormalizedName(false).Contains("hide", StringComparison.OrdinalIgnoreCase)) || outfit == null || outfit.Items.Count == 0)
+        if (Carried(world, tool) == null || Carried(world, settings.UnstitchTool) == null)
+            return Warn(world, "trainer_tailor_setup");
+        var bag = world.Player.Backpack;
+        int skill = world.Player.Skills?.FirstOrDefault(s => s?.Index == 34)?.ValueFixed ?? 0;
+        Item? leather = null;
+        Recipe? best = null;
+        int highest = -1;
+        foreach (var stack in world.Items.Values)
         {
-            if (_warning == null)
-                GameActions.Print(world, TazLang.Get("trainer_tailor_setup"), Constants.HUE_WARN);
-            _warning = "setup";
-            return false;
+            if (bag == null || stack.IsDestroyed || stack.BackpackOrRootContainer != bag.Serial ||
+                stack.Graphic is not (0x1067 or 0x1068 or 0x1078 or 0x1079))
+                continue;
+            int difficulty = HideDifficulty(stack.GetNormalizedName(false), stack.Hue);
+            var recipe = SelectRecipe(skill, difficulty, stack.Amount);
+            if (recipe == null)
+                continue;
+            int score = difficulty + recipe.Skill;
+            if (score < highest || (score == highest && best != null &&
+                (recipe.Skill < best.Skill || (recipe.Skill == best.Skill && stack.Serial >= leather!.Serial))))
+                continue;
+            highest = score;
+            leather = stack;
+            best = recipe;
         }
-        _path = path;
+        if (leather == null || best == null)
+            return Warn(world, "trainer_tailor_material");
+        _path = [best.Name.StartsWith("Studded", StringComparison.Ordinal) ? "Studded Leather Armors" : "Leather Armors", best.Name];
         _menuIndex = 0;
         _hue = leather.Hue;
         _profile = profile;
         _player = world.Player.Serial;
-        _outfit = outfit;
         _tool = tool;
-        _leather = settings.DragonLeather;
+        _leather = leather.Serial;
         _unstitch = settings.UnstitchTool;
         _warning = null;
         Advance(Step.LeatherCursor);
         GameActions.DoubleClick(world, tool);
         return true;
+    }
+
+    private static bool Warn(World world, string key)
+    {
+        if (_warning != key)
+            GameActions.Print(world, TazLang.Get(key), Constants.HUE_WARN);
+        _warning = key;
+        return false;
     }
 
     private static void Advance(Step step, int delay = 0)
@@ -87,11 +131,8 @@ internal static class TailoringTrainer
 
     internal static void Reset()
     {
-        if (_dressed && World.Instance is { } world && Current(world) && _outfit != null)
-            DressAgentManager.Instance.UndressFromConfig(_outfit);
-        _dressed = _paused = false;
+        _paused = false;
         _warning = null;
-        _outfit = null;
         _profile = null;
         _step = Step.Idle;
         Existing.Clear();
@@ -197,13 +238,7 @@ internal static class TailoringTrainer
                 _piece = NewPiece(world);
                 if (_piece == 0 || (Carried(world, _leather)?.Amount ?? 0) >= _initialAmount)
                     break;
-                DressAgentManager.Instance.DressFromConfig(_outfit!);
-                _dressed = true;
-                Advance(Step.Dress, 5000);
-                break;
-            case Step.Dress:
-                if (TrainerSkillUser.CursorBusy(world) || Carried(world, _unstitch) == null ||
-                    !_outfit!.Items.All(i => world.Items.Get(i.Serial)?.Container == _player))
+                if (TrainerSkillUser.CursorBusy(world) || Carried(world, _unstitch) == null)
                     break;
                 Advance(Step.UnstitchCursor);
                 GameActions.DoubleClick(world, _unstitch);
@@ -211,18 +246,6 @@ internal static class TailoringTrainer
             case Step.Recover:
                 if (world.Items.Get(_piece) != null)
                     break;
-                DressAgentManager.Instance.UndressFromConfig(_outfit!);
-                _dressed = false;
-                Advance(Step.Undress, 5000);
-                break;
-            case Step.Undress:
-                if (_outfit!.Items.Any(i => world.Items.Get(i.Serial)?.Container == _player))
-                    break;
-                if (Carried(world, _leather) != null)
-                    GameActions.SingleClick(world, _leather);
-                Advance(Step.Finish, 500);
-                break;
-            case Step.Finish:
                 Reset();
                 break;
         }

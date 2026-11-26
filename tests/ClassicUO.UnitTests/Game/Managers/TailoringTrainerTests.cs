@@ -5,16 +5,20 @@ namespace ClassicUO.UnitTests.Game.Managers;
 
 public class TailoringTrainerTests
 {
+    [Theory]
+    [InlineData(1050, 0, 14, "Studded Tunic")]
+    [InlineData(1050, 0, 12, "Studded Leggings")]
+    [InlineData(1050, 10, 14, "Studded Gloves")]
+    [InlineData(2160, 115, 12, "Studded Leggings")]
+    [InlineData(1009, 0, 14, "Studded Sleeves")]
+    [InlineData(160, 0, 20, null)]
+    [InlineData(2200, -1, 20, null)]
+    public void ChoosesAffordableArmor(int skill, int difficulty, int amount, string expected) =>
+        Assert.Equal(expected, TailoringTrainer.SelectRecipe(skill, difficulty, amount)?.Name);
+
     [Fact]
-    public void NewProfilesChooseTheirOwnRecipe()
-    {
-        var settings = new TrainerSettings();
-        Assert.Equal("", TailoringTrainer.RecipePath(settings));
-        settings.TailorStuddedTunic = true;
-        Assert.EndsWith("Studded Tunic", TailoringTrainer.RecipePath(settings));
-        settings.TailorRecipePath = "Leather > Gloves";
-        Assert.Equal(settings.TailorRecipePath, TailoringTrainer.RecipePath(settings));
-    }
+    public void DistinguishesDragonTiers() =>
+        Assert.Equal(130, TailoringTrainer.HideDifficulty("Golden Dragon hides", 123));
 
     [Theory]
     [InlineData(200, 1, "", 200, true)]
