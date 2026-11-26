@@ -103,6 +103,15 @@ internal static class TrainerTabContent
                     DesktopAssistantForm.Actions(
                         Pick("trainer_pick_smelt_tool", () => profile.Trainer.SmeltTool, value => profile.Trainer.SmeltTool = value),
                         Pick("trainer_pick_forge", () => profile.Trainer.Forge, value => profile.Trainer.Forge = value))));
+                var recipe = new ComboView();
+                foreach (string key in new[] { "trainer_tailor_leggings", "trainer_tailor_tunic" })
+                    recipe.ListView.Widgets.Add(new Label { Text = TazLang.Get(key) });
+                recipe.ListView.SelectedIndex = profile.Trainer.TailorStuddedTunic ? 1 : 0;
+                recipe.ListView.SelectedIndexChanged += (_, _) =>
+                {
+                    profile.Trainer.TailorStuddedTunic = recipe.ListView.SelectedIndex == 1;
+                    profile.Save();
+                };
                 var outfits = DressAgentManager.Instance.CurrentPlayerConfigs.ToArray();
                 var outfit = new ComboView();
                 foreach (var config in outfits)
@@ -120,7 +129,8 @@ internal static class TrainerTabContent
                     DesktopAssistantForm.Actions(
                         Pick("trainer_tailor_leather", () => profile.Trainer.DragonLeather, value => profile.Trainer.DragonLeather = value),
                         Pick("trainer_tailor_unstitch", () => profile.Trainer.UnstitchTool, value => profile.Trainer.UnstitchTool = value)),
-                    DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("trainer_tailor_outfit"), outfit))));
+                    DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("trainer_tailor_recipe"), recipe),
+                        new DesktopAssistantForm.Field(TazLang.Get("trainer_tailor_outfit"), outfit))));
             }
             order = Text("trainer_order_empty");
             RefreshOrder();
