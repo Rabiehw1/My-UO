@@ -980,6 +980,7 @@ namespace ClassicUO.Configuration
         public bool ReduceSpellAbsorptionMessages { get; set; }
         public bool ReduceItemCooldownMessages { get; set; }
         public Game.Managers.Trainer.TrainerSettings Trainer { get; set; } = new();
+        public bool MuteSpellPowerWords { get; set; }
         public Dictionary<string, bool> OnScreenMessagePhrases { get; set; } = new();
         public bool DisableAutolootCorpseRetry { get; set; } = false;
         public bool DisableWeather { get; set; }

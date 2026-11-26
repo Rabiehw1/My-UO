@@ -2,6 +2,8 @@
 
 using System;
 using ClassicUO.Configuration;
+using ClassicUO.Game.Data;
+using ClassicUO.Game.Managers.ShardSpells;
 
 namespace ClassicUO.Game.Managers;
 
@@ -16,7 +18,20 @@ internal sealed class OnScreenMessageFilter
     private uint? _lastAbsorption;
     private uint? _lastCooldown;
 
-    internal bool IsMuted(Profile? profile, string text, uint now, string? displayedText = null)
+    /// <summary>Whether a received message should stay off screen; the journal still records it.</summary>
+    /// <param name="profile">Settings to apply; null mutes nothing.</param>
+    /// <param name="text">Text as the server sent it.</param>
+    /// <param name="now">Current time in ms, for the repeat windows.</param>
+    /// <param name="displayedText">Text as it will be shown, when the client rewrote it (e.g. spell display format).</param>
+    /// <param name="type">Message type the server marked it with.</param>
+    /// <returns>True to hide it on screen.</returns>
+    internal bool IsMuted(
+        Profile? profile,
+        string text,
+        uint now,
+        string? displayedText = null,
+        MessageType type = MessageType.Regular
+    )
     {
         if (!ReferenceEquals(_profile, profile))
         {
@@ -36,6 +51,9 @@ internal sealed class OnScreenMessageFilter
                     return true;
         }
 
+        if (profile.MuteSpellPowerWords && IsPowerWords(text, type))
+            return true;
+
         if (!profile.ReduceSpellAbsorptionMessages)
             _lastAbsorption = null;
         if (!profile.ReduceItemCooldownMessages)
@@ -46,6 +64,25 @@ internal sealed class OnScreenMessageFilter
 
         return profile.ReduceItemCooldownMessages && Contains(text, ItemCooldown)
             && SuppressRepeat(ref _lastCooldown, now);
+    }
+
+    /// <summary>
+    /// Spell speech is recognised by its message type, which covers spells no table here knows. Shards that send
+    /// incantations as plain speech are caught by an exact match against the known words, so a sentence merely
+    /// containing "In Mani" is left alone.
+    /// </summary>
+    private static bool IsPowerWords(string text, MessageType type)
+    {
+        if (type == MessageType.Spell)
+            return true;
+
+        string spoken = text.Trim();
+        if (spoken.Length == 0)
+            return false;
+
+        return SpellDefinition.WordToTargettype.TryGetValue(spoken, out SpellDefinition? spell)
+                && string.Equals(spell.PowerWords, spoken, StringComparison.Ordinal)
+            || ShardSpellCatalog.IsPowerWords(spoken);
     }
 
     private static bool SuppressRepeat(ref uint? lastShown, uint now)

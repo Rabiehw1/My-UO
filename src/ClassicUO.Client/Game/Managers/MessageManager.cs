@@ -142,7 +142,7 @@ namespace ClassicUO.Game.Managers
                 }
             }
 
-            bool suppressOnScreen = _onScreenFilter.IsMuted(currentProfile, rawText, Time.Ticks, text);
+            bool suppressOnScreen = _onScreenFilter.IsMuted(currentProfile, rawText, Time.Ticks, text, type);
             switch (type)
             {
                 case MessageType.ChatSystem:

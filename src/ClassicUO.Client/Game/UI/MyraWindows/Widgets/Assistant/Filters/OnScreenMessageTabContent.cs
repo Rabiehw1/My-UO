@@ -38,6 +38,13 @@ internal static class OnScreenMessageTabContent
                 profile.ReduceItemCooldownMessages = value;
                 profile.Save();
             }, TazLang.Get("assistant_filters_cooldown"))));
+        root.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("assistant_filters_spell_words"),
+            Text("assistant_filters_spell_words_help"),
+            MyraCheckButton.CreateWithCallback(profile.MuteSpellPowerWords, value =>
+            {
+                profile.MuteSpellPowerWords = value;
+                profile.Save();
+            }, TazLang.Get("assistant_filters_mute_power_words"))));
         root.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("assistant_filters_phrases"),
             Text("assistant_filters_phrases_help"), input, DesktopAssistantForm.Actions(add), status, rules));
 
