@@ -9,6 +9,7 @@ using ClassicUO.Game.Managers.Launcher;
 using ClassicUO.Game.Managers.Updates;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Trainer;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
@@ -47,6 +48,7 @@ internal sealed class DesktopAgentsWindow
         new(ScriptsTabContent.Title, AgentTab.AgentGroup.Controls, ScriptsTabContent.Build),
         new(ShardSpellBooksTabContent.Title, AgentTab.AgentGroup.Controls, ShardSpellBooksTabContent.Build),
         new(FiltersTab.Title, AgentTab.AgentGroup.Settings, FiltersTab.Build),
+        new(TrainerTabContent.Title, AgentTab.AgentGroup.Controls, TrainerTabContent.Build, RebuildOnSelect: true),
         new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
     ];
     private readonly Dictionary<int, MyraButton> _navigation = new();
@@ -228,7 +230,7 @@ internal sealed class DesktopAgentsWindow
     private Widget BuildLayout()
     {
         var topTabs = CreateTabStrip();
-        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysMacrosTabContent.Title, ShardSpellBooksTabContent.Title, ScriptsTabContent.Title, FiltersTab.Title })
+        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysMacrosTabContent.Title, ShardSpellBooksTabContent.Title, ScriptsTabContent.Title, FiltersTab.Title, TrainerTabContent.Title })
         {
             var tab = DesktopAssistantTheme.NavigationButton(name, tab: true);
             tab.Click += (_, _) => SelectPage(name);

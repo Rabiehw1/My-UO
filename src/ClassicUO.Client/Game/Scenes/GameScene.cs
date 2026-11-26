@@ -1174,6 +1174,7 @@ namespace ClassicUO.Game.Scenes
 
             WeaponSwitch.Update(_world);
             ObjectActionQueue.Instance.Update();
+            Managers.Trainer.TrainerManager.Instance.Update();
             AutoLootManager.Instance.Update();
             ScavengerManager.Instance.Update();
             PotionTrace.Observe(_world);
