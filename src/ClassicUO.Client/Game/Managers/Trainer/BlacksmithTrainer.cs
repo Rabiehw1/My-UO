@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
@@ -37,6 +38,14 @@ internal static class BlacksmithTrainer
     private static string? _warning;
     private static bool _timedOut;
 
+    private enum Recovery { None, AwaitPiece, TargetPiece, TargetForge, AwaitIngots }
+    private static Recovery _recovery;
+    private static readonly HashSet<uint> ExistingPieces = new();
+    private static uint _piece, _bag;
+    private static ushort _metalHue, _outputGraphic;
+    private static int _stockBefore, _stockAfterCraft;
+    private static long _nextCheck;
+
     internal static Recipe? SelectRecipe(int skillFixed) => Array.FindLast(Plate, r => skillFixed >= 10 * r.Minimum);
 
     internal static bool Eligible(int skillFixed, int difficulty) => skillFixed < 950
@@ -47,6 +56,8 @@ internal static class BlacksmithTrainer
         if (_pending != null && TargetManager.NextAutoTarget.TargetSerial == _stack &&
             TargetManager.NextAutoTarget.ExpiresAt == _cursorExpiry)
             TargetManager.NextAutoTarget.Clear();
+        ExistingPieces.Clear();
+        _recovery = Recovery.None;
         _timedOut = false;
         _pending = null;
         _warning = null;
@@ -60,9 +71,12 @@ internal static class BlacksmithTrainer
             Reset();
         else if (Time.Ticks >= _deadline)
         {
-            Reset();
-            _timedOut = true;
-            Warn(world, "trainer_smith_timeout");
+            Pause(world, _recovery == Recovery.None ? "trainer_smith_timeout" : "trainer_smith_recovery_timeout");
+        }
+        else if (_recovery != Recovery.None && Time.Ticks >= _nextCheck)
+        {
+            _nextCheck = Time.Ticks + 200;
+            UpdateRecovery(world);
         }
         return _pending != null;
     }
@@ -108,6 +122,8 @@ internal static class BlacksmithTrainer
         _pending = recipe;
         _tool = toolSerial;
         _stack = best.Serial;
+        _metalHue = best.Hue;
+        _bag = bag.Serial;
         _categoryDepth = 0;
         _deadline = Time.Ticks + 5000;
         TargetManager.SetAutoTarget(_stack, TargetType.Neutral, true, 3000);
@@ -119,7 +135,7 @@ internal static class BlacksmithTrainer
     // Inspect a copy so menus we don't own still open normally.
     internal static bool TryMenu(World world, uint serial, ushort id, string title, int count, StackDataReader entries)
     {
-        if (!Waiting(world) || _pending == null ||
+        if (_recovery != Recovery.None || !Waiting(world) || _pending == null ||
             TargetManager.NextAutoTarget.TargetSerial == _stack)
             return false;
         bool smith = serial == _tool || serial == _stack ||
@@ -148,12 +164,147 @@ internal static class BlacksmithTrainer
         if (best == 0 || (best < 3 && ++_categoryDepth > 2))
             return false;
         if (best == 3)
-            Reset();
+        {
+            _outputGraphic = graphic;
+            foreach (var item in world.Items.Values)
+                if (IsPlate(_pending.Name, item.Graphic, _outputGraphic))
+                    ExistingPieces.Add(item.Serial);
+            _stockBefore = CountMetal(world);
+            _recovery = Recovery.AwaitPiece;
+            _deadline = Time.Ticks + 10000;
+            _nextCheck = Time.Ticks + 350;
+        }
         if (gray)
             AsyncNetClient.Socket.Send_GrayMenuResponse(serial, id, (ushort)index);
         else
             AsyncNetClient.Socket.Send_MenuResponse(serial, id, index, graphic, hue);
         return true;
+    }
+
+    internal static bool IsPlate(string recipe, ushort graphic, ushort menuGraphic) =>
+        (menuGraphic != 0 && graphic == menuGraphic) || recipe switch
+        {
+            "Female Breastplate" => graphic is 0x1C04 or 0x1C05,
+            "Platemail Gorget" => graphic == 0x1413,
+            "Platemail Gloves" => graphic is 0x1414 or 0x1418,
+            "Plate Helm" => graphic is 0x1412 or 0x1419,
+            "Platemail Arms" => graphic is 0x1410 or 0x1417,
+            "Platemail Legs" => graphic is 0x1411 or 0x141A,
+            "Breastplate" => graphic is 0x1415 or 0x1416,
+            _ => false
+        };
+
+    private static int CountMetal(World world)
+    {
+        int amount = 0;
+        foreach (var item in world.Items.Values)
+            if (item.Graphic is >= 0x1BEF and <= 0x1BF5 && item.Hue == _metalHue && item.BackpackOrRootContainer == _bag)
+                amount += item.Amount;
+        return amount;
+    }
+
+    private static bool MatchesOutput(Item item) => _pending != null && item.Container == _bag &&
+        !ExistingPieces.Contains(item.Serial) && IsPlate(_pending.Name, item.Graphic, _outputGraphic);
+
+    private static GameObject? NearbyForge(World world)
+    {
+        var player = world.Player!;
+        GameObject? closest = null;
+        for (int x = Math.Max(0, player.X - 2); x <= player.X + 2; x++)
+            for (int y = Math.Max(0, player.Y - 2); y <= player.Y + 2; y++)
+                for (var obj = world.Map.GetTile(x, y, false); obj != null; obj = obj.TNext)
+                    if ((obj is Static || obj is Item { OnGround: true }) &&
+                        (obj.Graphic == 0x0FB1 || obj.Graphic is >= 0x197A and <= 0x19A9) &&
+                        Math.Abs(obj.Z - player.Z) <= 16 && (closest == null || obj.Distance < closest.Distance))
+                        closest = obj;
+        return closest;
+    }
+
+    private static void UpdateRecovery(World world)
+    {
+        if (_recovery == Recovery.AwaitIngots)
+        {
+            if (world.Items.Get(_piece) == null && CountMetal(world) > _stockAfterCraft)
+                Reset();
+            return;
+        }
+        if (_recovery != Recovery.AwaitPiece || TrainerSkillUser.CursorBusy(world))
+            return;
+        Item? piece = null;
+        foreach (var item in world.Items.Values)
+        {
+            if (!MatchesOutput(item))
+                continue;
+            if (piece != null)
+            {
+                Pause(world, "trainer_smith_ambiguous");
+                return;
+            }
+            piece = item;
+        }
+        if (piece == null)
+            return;
+        _stockAfterCraft = CountMetal(world);
+        if (_stockAfterCraft > _stockBefore - _pending!.Ingots)
+            return;
+        var tool = world.Items.Get(_tool);
+        if (NearbyForge(world) == null || tool == null || (tool.Container != world.Player.Serial && tool.BackpackOrRootContainer != _bag))
+        {
+            Pause(world, "trainer_smith_recovery_timeout");
+            return;
+        }
+        _piece = piece.Serial;
+        _recovery = Recovery.TargetPiece;
+        _deadline = Time.Ticks + 5000;
+        GameActions.DoubleClick(world, _tool);
+    }
+
+    private static bool HasAnotherOutput(World world)
+    {
+        foreach (var candidate in world.Items.Values)
+            if (candidate.Serial != _piece && MatchesOutput(candidate))
+                return true;
+        return false;
+    }
+
+    internal static bool TryRecoveryCursor(World world, CursorTarget cursor, TargetType type)
+    {
+        if (_recovery is not (Recovery.TargetPiece or Recovery.TargetForge) || !Waiting(world) ||
+            type != TargetType.Neutral || !TargetManager.IsLiveServerCursor(cursor, type))
+            return false;
+        var item = world.Items.Get(_piece);
+        if (item == null || !MatchesOutput(item) || HasAnotherOutput(world))
+        {
+            Pause(world, "trainer_smith_ambiguous");
+            return false;
+        }
+        if (_recovery == Recovery.TargetPiece)
+        {
+            _recovery = Recovery.TargetForge;
+            _deadline = Time.Ticks + 5000;
+            world.TargetManager.Target(_piece);
+            return true;
+        }
+        var forge = NearbyForge(world);
+        if (forge == null || (forge is Static && cursor != CursorTarget.Position))
+        {
+            Pause(world, "trainer_smith_recovery_timeout");
+            return false;
+        }
+        _recovery = Recovery.AwaitIngots;
+        _deadline = Time.Ticks + 10000;
+        if (forge is Item dynamicForge)
+            world.TargetManager.Target(dynamicForge.Serial);
+        else
+            world.TargetManager.Target(forge.Graphic, forge.X, forge.Y, forge.Z);
+        return true;
+    }
+
+    private static void Pause(World world, string key)
+    {
+        Reset();
+        _timedOut = true;
+        Warn(world, key);
     }
 
     internal static bool IsRecipeLabel(string recipe, string label) =>

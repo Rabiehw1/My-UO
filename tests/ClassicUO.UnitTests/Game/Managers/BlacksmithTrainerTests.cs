@@ -34,6 +34,15 @@ public class BlacksmithTrainerTests
     public void UsesOnlyAppropriateMetal(int skill, int difficulty, bool expected) =>
         Assert.Equal(expected, BlacksmithTrainer.Eligible(skill, difficulty));
 
+    [Theory]
+    [InlineData("Breastplate", 0x1415, true)]
+    [InlineData("Breastplate", 0x1416, true)]
+    [InlineData("Breastplate", 0x1C04, false)]
+    [InlineData("Platemail Legs", 0x141A, true)]
+    [InlineData("Plate Helm", 0x1413, false)]
+    public void RecoveryMatchesTheCraftedRecipe(string recipe, int graphic, bool expected) =>
+        Assert.Equal(expected, BlacksmithTrainer.IsPlate(recipe, (ushort)graphic, 0));
+
     [Fact]
     public void RegularBreastplateNeverMatchesFemaleBreastplate() =>
         Assert.False(BlacksmithTrainer.IsRecipeLabel("Breastplate", "female breastplate"));
