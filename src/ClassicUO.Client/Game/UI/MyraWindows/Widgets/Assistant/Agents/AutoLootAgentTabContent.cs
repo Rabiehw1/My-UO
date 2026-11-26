@@ -118,13 +118,6 @@ public static class AutoLootAgentTabContent
         carvedBagRow.Widgets.Add(setCarvedBag);
         carvedBagRow.Widgets.Add(clearCarvedBag);
 
-        var carvedGraphicsBox = new MyraInputBox
-        {
-            Text = profile.AutoSkinningCarvedGraphics, MinWidth = 120, Tooltip = TazLang.Get("autoskinning_carved_tooltip")
-        };
-        carvedGraphicsBox.TextChangedByUser += (_, _) => profile.AutoSkinningCarvedGraphics = carvedGraphicsBox.Text;
-        string carvedGraphicsLabel = TazLang.Get("autoskinning_carved");
-
         string skinningTitle = TazLang.Get("autoskinning_title", "Auto Skinning");
         if (interaction.IsDesktop)
         {
@@ -132,8 +125,7 @@ public static class AutoLootAgentTabContent
                 showProgress, hueCorpse,
                 DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(retryLabel, retrySpinner)), disableRetry);
             var skinning = DesktopAssistantTheme.Group(skinningTitle, enableSkinning, skinHumans, targetKnife,
-                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(skinGraphicsLabel, skinGraphicsBox),
-                    new DesktopAssistantForm.Field(carvedGraphicsLabel, carvedGraphicsBox)),
+                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(skinGraphicsLabel, skinGraphicsBox)),
                 carvedBagRow);
             desktopOptions = new DesktopAssistantForm.SectionPair(corpseOptions, skinning);
         }
@@ -150,7 +142,7 @@ public static class AutoLootAgentTabContent
             skinChecks.Widgets.Add(skinHumans);
             skinChecks.Widgets.Add(targetKnife);
             root.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = skinningTitle },
-                skinChecks, GameFieldRow(skinGraphicsLabel, skinGraphicsBox), GameFieldRow(carvedGraphicsLabel, carvedGraphicsBox),
+                skinChecks, GameFieldRow(skinGraphicsLabel, skinGraphicsBox),
                 carvedBagRow));
         }
 

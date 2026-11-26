@@ -33,13 +33,14 @@ public sealed class AutoSkinningManager
 
     private string _cachedRaw;
     private readonly List<ushort> _cachedGraphics = new();
-    private string _cachedCarvedRaw;
-    private readonly List<ushort> _cachedCarvedGraphics = new();
-
-    // How long after using the knife new carved items in the backpack are moved to the carved items bag.
-    private const uint CARVE_WATCH_MS = 4000;
+    // How long after the latest carve new items in the backpack are treated as carved. Each carve restarts it.
+    private const uint CARVE_WATCH_MS = 3000;
+    private const ushort GOLD_GRAPHIC = 0x0EED;
     private uint _watchCarvedUntil;
-    private readonly HashSet<uint> _movedCarved = new();
+
+    // Backpack piles and their amounts at the latest carve: a pile counts as carved only if it grew since.
+    private readonly Dictionary<uint, ushort> _backpackAmounts = new();
+    private readonly HashSet<uint> _queuedCarved = new();
 
     private AutoSkinningManager() { }
 
@@ -48,15 +49,15 @@ public sealed class AutoSkinningManager
     public void OnSceneLoad()
     {
         EventSink.OnOpenContainer += OnOpenContainer;
-        EventSink.OnItemCreatedInternal += OnItemChanged;
-        EventSink.OnItemUpdatedInternal += OnItemChanged;
+        EventSink.OnItemCreatedInternal += OnItemCreated;
+        EventSink.OnItemUpdatedInternal += OnItemUpdated;
     }
 
     public void OnSceneUnload()
     {
         EventSink.OnOpenContainer -= OnOpenContainer;
-        EventSink.OnItemCreatedInternal -= OnItemChanged;
-        EventSink.OnItemUpdatedInternal -= OnItemChanged;
+        EventSink.OnItemCreatedInternal -= OnItemCreated;
+        EventSink.OnItemUpdatedInternal -= OnItemUpdated;
         _skinnedCorpses.Clear();
         _skinnedOrder.Clear();
         Instance = null;
@@ -122,31 +123,67 @@ public sealed class AutoSkinningManager
                                                                               // ignoreQueue: this is already running inside the action queue, don't re-enqueue.
                                                                               GameActions.DoubleClick(world, knifeSerial, false, true);
 
-                                                                              // Carved items that land in the backpack shortly after this go to the carved items bag.
-                                                                              _watchCarvedUntil = Time.Ticks + CARVE_WATCH_MS;
-                                                                              _movedCarved.Clear();
+                                                                              StartCarveWatch(world);
                                                                           }), ActionPriority.UseItem);
 
     /// <summary>
-    /// Moves a carved item that just appeared in (or stacked onto a pile in) the backpack into the carved items bag.
-    /// Only inside the short window after a carve, and only for the carved graphic list, so loot and anything else
-    /// arriving in the backpack stays put.
+    /// Opens (or, for back-to-back carves, extends) the window in which carved items are moved, and records the
+    /// backpack as it is now so later growth can be told apart from things that were already there.
     /// </summary>
-    private void OnItemChanged(object sender, EventArgs e)
+    private void StartCarveWatch(World world)
     {
-        if (sender is not Item item || Time.Ticks > _watchCarvedUntil)
+        if ((ProfileManager.CurrentProfile?.AutoSkinningBagSerial ?? 0) == 0 || world.Player?.Backpack is not { } backpack)
+            return;
+
+        // A fresh window starts clean; an open one keeps what it already queued.
+        if (Time.Ticks > _watchCarvedUntil)
+        {
+            _backpackAmounts.Clear();
+            _queuedCarved.Clear();
+        }
+
+        for (LinkedObject node = backpack.Items; node != null; node = node.Next)
+        {
+            if (node is Item item && !_queuedCarved.Contains(item.Serial))
+                _backpackAmounts[item.Serial] = item.Amount;
+        }
+
+        _watchCarvedUntil = Time.Ticks + CARVE_WATCH_MS;
+    }
+
+    private void OnItemCreated(object sender, EventArgs e) => ConsiderCarved(sender as Item, created: true);
+
+    private void OnItemUpdated(object sender, EventArgs e) => ConsiderCarved(sender as Item, created: false);
+
+    /// <summary>
+    /// Queues a move to the carved items bag for a backpack item that a carve produced: one the shard just created
+    /// there, or a pile that grew. Items that moved in from elsewhere (loot), piles that shrank, and gold stay put.
+    /// </summary>
+    private void ConsiderCarved(Item item, bool created)
+    {
+        if (item == null || Time.Ticks > _watchCarvedUntil || item.Graphic == GOLD_GRAPHIC)
             return;
 
         uint bag = ProfileManager.CurrentProfile?.AutoSkinningBagSerial ?? 0;
         World world = World.Instance;
-        Item backpack = world?.Player?.Backpack;
-        if (bag == 0 || backpack == null || item.Container != backpack.Serial || world.Items.Get(bag) == null)
+        if (bag == 0 || world?.Player?.Backpack is not { } backpack || item.Container != backpack.Serial || world.Items.Get(bag) == null)
             return;
 
-        if (!GetCarvedGraphics().Contains(item.Graphic) || !_movedCarved.Add(item.Serial))
+        bool grew = _backpackAmounts.TryGetValue(item.Serial, out ushort before) && item.Amount > before;
+        if (!(created && !_backpackAmounts.ContainsKey(item.Serial) || grew) || !_queuedCarved.Add(item.Serial))
             return;
 
-        ObjectActionQueue.Instance.Enqueue(new MoveRequest(item.Serial, bag, item.Amount).ToObjectActionQueueItem(), ActionPriority.MoveItem);
+        uint serial = item.Serial;
+        ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
+        {
+            // Read the pile when the move runs, so hides added by a later carve go along too.
+            if (World.Instance?.Items.Get(serial) is { } current && current.Container == backpack.Serial)
+                new MoveRequest(serial, bag, current.Amount).Execute();
+        })
+        {
+            Serial = serial,
+            TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
+        }, ActionPriority.MoveItem);
     }
 
     private bool MarkSkinned(uint serial)
@@ -164,9 +201,6 @@ public sealed class AutoSkinningManager
 
     private List<ushort> GetKnifeGraphics() =>
         ParseGraphics(ProfileManager.CurrentProfile?.AutoSkinningKnifeGraphics, ref _cachedRaw, _cachedGraphics);
-
-    private List<ushort> GetCarvedGraphics() =>
-        ParseGraphics(ProfileManager.CurrentProfile?.AutoSkinningCarvedGraphics, ref _cachedCarvedRaw, _cachedCarvedGraphics);
 
     /// <summary>Parses a ';'-separated graphic list, reusing the last result while the text is unchanged.</summary>
     private static List<ushort> ParseGraphics(string raw, ref string cachedRaw, List<ushort> cached)

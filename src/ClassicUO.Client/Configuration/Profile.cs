@@ -803,8 +803,6 @@ namespace ClassicUO.Configuration
         public string AutoSkinningKnifeGraphics { get; set => SetProperty(ref field, value); }
         /// <summary>Bag that carved items are moved into from the backpack; 0 leaves them in the backpack.</summary>
         public uint AutoSkinningBagSerial { get; set => SetProperty(ref field, value); }
-        /// <summary>Graphic IDs counted as carved items (hides, meat, feathers, wool, scales), ';'-separated.</summary>
-        public string AutoSkinningCarvedGraphics { get; set => SetProperty(ref field, value); } = "0x1078;0x1079;0x09F1;0x1BD1;0x0DF8;0x26B4";
         public bool ItemDatabaseEnabled { get; set => SetProperty(ref field, value); } = true;
         public static uint GumpsVersion { get; private set; }
 
