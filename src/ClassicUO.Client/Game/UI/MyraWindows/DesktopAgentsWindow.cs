@@ -353,7 +353,7 @@ internal sealed class DesktopAgentsWindow
         Widget page = _profile != null ? _pages[index].Build(_interaction)
             : _pages[index].Name == GeneralTab.Title ? LauncherTabContent.Build(_interaction)
             : new MyraLabel(TazLang.Get("assistant_agents_sign_in", "Log in to a character to edit agent settings."), MyraLabel.TextStyle.P);
-        bool fullHeight = _profile != null && (isAutoLoot || _pages[index].Name == HotkeysMacrosTabContent.Title ||
+        bool fullHeight = _profile != null && (isAutoLoot || _pages[index].Name == TrainerTabContent.Title || _pages[index].Name == HotkeysMacrosTabContent.Title ||
             _pages[index].Name == ShoppingAssistantTabContent.Title || _pages[index].Name == DressAgentTabContent.Title);
         _content.Visible = !fullHeight;
         _content.Content = fullHeight ? null : page;

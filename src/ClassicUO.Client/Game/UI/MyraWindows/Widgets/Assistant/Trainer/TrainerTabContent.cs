@@ -1,6 +1,8 @@
 #nullable enable
 
 using System.Collections.Generic;
+using System.Linq;
+using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Trainer;
@@ -27,36 +29,94 @@ internal static class TrainerTabContent
     /// <returns>The page.</returns>
     public static Widget Build(AgentPageInteraction interaction)
     {
-        var root = new VerticalStackPanel { Spacing = 10 };
         if (ProfileManager.CurrentProfile is not { } profile)
+            return Text("trainer_connect");
+
+        var root = new MyraGrid { RowSpacing = 8 };
+        root.AddColumn(new Proportion(ProportionType.Fill));
+        root.AddRow();
+        root.AddRow(new Proportion(ProportionType.Fill));
+        var controlsHost = new VerticalStackPanel();
+        void RefreshControls()
         {
-            root.Widgets.Add(Text("trainer_connect"));
-            return root;
+            controlsHost.Widgets.Clear();
+            controlsHost.Widgets.Add(BuildControls(profile));
         }
 
-        root.Widgets.Add(Text("trainer_help"));
-        root.Widgets.Add(BuildControls(profile));
-
-        foreach (TrainerClass trainerClass in System.Enum.GetValues<TrainerClass>())
+        root.AddWidget(controlsHost, 0, 0);
+        RefreshControls();
+        var details = new VerticalStackPanel { Spacing = 8 };
+        var order = Text("trainer_order_empty");
+        var picker = new ListView();
+        var classes = System.Enum.GetValues<TrainerClass>();
+        foreach (TrainerClass group in classes)
         {
-            var rows = new List<Widget>();
-            foreach (TrainerSkill skill in TrainerCatalog.Skills)
-                if (skill.Class == trainerClass)
-                    rows.Add(BuildSkillRow(profile, skill, interaction));
-
-            if (rows.Count > 0)
-                root.Widgets.Add(DesktopAssistantTheme.Group(
-                    TazLang.Get("trainer_class_" + trainerClass.ToString().ToLowerInvariant()),
-                    rows.ToArray()
-                ));
+            var row = new MyraGrid { ColumnSpacing = 6, MinHeight = 28 };
+            row.AddColumn(new Proportion(ProportionType.Pixels, 22));
+            row.AddColumn(new Proportion(ProportionType.Fill));
+            row.AddColumn();
+            row.AddWidget(new MyraArtTexture(ClassGraphic(group), maxSize: 20)
+                { VerticalAlignment = VerticalAlignment.Center }, 0, 0);
+            row.AddWidget(MyraGrid.TableText(ClassName(group)), 0, 1);
+            row.AddWidget(MyraGrid.TableText(TrainerCatalog.Skills.Count(s => s.Class == group).ToString()), 0, 2);
+            picker.Widgets.Add(row);
         }
 
+        void RefreshOrder()
+        {
+            var names = profile.Trainer.Selected.Select(TrainerCatalog.Find).OfType<TrainerSkill>()
+                .Select((skill, i) => $"{i + 1}. {skill.Name}");
+            order.Text = profile.Trainer.Selected.Count == 0 ? TazLang.Get("trainer_order_empty") : string.Join("     ", names);
+        }
+
+        void ShowClass()
+        {
+            if (picker.SelectedIndex is not int index)
+                return;
+            _selectedClass = classes[index];
+            details.Widgets.Clear();
+            var table = new MyraGrid();
+            table.SetupWithHeaders(GridColumnInfo.Auto(TazLang.Get("trainer_column_skill")),
+                GridColumnInfo.Fill(TazLang.Get("trainer_column_use")), GridColumnInfo.Auto(TazLang.Get("trainer_column_target")));
+            int row = 1;
+            foreach (TrainerSkill skill in TrainerCatalog.Skills.Where(s => s.Class == _selectedClass))
+                AddSkillRow(table, row++, profile, skill, interaction, () => { RefreshOrder(); RefreshControls(); });
+            details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_class_skills", [ClassName(_selectedClass)]), table));
+            order = Text("trainer_order_empty");
+            RefreshOrder();
+            details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_order"), order, Text("trainer_order_help")));
+        }
+
+        var layout = new DesktopAssistantForm.FixedSidebarLayout(details, DesktopAssistantForm.ListSidebarWidth) { ColumnSpacing = 10 };
+        layout.AddColumn(new Proportion(ProportionType.Pixels, DesktopAssistantForm.ListSidebarWidth));
+        layout.AddColumn(new Proportion(ProportionType.Fill));
+        layout.AddRow(new Proportion(ProportionType.Fill));
+        layout.AddWidget(DesktopAssistantForm.ListSidebar(TazLang.Get("trainer_classes"), picker, []), 0, 0);
+        layout.AddWidget(new ScrollViewer { Content = details, ShowHorizontalScrollBar = false }, 0, 1);
+        root.AddWidget(layout, 1, 0);
+        picker.SelectedIndexChanged += (_, _) => ShowClass();
+        picker.SelectedIndex = System.Array.IndexOf(classes, _selectedClass);
         return root;
     }
 
     #endregion
 
     #region Private methods
+
+    private static TrainerClass _selectedClass;
+    private static string ClassName(TrainerClass group) => TazLang.Get("trainer_class_" + group.ToString().ToLowerInvariant());
+
+    // Native item art: sword, wand, lute, bow, key, hammer and sextant.
+    private static uint ClassGraphic(TrainerClass group) => group switch
+    {
+        TrainerClass.Warrior => 0xF61,
+        TrainerClass.Mage => 0xDF2,
+        TrainerClass.Bard => 0xEB3,
+        TrainerClass.Ranger => 0x13B2,
+        TrainerClass.Thief => 0x100E,
+        TrainerClass.Crafter => 0x13E3,
+        _ => 0x1057
+    };
 
     /// <summary>Start/stop, the shared wait and what is running.</summary>
     private static Widget BuildControls(Profile profile)
@@ -86,14 +146,15 @@ internal static class TrainerTabContent
             Tooltip = TazLang.Get("trainer_wait_tooltip")
         };
         // Saved with the profile on logout; a spinner tick is not a structural edit.
-        wait.ValueChangedByUser += (_, _) => profile.Trainer.WaitSeconds = (int)(wait.Value ?? TrainerManager.DEFAULT_WAIT_SECONDS);
+        wait.ValueChangedByUser += (_, _) =>
+        {
+            profile.Trainer.WaitSeconds = (int)(wait.Value ?? TrainerManager.DEFAULT_WAIT_SECONDS);
+            status.Text = StatusText(profile);
+        };
 
-        return DesktopAssistantTheme.Group(
-            TazLang.Get("trainer_controls"),
-            status,
-            DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("trainer_wait"), wait)),
-            DesktopAssistantForm.Actions(toggle)
-        );
+        toggle.Enabled = trainer.IsRunning || profile.Trainer.Selected.Count > 0;
+        return DesktopAssistantTheme.Group(TazLang.Get("trainer_controls"),
+            DesktopAssistantForm.Actions(status, Text("trainer_wait"), wait, toggle));
     }
 
     private static string StatusText(Profile profile)
@@ -106,27 +167,25 @@ internal static class TrainerTabContent
     }
 
     /// <summary>One skill: tick box, what it does, and the picked target with a pick button when it needs one.</summary>
-    private static Widget BuildSkillRow(Profile profile, TrainerSkill skill, AgentPageInteraction interaction)
+    private static void AddSkillRow(MyraGrid table, int row, Profile profile, TrainerSkill skill, AgentPageInteraction interaction, System.Action changed)
     {
         TrainerSettings settings = profile.Trainer;
-        var row = new VerticalStackPanel { Spacing = 2 };
-        row.Widgets.Add(MyraCheckButton.CreateWithCallback(
+        table.AddWidget(MyraCheckButton.CreateWithCallback(
             settings.Selected.Contains(skill.Id),
-            ticked => SetSelected(profile, skill, ticked),
+            ticked => { SetSelected(profile, skill, ticked); changed(); },
             skill.Name,
             TazLang.Get($"trainer_skill_{skill.Id}_help")
-        ));
+        ), row, 0);
 
-        var details = new HorizontalStackPanel { Spacing = 6 };
         var info = new MyraLabel(DetailsText(settings, skill), MyraLabel.TextStyle.P)
         {
             Wrap = true,
             VerticalAlignment = VerticalAlignment.Center
         };
-        details.Widgets.Add(info);
+        table.AddWidget(info, row, 1);
 
         if (skill.Target != TrainerTargetKind.None)
-            details.Widgets.Add(DesktopAssistantForm.Button(TazLang.Get("trainer_pick"), () =>
+            table.AddWidget(DesktopAssistantForm.Button(TazLang.Get(skill.Target == TrainerTargetKind.Item ? "trainer_choose_item" : "trainer_choose_creature"), () =>
                 interaction.SelectTarget(picked =>
                 {
                     if (!IsValidTarget(skill, picked, out Entity? entity))
@@ -135,10 +194,7 @@ internal static class TrainerTabContent
                     settings.Targets[skill.Id] = new TrainerTarget { Serial = entity!.Serial, Name = entity.Name ?? "" };
                     profile.Save();
                     info.Text = DetailsText(settings, skill);
-                })));
-
-        row.Widgets.Add(details);
-        return row;
+                })), row, 2);
     }
 
     private static bool IsValidTarget(TrainerSkill skill, object? picked, out Entity? entity)
