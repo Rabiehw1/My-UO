@@ -214,7 +214,9 @@ namespace ClassicUO.Game.Managers
                 return;
 
             Item item = World.Instance.Items.Get(serial);
-            byte layer = item?.ItemData.Layer ?? 0;
+
+            // The slot the shard says it's worn in beats the art's default slot, which custom shard items can get wrong.
+            byte layer = item == null ? (byte)0 : item.Layer != Layer.Invalid ? (byte)item.Layer : item.ItemData.Layer;
 
             config.Items.Add(new DressItem { Serial = serial, Name = name, Layer = layer });
             Save();
@@ -364,12 +366,11 @@ namespace ClassicUO.Game.Managers
                 foreach (DressItem dressItem in config.Items)
                 {
                     if (dressItem == null) continue;
-                    if(_forbiddenLayers.Contains((Layer)dressItem.Layer)) continue;
 
                     Item item = World.Instance.Items.Get(dressItem.Serial);
-                    if (item != null && item.Container == World.Instance.Player?.Serial)
+                    if (item != null && item.Container == World.Instance.Player?.Serial && !_forbiddenLayers.Contains(item.Layer))
                     {
-                        var layer = (Layer)dressItem.Layer;
+                        var layer = item.Layer;
                         if (!layersToUnequip.Contains(layer)) layersToUnequip.Add(layer);
                     }
                 }
@@ -392,10 +393,11 @@ namespace ClassicUO.Game.Managers
                 foreach (DressItem dressItem in config.Items)
                 {
                     if (dressItem == null) continue;
-                    if(_forbiddenLayers.Contains((Layer)dressItem.Layer)) continue;
 
+                    // Judge by the slot it's actually worn in, not the one saved with the set.
                     Item item = World.Instance.Items.Get(dressItem.Serial);
-                    if (item != null && item.Container == World.Instance.Player?.Serial) itemsToUnequip.Add(dressItem.Serial);
+                    if (item != null && item.Container == World.Instance.Player?.Serial && !_forbiddenLayers.Contains(item.Layer))
+                        itemsToUnequip.Add(dressItem.Serial);
                 }
 
                 foreach (uint serial in itemsToUnequip)
@@ -410,7 +412,7 @@ namespace ClassicUO.Game.Managers
 
             foreach (DressItem dressItem in config.Items)
             {
-                if (dressItem != null && !_forbiddenLayers.Contains((Layer)dressItem.Layer))
+                if (dressItem != null)
                     UnequipItemAsync(dressItem.Serial, config);
             }
         }
@@ -433,7 +435,7 @@ namespace ClassicUO.Game.Managers
         {
             Item item = World.Instance.Items.Get(serial);
 
-            if (item != null && item.Container == World.Instance.Player?.Serial)
+            if (item != null && item.Container == World.Instance.Player?.Serial && !_forbiddenLayers.Contains(item.Layer))
             {
                 uint undressBag = GetUndressBag(config);
                 ObjectActionQueue.Instance.Enqueue(new MoveRequest(item, undressBag).ToObjectActionQueueItem(), ActionPriority.UnequipItem);
