@@ -182,6 +182,28 @@ internal sealed class DesktopAssistantTheme
     private static readonly SolidBrush SecondaryAction = new(new Color(237, 243, 249));
     private static readonly SolidBrush SecondaryActionHover = new(new Color(222, 234, 246));
 
+    private static readonly SolidBrush RunningAction = new(new Color(36, 112, 70));
+    private static readonly SolidBrush RunningActionHover = new(new Color(28, 91, 56));
+
+    internal static MyraButton ActivityButton(string start, string stop, Func<bool> isRunning, Action? click = null)
+    {
+        var button = ActionButton(start, click, primary: true);
+        bool? previous = null;
+        void Refresh()
+        {
+            bool running = isRunning();
+            if (previous == running)
+                return;
+            previous = running;
+            button.Text = running ? "■  " + stop : "▶  " + start;
+            button.Background = button.Border = running ? RunningAction : PrimaryAction;
+            button.OverBackground = button.PressedBackground = running ? RunningActionHover : PrimaryActionHover;
+        }
+        Refresh();
+        button.BeforeRender += _ => Refresh();
+        return button;
+    }
+
     internal static void ApplyActionButtonStyle(MyraButton button, bool primary = false)
     {
         button.Background = primary ? PrimaryAction : SecondaryAction;

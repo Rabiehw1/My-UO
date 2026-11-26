@@ -14,19 +14,16 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
 
     private readonly MyraLabel _status = new("", MyraLabel.TextStyle.P) { Wrap = true };
     private readonly MyraButton _run;
-    private readonly MyraButton _stop;
 
     public ScriptExecutorTab()
     {
         Spacing = 8;
-        _run = DesktopAssistantTheme.ActionButton("Run sequence", () =>
+        _run = DesktopAssistantTheme.ActivityButton("Run sequence", "Stop sequence", () => ScriptSequence.IsRunning, () =>
         {
-            ScriptSequence.Start(Legion.GetSequence());
-            Refresh();
-        }, primary: true);
-        _stop = new MyraButton("Stop sequence", () =>
-        {
-            ScriptSequence.Stop();
+            if (ScriptSequence.IsRunning)
+                ScriptSequence.Stop();
+            else
+                ScriptSequence.Start(Legion.GetSequence());
             Refresh();
         });
 
@@ -63,8 +60,7 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
     internal void Refresh()
     {
         _status.Text = ScriptSequence.Status;
-        _run.Enabled = !ScriptSequence.IsRunning && Legion.GetSequence().Count > 0;
-        _stop.Enabled = ScriptSequence.IsRunning;
+        _run.Enabled = ScriptSequence.IsRunning || Legion.GetSequence().Count > 0;
     }
 
     private void Build()
@@ -120,7 +116,6 @@ internal sealed class ScriptExecutorTab : VerticalStackPanel
         actions.Widgets.Add(remove);
 
         runControls.Widgets.Add(_run);
-        runControls.Widgets.Add(_stop);
         Widgets.Add(DesktopAssistantTheme.Group("Sequence",
             new MyraLabel($"Runs top to bottom. Each step must finish successfully within {ScriptSequence.StepTimeoutSeconds} seconds.", MyraLabel.TextStyle.P) { Wrap = true },
             toolbar, queue, actions, runControls, _status));

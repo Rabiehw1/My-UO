@@ -68,11 +68,7 @@ internal static partial class HealingAssistantTabContent
         first.ListView.SelectedIndex = (int)profile.HealingAssistantFirstMethod;
         first.Tooltip = TazLang.Get("healingassistant_planner_order_tip");
         var controls = DesktopAssistantForm.Actions(
-            MyraCheckButton.CreateWithCallback(profile.EnableHealingAssistant, value =>
-            {
-                profile.EnableHealingAssistant = value;
-                root.RefreshStatus(force: true);
-            }, TazLang.Get("healingassistant_enable")),
+            BuildActivityButton(profile, () => root.RefreshStatus(force: true)),
             HotkeysTabContent.HotkeyButton(interaction, HotKeyRegistrar.HealingAssistantToggleId,
                 TazLang.Get("healingassistant_hotkey_tooltip")),
             new MyraLabel(TazLang.Get("healingassistant_highest_range"), MyraLabel.TextStyle.P) { Tooltip = first.Tooltip },

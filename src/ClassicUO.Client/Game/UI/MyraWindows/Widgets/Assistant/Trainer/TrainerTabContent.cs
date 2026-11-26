@@ -123,8 +123,8 @@ internal static class TrainerTabContent
     {
         TrainerManager trainer = TrainerManager.Instance;
         var status = new MyraLabel(StatusText(profile), MyraLabel.TextStyle.P) { Wrap = true };
-        var toggle = DesktopAssistantForm.Button(
-            TazLang.Get(trainer.IsRunning ? "trainer_stop" : "trainer_start"),
+        var toggle = DesktopAssistantTheme.ActivityButton(
+            TazLang.Get("trainer_start"), TazLang.Get("trainer_stop"), () => trainer.IsRunning,
             () =>
             {
                 if (trainer.IsRunning)
@@ -132,9 +132,7 @@ internal static class TrainerTabContent
                 else
                     trainer.Start();
                 DesktopAgentsWindow.RequestRefresh();
-            },
-            primary: !trainer.IsRunning
-        );
+            });
 
         var wait = new SpinButton
         {

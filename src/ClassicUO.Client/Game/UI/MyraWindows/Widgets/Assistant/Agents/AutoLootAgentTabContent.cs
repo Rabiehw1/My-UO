@@ -214,13 +214,20 @@ public static class AutoLootAgentTabContent
                 controls.HorizontalAlignment = HorizontalAlignment.Right;
                 controls.Widgets.Add(HotkeysTabContent.HotkeyButton(interaction, HotKeyRegistrar.AutoLootToggleId,
                     TazLang.Get("autoloot_hotkey_tooltip")));
-                if (loot.IsEnabled)
-                    controls.Widgets.Add(stop);
-                if (!running)
-                {
-                    DesktopAssistantTheme.ApplyActionButtonStyle(start, primary: true);
-                    controls.Widgets.Add(start);
-                }
+                // Keep a way to stop another active preset while browsing this one.
+                var stopOther = DesktopAssistantTheme.ActivityButton(start.Text, stop.Text,
+                    () => loot.IsEnabled, () => stop.OnClick?.Invoke());
+                stopOther.Visible = loot.IsEnabled && !running;
+                controls.BeforeRender += _ => stopOther.Visible = loot.IsEnabled && !IsRunning(preset);
+                controls.Widgets.Add(stopOther);
+                controls.Widgets.Add(DesktopAssistantTheme.ActivityButton(start.Text, stop.Text,
+                    () => IsRunning(preset), () =>
+                    {
+                        if (IsRunning(preset))
+                            stop.OnClick?.Invoke();
+                        else
+                            start.OnClick?.Invoke();
+                    }));
                 var header = new MyraGrid { ColumnSpacing = 8 };
                 header.AddColumn(new Proportion(ProportionType.Fill));
                 header.AddColumn();

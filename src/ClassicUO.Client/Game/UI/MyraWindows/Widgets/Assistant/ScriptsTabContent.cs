@@ -102,11 +102,13 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
         foreach (var (script, stopping) in running)
         {
             var row = new HorizontalStackPanel { Spacing = 5 };
-            row.Widgets.Add(new MyraButton(stopping ? "Stopping…" : "Stop", () =>
+            var stop = DesktopAssistantTheme.ActivityButton("Run", stopping ? "Stopping…" : "Stop", () => script.IsPlaying, () =>
             {
                 Legion.StopScript(script);
                 RefreshRunning();
-            }) { Enabled = !stopping });
+            });
+            stop.Enabled = !stopping;
+            row.Widgets.Add(stop);
             row.Widgets.Add(new MyraLabel(script.FileName, MyraLabel.TextStyle.P) { Tooltip = script.RelativePath });
             _active.Widgets.Add(row);
         }
@@ -153,14 +155,14 @@ internal sealed class ScriptLibraryTab : VerticalStackPanel
         }
 
         var actions = new HorizontalStackPanel { Spacing = 4 };
-        actions.Widgets.Add(DesktopAssistantTheme.ActionButton(script.IsPlaying ? "Stop script" : "Run script", () =>
+        actions.Widgets.Add(DesktopAssistantTheme.ActivityButton("Run script", "Stop script", () => script.IsPlaying, () =>
         {
             if (script.IsPlaying)
                 Legion.StopScript(script);
             else
                 Legion.PlayScript(script);
             RefreshRunning();
-        }, primary: !script.IsPlaying));
+        }));
 
         bool autorun = Legion.AutoRunPath == script.RelativePath;
         actions.Widgets.Add(new MyraButton(autorun ? "Clear Autorun" : "Set as Autorun", () =>

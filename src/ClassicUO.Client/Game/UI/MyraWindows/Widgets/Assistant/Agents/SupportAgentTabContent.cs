@@ -54,20 +54,25 @@ internal static class SupportAgentTabContent
         MyraLabel? petState = null;
         var classPanel = new VerticalStackPanel { Spacing = 6 };
         var title = Row();
-        var toggle = Button(interaction, "", primary: true);
+        var toggle = interaction.IsDesktop
+            ? DesktopAssistantTheme.ActivityButton(TazLang.Get("supportagent_start"), TazLang.Get("supportagent_stop"),
+                () => settings.Enabled)
+            : Button(interaction, "", primary: true);
         var root = new Overview(UpdateStatus) { Spacing = 8 };
-        toggle.OnClick = () =>
+        toggle.OnClick = Toggle;
+        void Toggle()
         {
             settings.Enabled = !settings.Enabled;
             settings.Save();
             UpdateStatus();
-        };
+        }
         title.Widgets.Add(new MyraLabel(TazLang.Get("supportagent_title"), MyraLabel.TextStyle.H2));
         title.Widgets.Add(toggle);
 
         void UpdateStatus()
         {
-            toggle.Text = TazLang.Get(settings.Enabled ? "supportagent_stop" : "supportagent_start");
+            if (!interaction.IsDesktop)
+                toggle.Text = TazLang.Get(settings.Enabled ? "supportagent_stop" : "supportagent_start");
             status.Text = manager.OverviewStatus();
             if (petState != null)
                 petState.Text = PetText(manager, settings);

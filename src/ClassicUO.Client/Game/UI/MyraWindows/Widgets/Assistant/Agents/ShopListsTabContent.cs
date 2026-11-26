@@ -87,10 +87,9 @@ internal static class ShopListsTabContent
         if (preset == null)
             return details;
 
-        bool active = ctx.Group.ActiveId == preset.Id;
-        details.Widgets.Add(BuildHeader(ctx, preset, active, refresh));
+        details.Widgets.Add(BuildHeader(ctx, preset, refresh));
 
-        if (!active)
+        if (ctx.Group.ActiveId != preset.Id)
             details.Widgets.Add(new MyraLabel(TazLang.Get(ctx.Buying ? "shoplists_inactive_buy" : "shoplists_inactive_sell"), MyraLabel.TextStyle.P)
             {
                 Wrap = true, TextColor = DesktopAssistantTheme.SecondaryText
@@ -113,21 +112,20 @@ internal static class ShopListsTabContent
     }
 
     /// <summary>Name on the left; one button on the right that makes this the active list or stops using it.</summary>
-    private static Widget BuildHeader(Context ctx, ShopListPreset preset, bool active, Action<ShopListPreset?> refresh)
+    private static Widget BuildHeader(Context ctx, ShopListPreset preset, Action<ShopListPreset?> refresh)
     {
         var title = MyraGrid.TableText(preset.Name);
         title.Font = DesktopAssistantTheme.Font(1, bold: true);
         title.VerticalAlignment = VerticalAlignment.Center;
 
-        MyraButton toggle = DesktopAssistantTheme.ActionButton(
-            TazLang.Get(active ? "shoplists_stop_using" : "shoplists_use"),
+        MyraButton toggle = DesktopAssistantTheme.ActivityButton(
+            TazLang.Get("shoplists_use"), TazLang.Get("shoplists_stop_using"), () => ctx.Group.ActiveId == preset.Id,
             () =>
             {
-                ctx.Group.ActiveId = active ? null : preset.Id;
+                ctx.Group.ActiveId = ctx.Group.ActiveId == preset.Id ? null : preset.Id;
                 ctx.File.Save();
                 refresh(preset);
-            },
-            primary: !active);
+            });
         toggle.Tooltip = TazLang.Get("shoplists_use_tooltip");
 
         var header = new MyraGrid { ColumnSpacing = 8 };

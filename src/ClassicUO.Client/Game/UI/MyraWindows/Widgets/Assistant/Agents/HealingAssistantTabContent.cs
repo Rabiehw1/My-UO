@@ -5,6 +5,7 @@ using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Utility;
+using ClassicUO.Game.UI.MyraWindows.Theme;
 using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
@@ -12,6 +13,14 @@ namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 internal static partial class HealingAssistantTabContent
 {
     private sealed record MethodSetting(string Name, string ToggleLabel, Action<bool> SetEnabled);
+
+    private static MyraButton BuildActivityButton(Profile profile, Action? onChanged = null) =>
+        DesktopAssistantTheme.ActivityButton(TazLang.Get("healingassistant_start"), TazLang.Get("healingassistant_stop"),
+            () => profile.EnableHealingAssistant, () =>
+            {
+                profile.EnableHealingAssistant = !profile.EnableHealingAssistant;
+                onChanged?.Invoke();
+            });
 
     public static Widget Build(AgentPageInteraction interaction)
     {
@@ -44,10 +53,7 @@ internal static partial class HealingAssistantTabContent
         var sliders = new LabeledHorizontalSlider[methods.Length];
         var ranges = new MyraLabel[methods.Length];
 
-        root.Widgets.Add(MyraCheckButton.CreateWithCallback(
-            profile.EnableHealingAssistant,
-            value => profile.EnableHealingAssistant = value,
-            TazLang.Get("healingassistant_enable", "Enable Healing Assistant")));
+        root.Widgets.Add(BuildActivityButton(profile));
         var firstMethod = new ComboView
         {
             MinWidth = 160,
