@@ -1,5 +1,6 @@
 using ClassicUO.Game;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Support;
 using ClassicUO.IO;
 
 namespace ClassicUO.Network.PacketHandlers;
@@ -14,14 +15,18 @@ internal static class TargetCursor
 
         world.TargetManager.SetTargeting(cursorTarget, cursorId, targetType);
 
-        if (world.Party.PartyHealTimer < Time.Ticks && world.Party.PartyHealTarget != 0)
+        bool partyTarget = world.Party.PartyHealTimer < Time.Ticks && world.Party.PartyHealTarget != 0;
+        bool autoTarget = TargetManager.NextAutoTarget.IsSet;
+        if (partyTarget)
         {
             world.TargetManager.Target(world.Party.PartyHealTarget);
             world.Party.PartyHealTimer = 0;
             world.Party.PartyHealTarget = 0;
         }
-        else if (TargetManager.NextAutoTarget.IsSet && TargetManager.NextAutoTarget.Matches(targetType))
+        else if (autoTarget && TargetManager.NextAutoTarget.Matches(targetType))
             world.TargetManager.Target(TargetManager.NextAutoTarget.TargetSerial);
+
+        SupportAgentManager.Instance.OnPetOrderCursor(cursorTarget, targetType, partyTarget || autoTarget);
 
         // Always clear after any target cursor (no queuing)
         TargetManager.NextAutoTarget.Clear();

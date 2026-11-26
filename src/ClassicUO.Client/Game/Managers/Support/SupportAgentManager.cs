@@ -57,6 +57,7 @@ internal sealed class SupportAgentManager : IDisposable
     private readonly SupportAbilityRunner _runner;
     private readonly SupportStatus _status;
     private readonly List<Mobile> _group = new();
+    private readonly RangerPetOrder _petOrder = new();
 
     private SupportAgentSave? _settings;
     private long _nextTick;
@@ -147,6 +148,79 @@ internal sealed class SupportAgentManager : IDisposable
         _healRequested = _blessRequested = _followRequested = false;
     }
 
+    public void SetClass(SupportClass supportClass)
+    {
+        Settings.Class = supportClass;
+        _runner.Reset();
+        _healRequested = _blessRequested = false;
+        _petOrder.Cancel();
+    }
+
+    internal Mobile? RangerPet => Settings.RangerPetSerial != 0
+        && _world.Mobiles.Get(Settings.RangerPetSerial) is { IsRenamable: true, IsDestroyed: false, IsDead: false } pet
+        ? pet : null;
+
+    internal bool SetRangerPet(Mobile pet)
+    {
+        if (!pet.IsRenamable || pet.IsDestroyed || pet.IsDead || string.IsNullOrWhiteSpace(pet.Name))
+            return false;
+
+        Settings.RangerPetSerial = pet.Serial;
+        Settings.RangerPetName = pet.Name;
+        Settings.Save();
+        _petOrder.Cancel();
+        return true;
+    }
+
+    internal string OverviewStatus()
+    {
+        SupportAgentSave settings = Settings;
+        if (!_world.InGame || _world.Player == null)
+            return TazLang.Get("supportagent_overview_offline");
+        if (_world.Player.IsDead)
+            return TazLang.Get("supportagent_overview_dead");
+        if (settings.Enabled && _retreating)
+            return TazLang.Get("supportagent_overview_retreat");
+        if (settings.LeaderSerial != 0 && _world.Mobiles.Get(settings.LeaderSerial) is not { IsDestroyed: false, IsDead: false })
+            return TazLang.Get("supportagent_overview_leader_away");
+
+        foreach (SupportAbility ability in settings.GetClassSettings(settings.Class).Abilities)
+        {
+            if (ability.Enabled && ability.Action == SupportActionType.CastShardSpell
+                && ShardSpellCatalog.GetSpell(ability.ShardBook, ability.SpellId) != null
+                && ShardSpellCaster.Instance.GetBookSerial(ability.ShardBook) == 0)
+                return TazLang.Get("supportagent_overview_book", [ShardSpellCatalog.Get(ability.ShardBook).Name]);
+        }
+
+        if (settings.Class == SupportClass.Ranger && settings.RangerPetEnabled && RangerPet == null)
+            return TazLang.Get("supportagent_overview_pet");
+        if (settings.Enabled && (Time.Ticks < _castUntil || _runner.IsWaiting))
+            return TazLang.Get("supportagent_overview_ability");
+        if (settings.Enabled && _currentEnemy != 0 && _world.Mobiles.Get(_currentEnemy) is { IsDead: false, IsDestroyed: false } enemy)
+            return TazLang.Get("supportagent_status_attacking", [MobileName(enemy)]);
+        if (settings.Enabled && settings.ActiveFollow.Enabled && settings.LeaderSerial != 0 && _world.Player.Pathfinder.AutoWalking)
+            return TazLang.Get("supportagent_overview_following", [settings.LeaderName]);
+        if (settings.LeaderSerial == 0)
+            return TazLang.Get(settings.Enabled ? "supportagent_overview_running_no_leader" : "supportagent_overview_no_leader");
+
+        return TazLang.Get(settings.Enabled ? "supportagent_overview_running" : "supportagent_overview_ready");
+    }
+
+    internal void OnPetOrderCursor(CursorTarget cursor, TargetType targetType, bool claimed)
+    {
+        if (!_petOrder.TakeCursor(Time.Ticks) || claimed || cursor is not (CursorTarget.Object or CursorTarget.Position)
+            || targetType is not (TargetType.Harmful or TargetType.Neutral)
+            || _settings is not { Enabled: true, Class: SupportClass.Ranger, RangerPetEnabled: true } settings
+            || _retreating || _followRequested || Time.Ticks < _followOverrideUntil
+            || !settings.ActiveCombat.Enabled || _currentEnemy != _petOrder.Enemy
+            || _world.Player is not { IsDead: false } player || RangerPet?.Serial != _petOrder.Pet
+            || _world.Mobiles.Get(_petOrder.Enemy) is not { } enemy
+            || !IsValidEnemy(enemy, player, settings.LeaderSerial, settings.ActiveCombat))
+            return;
+
+        _world.TargetManager.Target(enemy.Serial);
+    }
+
     /// <summary>Saves settings and detaches from game events; called when the game scene unloads.</summary>
     public void Dispose()
     {
@@ -167,23 +241,27 @@ internal sealed class SupportAgentManager : IDisposable
         if (leader is { IsDestroyed: true })
             leader = null;
 
+        bool canAttack = SupportClassPresets.CanAttack(settings.Class);
+        if (!canAttack)
+            SetWarMode(player, false);
+
         if (HandleEmergency(player, settings, classSettings, leader, now))
             return;
 
         // Mid-cast: hold still so the song or spell isn't interrupted. Commands wait for the next tick.
-        if (now < _castUntil)
+        if (now < _castUntil || _runner.IsWaiting)
             return;
 
         if (HandleCommands(player, settings, classSettings, leader, now))
             return;
 
-        BuildGroup(player, leader, settings);
-
-        if (TryCure(player, settings, classSettings, leader, now) || TryHeal(player, settings, classSettings, leader, now, null))
-            return;
-
-        if (TryBuff(player, classSettings, leader, now))
-            return;
+        if (classSettings.Abilities.Count > 0)
+        {
+            BuildGroup(player, leader, settings);
+            if (TryCure(player, settings, classSettings, leader, now) || TryHeal(player, settings, classSettings, leader, now, null)
+                || TryBuff(player, classSettings, leader, now))
+                return;
+        }
 
         // With a leader set but out of sight, wait for them rather than wander off fighting.
         if (settings.LeaderSerial != 0 && leader == null)
@@ -194,7 +272,7 @@ internal sealed class SupportAgentManager : IDisposable
             return;
         }
 
-        if (leader != null && (now < _followOverrideUntil || leader.Distance > settings.Follow.MaxLeaderDistance))
+        if (leader != null && (now < _followOverrideUntil || leader.Distance > settings.ActiveFollow.MaxLeaderDistance))
         {
             _currentEnemy = 0;
             SetWarMode(player, false);
@@ -202,7 +280,7 @@ internal sealed class SupportAgentManager : IDisposable
             return;
         }
 
-        if (settings.Combat.Enabled && Fight(player, settings, leader, now))
+        if (canAttack && settings.ActiveCombat.Enabled && Fight(player, settings, now))
             return;
 
         _currentEnemy = 0;
@@ -246,7 +324,7 @@ internal sealed class SupportAgentManager : IDisposable
         if (!_retreating)
             return false;
 
-        if (health >= emergency.RecoveryHealth)
+        if (health >= Math.Max(emergency.RecoveryHealth, emergency.EmergencyHealth + 1))
         {
             _retreating = false;
             _status.Show(TazLang.Get("supportagent_status_recovered"), SupportStatus.HUE_GOOD);
@@ -260,10 +338,11 @@ internal sealed class SupportAgentManager : IDisposable
         if (player.IsPoisoned && TryUseRole(classSettings, SupportRole.Cure, player, leader, player, now))
             return true;
 
+        SupportCombatSettings combat = settings.ActiveCombat;
         if (!TryUseRole(classSettings, SupportRole.Heal, player, leader, player, now)
-            && FindNearestEnemy(player, settings) is { } threat
-            && threat.Distance <= settings.Combat.MeleeDangerRange)
-            MoveAwayFrom(player, threat, settings.Combat.PreferredMinRange, now);
+            && FindNearestEnemy(player, settings.LeaderSerial, combat) is { } threat
+            && threat.Distance <= combat.MeleeDangerRange)
+            MoveAwayFrom(player, threat, combat.PreferredMinRange, now);
         return true;
     }
 
@@ -402,7 +481,8 @@ internal sealed class SupportAgentManager : IDisposable
         long now
     )
     {
-        if (now < _castUntil || _runner.IsWaiting || player.IsCasting || _world.TargetManager.IsTargeting
+        if (!SupportClassPresets.CanUseRole(classSettings.Class, role)
+            || now < _castUntil || _runner.IsWaiting || player.IsCasting || _world.TargetManager.IsTargeting
             || TargetManager.NextAutoTarget.IsSet || ShardSpellCaster.Instance.IsCasting
             || BandageManager.Instance.IsBandaging || Client.Game.UO.GameCursor.ItemHold.Enabled
             || (role != SupportRole.Emergency && now < _abilityReadyAt))
@@ -433,17 +513,23 @@ internal sealed class SupportAgentManager : IDisposable
             if (ability.CastTimeMs > 0)
                 StopMoving(player);
 
-            if (_runner.TryUse(ability, target, now))
+            if (_runner.TryUse(ability, target, now, started => StartAbility(ability, patient, started)))
             {
-                _castUntil = now + (ability.Action == SupportActionType.Bandage
-                    ? Math.Max(ability.CastTimeMs, ability.CooldownMs) : ability.CastTimeMs);
-                _abilityReadyAt = _castUntil + ability.RecoveryMs;
-                ShowAbilityStatus(ability, patient);
+                if (ability.Action != SupportActionType.CastShardSpell)
+                    StartAbility(ability, patient, now);
                 return true;
             }
         }
 
         return false;
+    }
+
+    private void StartAbility(SupportAbility ability, Mobile? patient, long now)
+    {
+        _castUntil = now + (ability.Action == SupportActionType.Bandage
+            ? Math.Max(ability.CastTimeMs, ability.CooldownMs) : ability.CastTimeMs);
+        _abilityReadyAt = _castUntil + ability.RecoveryMs;
+        ShowAbilityStatus(ability, patient);
     }
 
     private static bool TryResolveTarget(
@@ -503,13 +589,13 @@ internal sealed class SupportAgentManager : IDisposable
     }
 
     /// <returns>True while an enemy is being fought or avoided.</returns>
-    private bool Fight(PlayerMobile player, SupportAgentSave settings, Mobile? leader, long now)
+    private bool Fight(PlayerMobile player, SupportAgentSave settings, long now)
     {
-        SupportCombatSettings combat = settings.Combat;
+        SupportCombatSettings combat = settings.ActiveCombat;
         Mobile? enemy = _currentEnemy != 0 ? _world.Mobiles.Get(_currentEnemy) : null;
 
-        if (enemy == null || !IsValidEnemy(enemy, player, settings))
-            enemy = FindNearestEnemy(player, settings);
+        if (enemy == null || !IsValidEnemy(enemy, player, settings.LeaderSerial, combat))
+            enemy = FindNearestEnemy(player, settings.LeaderSerial, combat);
 
         uint previousEnemy = _currentEnemy;
         _currentEnemy = enemy?.Serial ?? 0;
@@ -519,6 +605,9 @@ internal sealed class SupportAgentManager : IDisposable
 
         if (enemy.Serial != previousEnemy)
             _status.Show(TazLang.Get("supportagent_status_attacking", [MobileName(enemy)]), SupportStatus.HUE_COMBAT);
+
+        if (settings.Class == SupportClass.Ranger && settings.RangerPetEnabled)
+            OrderPetAttack(player, enemy, now);
 
         if (combat.KeepDistance && enemy.Distance <= combat.MeleeDangerRange)
         {
@@ -550,14 +639,26 @@ internal sealed class SupportAgentManager : IDisposable
         return true;
     }
 
-    private Mobile? FindNearestEnemy(PlayerMobile player, SupportAgentSave settings)
+    private void OrderPetAttack(PlayerMobile player, Mobile enemy, long now)
+    {
+        if (_world.TargetManager.IsTargeting || TargetManager.NextAutoTarget.IsSet
+            || player.IsCasting || ShardSpellCaster.Instance.IsCasting || BandageManager.Instance.IsBandaging
+            || Client.Game.UO.GameCursor.ItemHold.Enabled || enemy.Serial == Settings.RangerPetSerial
+            || RangerPet is not { } pet || string.IsNullOrWhiteSpace(pet.Name)
+            || !_petOrder.TryBegin(pet.Serial, enemy.Serial, now))
+            return;
+
+        GameActions.Say($"{pet.Name.Trim()} kill");
+    }
+
+    private Mobile? FindNearestEnemy(PlayerMobile player, uint leaderSerial, SupportCombatSettings combat)
     {
         Mobile? nearest = null;
         int nearestDistance = int.MaxValue;
 
         foreach (Mobile mobile in _world.Mobiles.Values)
         {
-            if (!IsValidEnemy(mobile, player, settings))
+            if (!IsValidEnemy(mobile, player, leaderSerial, combat))
                 continue;
 
             int distance = mobile.Distance;
@@ -573,16 +674,16 @@ internal sealed class SupportAgentManager : IDisposable
     }
 
     /// <summary>Gray or red, alive, in range, not human-bodied, and not the leader, the helper or a friend.</summary>
-    private static bool IsValidEnemy(Mobile mobile, PlayerMobile player, SupportAgentSave settings)
+    private static bool IsValidEnemy(Mobile mobile, PlayerMobile player, uint leaderSerial, SupportCombatSettings combat)
     {
-        if (mobile.IsDestroyed || mobile.IsDead || mobile == player || mobile.Serial == settings.LeaderSerial)
+        if (mobile.IsDestroyed || mobile.IsDead || mobile.IsRenamable || mobile == player || mobile.Serial == leaderSerial)
             return false;
 
-        if (mobile.IsHuman || mobile.Distance > settings.Combat.AttackRange)
+        if (mobile.IsHuman || mobile.Distance > combat.AttackRange)
             return false;
 
-        bool hostile = (settings.Combat.AttackGray && mobile.NotorietyFlag == NotorietyFlag.Gray)
-                       || (settings.Combat.AttackRed && mobile.NotorietyFlag == NotorietyFlag.Murderer);
+        bool hostile = (combat.AttackGray && mobile.NotorietyFlag == NotorietyFlag.Gray)
+                       || (combat.AttackRed && mobile.NotorietyFlag == NotorietyFlag.Murderer);
 
         return hostile && !FriendsListManager.Instance.IsFriend(mobile.Serial);
     }
@@ -618,7 +719,8 @@ internal sealed class SupportAgentManager : IDisposable
     /// </summary>
     private void FollowLeader(PlayerMobile player, Mobile leader, SupportAgentSave settings)
     {
-        if (!settings.Follow.Enabled)
+        SupportFollowSettings follow = settings.ActiveFollow;
+        if (!follow.Enabled)
             return;
 
         if (player.Pathfinder.AutoWalking)
@@ -631,11 +733,11 @@ internal sealed class SupportAgentManager : IDisposable
             player.Pathfinder.StopAutoWalk();
         }
 
-        if (leader.Distance <= settings.Follow.FollowDistance || Time.Ticks < _nextFollowPath)
+        if (leader.Distance <= follow.FollowDistance || Time.Ticks < _nextFollowPath)
             return;
 
         _nextFollowPath = Time.Ticks + 500;
-        if (player.Pathfinder.WalkTo(leader.X, leader.Y, leader.Z, settings.Follow.FollowDistance))
+        if (player.Pathfinder.WalkTo(leader.X, leader.Y, leader.Z, follow.FollowDistance))
         {
             _followTargetX = leader.X;
             _followTargetY = leader.Y;
@@ -684,6 +786,7 @@ internal sealed class SupportAgentManager : IDisposable
         StopMoving(player);
         SetWarMode(player, false);
         _runner.Reset();
+        _petOrder.Reset();
         _currentEnemy = 0;
         _retreating = false;
         _followRequested = false;
@@ -705,7 +808,7 @@ internal sealed class SupportAgentManager : IDisposable
         switch (ability.Role)
         {
             case SupportRole.Heal when ability.Target == SupportTargetMode.None:
-                _status.Show(TazLang.Get("supportagent_status_areaheal", [ability.Name, name, health.ToString()]), SupportStatus.HUE_GOOD);
+                _status.Show(TazLang.Get("supportagent_status_areaheal", [ability.DisplayName, name, health.ToString()]), SupportStatus.HUE_GOOD);
                 break;
             case SupportRole.Heal:
                 _status.Show(TazLang.Get("supportagent_status_healing", [name, health.ToString()]), SupportStatus.HUE_GOOD);
@@ -714,10 +817,10 @@ internal sealed class SupportAgentManager : IDisposable
                 _status.Show(TazLang.Get("supportagent_status_curing", [name]), SupportStatus.HUE_GOOD);
                 break;
             case SupportRole.Buff:
-                _status.Show(ability.Name, SupportStatus.HUE_BUFF);
+                _status.Show(ability.DisplayName, SupportStatus.HUE_BUFF);
                 break;
             case SupportRole.Emergency:
-                _status.Show(TazLang.Get("supportagent_status_emergencyability", [ability.Name]), SupportStatus.HUE_DANGER);
+                _status.Show(TazLang.Get("supportagent_status_emergencyability", [ability.DisplayName]), SupportStatus.HUE_DANGER);
                 break;
             case SupportRole.Bless:
                 _status.Show(TazLang.Get("supportagent_status_blessing", [name]), SupportStatus.HUE_BUFF);
@@ -732,7 +835,7 @@ internal sealed class SupportAgentManager : IDisposable
         {
             case SupportActionType.UseItem:
             case SupportActionType.UseItemAndGumpButton:
-                _status.Problem("item:" + ability.Id, TazLang.Get("supportagent_status_noitem", [ability.Name]));
+                _status.Problem("item:" + ability.Id, TazLang.Get("supportagent_status_noitem", [ability.DisplayName]));
                 break;
             case SupportActionType.Bandage:
                 _status.Problem("bandages", TazLang.Get("supportagent_status_nobandages"));
@@ -747,6 +850,13 @@ internal sealed class SupportAgentManager : IDisposable
     {
         SupportAgentSave settings = SupportAgentSave.Load();
         settings.AddNewPresetAbilities();
+        uint legacySongbook = SupportClassPresets.ConvertLegacyBardSong(settings, out int oldButton);
+        if (SerialHelper.IsItem(legacySongbook) && ShardSpellCaster.Instance.GetBookSerial(ShardSpellBook.Songs) == 0)
+        {
+            if (oldButton > 0 && oldButton != ShardSpellCaster.Instance.GetButton(ShardSpellBook.Songs, SupportClassPresets.SONG_OF_LIFE_INDEX))
+                ShardSpellCaster.Instance.SetButton(ShardSpellBook.Songs, SupportClassPresets.SONG_OF_LIFE_INDEX, oldButton);
+            ShardSpellCaster.Instance.SetBookSerial(ShardSpellBook.Songs, legacySongbook);
+        }
         return settings;
     }
 
@@ -767,10 +877,16 @@ internal sealed class SupportAgentManager : IDisposable
             return;
 
         if (!string.IsNullOrWhiteSpace(settings.Commands.FollowCommand) && e.Text.ContainsIgnoreCase(settings.Commands.FollowCommand))
+        {
             _followRequested = true;
-        else if (!string.IsNullOrWhiteSpace(settings.Commands.BlessCommand) && e.Text.ContainsIgnoreCase(settings.Commands.BlessCommand))
+            return;
+        }
+
+        if (SupportClassPresets.CanUseRole(settings.Class, SupportRole.Bless)
+            && !string.IsNullOrWhiteSpace(settings.Commands.BlessCommand) && e.Text.ContainsIgnoreCase(settings.Commands.BlessCommand))
             _blessRequested = true;
-        else if (!string.IsNullOrWhiteSpace(settings.Commands.HealCommand) && e.Text.ContainsIgnoreCase(settings.Commands.HealCommand))
+        else if (SupportClassPresets.CanUseRole(settings.Class, SupportRole.Heal)
+            && !string.IsNullOrWhiteSpace(settings.Commands.HealCommand) && e.Text.ContainsIgnoreCase(settings.Commands.HealCommand))
             _healRequested = true;
     }
 

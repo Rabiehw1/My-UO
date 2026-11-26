@@ -14,7 +14,11 @@ public enum SupportClass
 {
     Bard,
     Warrior,
-    Mage
+    Mage,
+    Ranger,
+    MysticArcher,
+    BladeSinger,
+    Paladin
 }
 
 /// <summary>When the support agent uses an ability.</summary>
@@ -81,6 +85,10 @@ public sealed class SupportAbility
     public string Id { get; set; } = "";
 
     public string Name { get; set; } = "";
+
+    [JsonIgnore]
+    internal string DisplayName => TazLang.Get($"supportagent_ability_{Id}", Name);
+
     public bool Enabled { get; set; } = true;
     public SupportRole Role { get; set; }
     public SupportActionType Action { get; set; }
@@ -136,6 +144,13 @@ public sealed class SupportClassSettings
 {
     public SupportClass Class { get; set; }
     public List<SupportAbility> Abilities { get; set; } = new();
+
+    // Older presets used the character-wide settings. New presets keep their own positioning.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SupportFollowSettings? Follow { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public SupportCombatSettings? Combat { get; set; }
 }
 
 /// <summary>Following the leader.</summary>
@@ -231,7 +246,16 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
     public SupportEmergencySettings Emergency { get; set; } = new();
     public SupportCombatSettings Combat { get; set; } = new();
     public SupportCommandSettings Commands { get; set; } = new();
+    public bool RangerPetEnabled { get; set; }
+    public uint RangerPetSerial { get; set; }
+    public string RangerPetName { get; set; } = "";
     public List<SupportClassSettings> Classes { get; set; } = new();
+
+    [JsonIgnore]
+    internal SupportFollowSettings ActiveFollow => GetClassSettings(Class).Follow ?? Follow;
+
+    [JsonIgnore]
+    internal SupportCombatSettings ActiveCombat => GetClassSettings(Class).Combat ?? Combat;
 
     protected override SettingsScope Scope => SettingsScope.Char;
     protected override string FileName => SUPPORT_AGENT_FILE_NAME;
@@ -248,7 +272,7 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
                 return settings;
         }
 
-        var created = new SupportClassSettings { Class = supportClass, Abilities = SupportClassPresets.Create(supportClass) };
+        SupportClassSettings created = SupportClassPresets.CreateSettings(supportClass);
         Classes.Add(created);
         return created;
     }
@@ -268,6 +292,12 @@ public sealed class SupportAgentSave : JsonSave<SupportAgentSave>, INotifyProper
 
         foreach (SupportClassSettings settings in Classes)
         {
+            if (settings.Class == SupportClass.Ranger)
+            {
+                settings.Abilities.Clear();
+                continue;
+            }
+
             foreach (SupportAbility preset in SupportClassPresets.Create(settings.Class))
             {
                 if (!settings.Abilities.Exists(ability => ability.Id == preset.Id))

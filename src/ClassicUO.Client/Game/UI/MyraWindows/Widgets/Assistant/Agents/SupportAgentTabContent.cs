@@ -5,6 +5,8 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.Managers.Support;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
 using Myra.Graphics2D.UI.WrapPanel;
 
@@ -23,7 +25,19 @@ internal static class SupportAgentTabContent
     private const int TEXT_INPUT_WIDTH = 160;
     private const string HEX_PREFIX = "0x";
     private const int ROW_SPACING = 8;
-    private const int ABILITY_COLUMNS = 5;
+    internal sealed class Overview(Action refresh) : VerticalStackPanel
+    {
+        private long _nextRefresh;
+
+        internal void RefreshStatus()
+        {
+            long now = Time.Ticks;
+            if (now < _nextRefresh)
+                return;
+            _nextRefresh = now + 250;
+            refresh();
+        }
+    }
 
     #endregion
 
@@ -36,23 +50,69 @@ internal static class SupportAgentTabContent
     {
         SupportAgentManager manager = SupportAgentManager.Instance;
         SupportAgentSave settings = manager.Settings;
-        var root = new VerticalStackPanel { Spacing = 6 };
-        var abilitiesPanel = new VerticalStackPanel { Spacing = 4 };
+        var status = Label("");
+        MyraLabel? petState = null;
+        var classPanel = new VerticalStackPanel { Spacing = 6 };
+        var title = Row();
+        var toggle = Button(interaction, "", primary: true);
+        var root = new Overview(UpdateStatus) { Spacing = 8 };
+        toggle.OnClick = () =>
+        {
+            settings.Enabled = !settings.Enabled;
+            settings.Save();
+            UpdateStatus();
+        };
+        title.Widgets.Add(new MyraLabel(TazLang.Get("supportagent_title"), MyraLabel.TextStyle.H2));
+        title.Widgets.Add(toggle);
 
-        void RefreshAbilities() => FillAbilities(abilitiesPanel, settings, interaction, RefreshAbilities);
+        void UpdateStatus()
+        {
+            toggle.Text = TazLang.Get(settings.Enabled ? "supportagent_stop" : "supportagent_start");
+            status.Text = manager.OverviewStatus();
+            if (petState != null)
+                petState.Text = PetText(manager, settings);
+        }
 
-        root.Widgets.Add(new MyraLabel(TazLang.Get("supportagent_intro"), MyraLabel.TextStyle.P) { Wrap = true });
-        root.Widgets.Add(BuildHelperSection(settings, manager, interaction, RefreshAbilities));
-        root.Widgets.Add(BuildHealingSection(settings));
-        root.Widgets.Add(new VisualContainer(
-            new VisualContainerProps { LabelText = TazLang.Get("supportagent_abilities") },
-            abilitiesPanel
-        ));
-        root.Widgets.Add(BuildFollowSection(settings));
-        root.Widgets.Add(BuildCombatSection(settings));
-        root.Widgets.Add(BuildCommandsSection(settings));
+        void RefreshClass()
+        {
+            bool canUseAbilities = settings.Class != SupportClass.Ranger;
+            classPanel.Widgets.Clear();
+            petState = null;
+            var actions = new VerticalStackPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Top };
+            if (canUseAbilities)
+            {
+                actions.Widgets.Add(BuildHealingSection(settings));
+                var abilitiesPanel = new VerticalStackPanel { Spacing = 4 };
+                void RefreshAbilities() => FillAbilities(abilitiesPanel, settings, interaction, RefreshAbilities);
+                RefreshAbilities();
+                actions.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_abilities") }, abilitiesPanel));
+            }
+            else
+            {
+                petState = Label("");
+                actions.Widgets.Add(BuildPetSection(manager, settings, interaction, petState, UpdateStatus));
+            }
 
-        RefreshAbilities();
+            if (SupportClassPresets.CanAttack(settings.Class))
+                actions.Widgets.Add(BuildCombatSection(settings.ActiveCombat));
+
+            var positioning = new VerticalStackPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Top };
+            positioning.Widgets.Add(BuildFollowSection(settings.ActiveFollow));
+            positioning.Widgets.Add(new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_survival") },
+                BuildEmergencyRow(settings.Emergency, settings.Class)));
+            positioning.Widgets.Add(new Expander(Label(TazLang.Get("supportagent_setup_commands")),
+                MyraCheckButton.CreateWithCallback(settings.ShowStatusOverhead, value => settings.ShowStatusOverhead = value,
+                    TazLang.Get("supportagent_showstatus"), TazLang.Get("supportagent_showstatus_tooltip")),
+                BuildCommandsSection(settings, canUseAbilities)) { IsExpanded = false, IndentWidth = 0 });
+            classPanel.Widgets.Add(new DesktopAssistantForm.SectionPair(actions, positioning));
+            UpdateStatus();
+        }
+
+        root.Widgets.Add(title);
+        root.Widgets.Add(BuildHelperSection(settings, manager, interaction, status, RefreshClass, UpdateStatus));
+        root.Widgets.Add(classPanel);
+
+        RefreshClass();
         return root;
     }
 
@@ -64,27 +124,11 @@ internal static class SupportAgentTabContent
         SupportAgentSave settings,
         SupportAgentManager manager,
         AgentPageInteraction interaction,
-        Action refreshAbilities
+        Widget status,
+        Action refreshClass,
+        Action refreshStatus
     )
     {
-        var enabledRow = Row();
-        enabledRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
-            settings.Enabled,
-            value =>
-            {
-                settings.Enabled = value;
-                settings.Save();
-            },
-            TazLang.Get("supportagent_enable"),
-            TazLang.Get("supportagent_enable_tooltip")
-        ));
-        enabledRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
-            settings.ShowStatusOverhead,
-            value => settings.ShowStatusOverhead = value,
-            TazLang.Get("supportagent_showstatus"),
-            TazLang.Get("supportagent_showstatus_tooltip")
-        ));
-
         var classCombo = new ComboView { MinWidth = 130, VerticalAlignment = VerticalAlignment.Center };
 
         foreach (SupportClass supportClass in Enum.GetValues<SupportClass>())
@@ -96,42 +140,38 @@ internal static class SupportAgentTabContent
             if (classCombo.ListView.SelectedIndex is not int index)
                 return;
 
-            settings.Class = (SupportClass)index;
+            manager.SetClass((SupportClass)index);
+            refreshClass();
             settings.Save();
-            refreshAbilities();
         };
 
-        var classRow = Row();
-        classRow.Widgets.Add(Label(TazLang.Get("supportagent_class")));
-        classRow.Widgets.Add(classCombo);
-
         var leaderLabel = new MyraLabel(LeaderText(settings), MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center };
-        var leaderRow = Row();
-        leaderRow.Widgets.Add(leaderLabel);
-        leaderRow.Widgets.Add(new MyraButton(TazLang.Get("supportagent_setleader"), () =>
+        var setup = Row();
+        setup.Widgets.Add(Label(TazLang.Get("supportagent_class")));
+        setup.Widgets.Add(classCombo);
+        setup.Widgets.Add(leaderLabel);
+        var setLeader = Button(interaction, TazLang.Get("supportagent_setleader"), () =>
             interaction.SelectTarget(target =>
             {
                 if (target is Mobile mobile && mobile != World.Instance.Player)
                 {
                     manager.SetLeader(mobile);
                     leaderLabel.Text = LeaderText(settings);
+                    refreshStatus();
                 }
-            })
-        ) { Tooltip = TazLang.Get("supportagent_setleader_tooltip") });
-        leaderRow.Widgets.Add(new MyraButton(TazLang.Get("supportagent_clearleader"), () =>
+            }));
+        setLeader.Tooltip = TazLang.Get("supportagent_setleader_tooltip");
+        setup.Widgets.Add(setLeader);
+        setup.Widgets.Add(Button(interaction, TazLang.Get("supportagent_clearleader"), () =>
         {
             settings.LeaderSerial = 0;
             settings.LeaderName = "";
             settings.Save();
             leaderLabel.Text = LeaderText(settings);
+            refreshStatus();
         }));
-
-        return new VisualContainer(
-            new VisualContainerProps { LabelText = TazLang.Get("supportagent_helper") },
-            enabledRow,
-            classRow,
-            leaderRow
-        );
+        setup.Widgets.Add(status);
+        return new VisualContainer(new VisualContainerProps(), setup);
     }
 
     private static Widget BuildHealingSection(SupportAgentSave settings)
@@ -146,27 +186,67 @@ internal static class SupportAgentTabContent
             TazLang.Get("supportagent_healfriends_tooltip")
         ));
 
-        SupportEmergencySettings emergency = settings.Emergency;
+        return new VisualContainer(
+            new VisualContainerProps { LabelText = TazLang.Get("supportagent_healing") },
+            values
+        );
+    }
+
+    private static Widget BuildPetSection(SupportAgentManager manager, SupportAgentSave settings,
+        AgentPageInteraction interaction, Widget status, Action refresh)
+    {
+        var choose = Button(interaction, TazLang.Get("supportagent_pet_choose"), () => interaction.SelectTarget(target =>
+        {
+            if (target is Mobile pet && manager.SetRangerPet(pet))
+                refresh();
+            else
+                GameActions.Print(TazLang.Get("supportagent_pet_invalid"));
+        }));
+        var selection = Row();
+        selection.Widgets.Add(status);
+        selection.Widgets.Add(choose);
+        return new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_pet_commands") },
+            MyraCheckButton.CreateWithCallback(settings.RangerPetEnabled, value =>
+            {
+                settings.RangerPetEnabled = value;
+                settings.Save();
+                refresh();
+            }, TazLang.Get("supportagent_pet_enable"), TazLang.Get("supportagent_pet_tooltip")), selection);
+    }
+
+    private static string PetText(SupportAgentManager manager, SupportAgentSave settings)
+    {
+        if (manager.RangerPet is { } pet)
+            return pet.HitsMax > 0
+                ? TazLang.Get("supportagent_pet_health", [pet.Name, (pet.Hits * 100 / pet.HitsMax).ToString()])
+                : pet.Name;
+        return settings.RangerPetSerial == 0 ? TazLang.Get("supportagent_pet_none")
+            : TazLang.Get("supportagent_pet_away", [settings.RangerPetName]);
+    }
+
+    private static Widget BuildEmergencyRow(SupportEmergencySettings emergency, SupportClass supportClass)
+    {
+        string tooltipKey = supportClass switch
+        {
+            SupportClass.Bard => "supportagent_bard_emergency_tooltip",
+            SupportClass.Ranger => "supportagent_ranger_emergency_tooltip",
+            _ => "supportagent_emergency_enable_tooltip"
+        };
         var emergencyRow = Row();
         emergencyRow.Widgets.Add(MyraCheckButton.CreateWithCallback(
             emergency.Enabled,
             v => emergency.Enabled = v,
             TazLang.Get("supportagent_emergency_enable"),
-            TazLang.Get("supportagent_emergency_enable_tooltip")
+            TazLang.Get(tooltipKey)
         ));
         emergencyRow.Widgets.Add(Number(TazLang.Get("supportagent_emergencyhealth"), emergency.EmergencyHealth, v => emergency.EmergencyHealth = Math.Clamp(v, 1, 99)));
         emergencyRow.Widgets.Add(Number(TazLang.Get("supportagent_recoveryhealth"), emergency.RecoveryHealth, v => emergency.RecoveryHealth = Math.Clamp(v, 1, 100)));
 
-        return new VisualContainer(
-            new VisualContainerProps { LabelText = TazLang.Get("supportagent_healing") },
-            values,
-            emergencyRow
-        );
+        return emergencyRow;
     }
 
-    private static Widget BuildFollowSection(SupportAgentSave settings)
+    private static Widget BuildFollowSection(SupportFollowSettings follow)
     {
-        SupportFollowSettings follow = settings.Follow;
         var row = Row();
         row.Widgets.Add(MyraCheckButton.CreateWithCallback(follow.Enabled, v => follow.Enabled = v, TazLang.Get("supportagent_follow_enable")));
         row.Widgets.Add(Number(TazLang.Get("supportagent_followdistance"), follow.FollowDistance, v => follow.FollowDistance = Math.Max(1, v)));
@@ -175,9 +255,8 @@ internal static class SupportAgentTabContent
         return new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_following") }, row);
     }
 
-    private static Widget BuildCombatSection(SupportAgentSave settings)
+    private static Widget BuildCombatSection(SupportCombatSettings combat)
     {
-        SupportCombatSettings combat = settings.Combat;
         var mainRow = Row();
         mainRow.Widgets.Add(MyraCheckButton.CreateWithCallback(combat.Enabled, v => combat.Enabled = v, TazLang.Get("supportagent_combat_enable")));
         mainRow.Widgets.Add(Number(TazLang.Get("supportagent_attackrange"), combat.AttackRange, v => combat.AttackRange = Math.Max(1, v)));
@@ -198,7 +277,7 @@ internal static class SupportAgentTabContent
         return new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_combat") }, mainRow, rangedRow);
     }
 
-    private static Widget BuildCommandsSection(SupportAgentSave settings)
+    private static Widget BuildCommandsSection(SupportAgentSave settings, bool canUseAbilities)
     {
         SupportCommandSettings commands = settings.Commands;
         var row = Row();
@@ -209,8 +288,10 @@ internal static class SupportAgentTabContent
             TazLang.Get("supportagent_commands_enable_tooltip")
         ));
         row.Widgets.Add(Text(TazLang.Get("supportagent_followcommand"), commands.FollowCommand, v => commands.FollowCommand = v));
-        row.Widgets.Add(Text(TazLang.Get("supportagent_healcommand"), commands.HealCommand, v => commands.HealCommand = v));
-        row.Widgets.Add(Text(TazLang.Get("supportagent_blesscommand"), commands.BlessCommand, v => commands.BlessCommand = v));
+        if (canUseAbilities)
+            row.Widgets.Add(Text(TazLang.Get("supportagent_healcommand"), commands.HealCommand, v => commands.HealCommand = v));
+        if (SupportClassPresets.CanUseRole(settings.Class, SupportRole.Bless))
+            row.Widgets.Add(Text(TazLang.Get("supportagent_blesscommand"), commands.BlessCommand, v => commands.BlessCommand = v));
         row.Widgets.Add(Number(TazLang.Get("supportagent_followoverride"), commands.FollowOverrideMs, v => commands.FollowOverrideMs = Math.Max(0, v)));
 
         return new VisualContainer(new VisualContainerProps { LabelText = TazLang.Get("supportagent_commands") }, row);
@@ -227,42 +308,35 @@ internal static class SupportAgentTabContent
         panel.Widgets.Clear();
         SupportClassSettings classSettings = settings.GetClassSettings(settings.Class);
 
-        // A grid so every row's fields line up in the same columns.
-        var grid = new Grid { ColumnSpacing = ROW_SPACING, RowSpacing = ROW_SPACING / 2 };
-
-        for (int column = 0; column < ABILITY_COLUMNS; column++)
-            grid.ColumnsProportions.Add(new Proportion(ProportionType.Auto));
-
-        for (int row = 0; row < classSettings.Abilities.Count; row++)
+        foreach (SupportAbility ability in classSettings.Abilities)
         {
-            grid.RowsProportions.Add(new Proportion(ProportionType.Auto));
-            AddAbilityRow(grid, row, classSettings.Abilities[row], settings, interaction, refresh);
+            if (!SupportClassPresets.CanUseRole(settings.Class, ability.Role))
+                continue;
+
+            var row = Row();
+            string tooltip = settings.Class == SupportClass.Bard
+                ? TazLang.Get("supportagent_bard_songbook_tip") : RoleText(ability.Role);
+            row.Widgets.Add(MyraCheckButton.CreateWithCallback(ability.Enabled, v => ability.Enabled = v, ability.DisplayName, tooltip));
+            if (settings.Class != SupportClass.Bard)
+                row.Widgets.Add(BuildAbilitySource(ability, settings, interaction, refresh));
+            panel.Widgets.Add(row);
+
+            var timing = Row();
+            timing.Widgets.Add(Number(TazLang.Get("supportagent_casttime"), ability.CastTimeMs, v => ability.CastTimeMs = Math.Max(0, v)));
+            timing.Widgets.Add(Number(TazLang.Get("supportagent_recovery"), ability.RecoveryMs, v => ability.RecoveryMs = Math.Max(0, v)));
+            timing.Widgets.Add(Number(TazLang.Get("supportagent_cooldown"), ability.CooldownMs, v => ability.CooldownMs = Math.Max(0, v)));
+            panel.Widgets.Add(new Expander(Label(TazLang.Get("supportagent_ability_timing")), timing) { IsExpanded = false, IndentWidth = 0 });
         }
 
-        panel.Widgets.Add(grid);
-        panel.Widgets.Add(new MyraButton(TazLang.Get("supportagent_resetabilities"), () =>
+        var reset = Button(interaction, TazLang.Get("supportagent_resetabilities"), () =>
         {
             classSettings.Abilities = SupportClassPresets.Create(settings.Class);
             settings.Save();
             refresh();
-        }) { Tooltip = TazLang.Get("supportagent_resetabilities_tooltip") });
-    }
-
-    /// <summary>Fills one grid row: enable box, what it uses, then cast, wait and cooldown times.</summary>
-    private static void AddAbilityRow(
-        Grid grid,
-        int row,
-        SupportAbility ability,
-        SupportAgentSave settings,
-        AgentPageInteraction interaction,
-        Action refresh
-    )
-    {
-        Place(grid, row, 0, MyraCheckButton.CreateWithCallback(ability.Enabled, v => ability.Enabled = v, ability.Name, RoleText(ability.Role)));
-        Place(grid, row, 1, BuildAbilitySource(ability, settings, interaction, refresh));
-        Place(grid, row, 2, Number(TazLang.Get("supportagent_casttime"), ability.CastTimeMs, v => ability.CastTimeMs = Math.Max(0, v)));
-        Place(grid, row, 3, Number(TazLang.Get("supportagent_recovery"), ability.RecoveryMs, v => ability.RecoveryMs = Math.Max(0, v)));
-        Place(grid, row, 4, Number(TazLang.Get("supportagent_cooldown"), ability.CooldownMs, v => ability.CooldownMs = Math.Max(0, v)));
+        });
+        reset.Tooltip = TazLang.Get("supportagent_resetabilities_tooltip");
+        reset.HorizontalAlignment = HorizontalAlignment.Left;
+        panel.Widgets.Add(reset);
     }
 
     /// <summary>The field saying what the ability uses: a spell number, a book spell, a picked item or text.</summary>
@@ -291,11 +365,19 @@ internal static class SupportAgentTabContent
                 break;
 
             case SupportActionType.CastShardSpell:
-                cell.Widgets.Add(Number(
-                    TazLang.Get("supportagent_bookspell", [ShardSpellCatalog.Get(ability.ShardBook).Name]),
-                    ability.SpellId,
-                    v => ability.SpellId = Math.Max(0, v)
-                ));
+                ShardSpellBookInfo book = ShardSpellCatalog.Get(ability.ShardBook);
+                var spells = new ComboView { MinWidth = 125, VerticalAlignment = VerticalAlignment.Center };
+                foreach (ShardSpell spell in book.Spells)
+                    spells.ListView.Widgets.Add(new Label { Text = spell.Name });
+                if (ShardSpellCatalog.GetSpell(ability.ShardBook, ability.SpellId) != null)
+                    spells.ListView.SelectedIndex = ability.SpellId;
+                spells.ListView.SelectedIndexChanged += (_, _) =>
+                {
+                    if (spells.ListView.SelectedIndex is int index)
+                        ability.SpellId = index;
+                };
+                cell.Widgets.Add(spells);
+                cell.Widgets.Add(Label(book.Name));
                 break;
 
             case SupportActionType.Say:
@@ -306,13 +388,8 @@ internal static class SupportAgentTabContent
         return cell;
     }
 
-    private static void Place(Grid grid, int row, int column, Widget widget)
-    {
-        widget.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetRow(widget, row);
-        Grid.SetColumn(widget, column);
-        grid.Widgets.Add(widget);
-    }
+    private static MyraButton Button(AgentPageInteraction interaction, string label, Action? action = null, bool primary = false) =>
+        interaction.IsDesktop ? DesktopAssistantTheme.ActionButton(label, action, primary) : new MyraButton(label, action);
 
     /// <summary>Shows the picked item and a button to pick it; item abilities only ever use this exact item.</summary>
     private static void AddItemPicker(
@@ -327,7 +404,7 @@ internal static class SupportAgentTabContent
             ? TazLang.Get("supportagent_item_picked", [HEX_PREFIX + ability.ItemSerial.ToString("X8")])
             : TazLang.Get("supportagent_item_none")));
 
-        row.Widgets.Add(new MyraButton(TazLang.Get("supportagent_pickitem"), () =>
+        var pick = Button(interaction, TazLang.Get("supportagent_pickitem"), () =>
             interaction.SelectTarget(target =>
             {
                 if (target is Item item)
@@ -337,8 +414,9 @@ internal static class SupportAgentTabContent
                     settings.Save();
                     refresh();
                 }
-            })
-        ) { Tooltip = TazLang.Get("supportagent_pickitem_tooltip") });
+            }));
+        pick.Tooltip = TazLang.Get("supportagent_pickitem_tooltip");
+        row.Widgets.Add(pick);
     }
 
     private static string LeaderText(SupportAgentSave settings) =>

@@ -459,6 +459,8 @@ internal sealed class DesktopAgentsWindow
 
         if (_content.Content is HealingAssistantTabContent.PlannerView healingPlanner)
             healingPlanner.RefreshStatus();
+        if (_content.Content is SupportAgentTabContent.Overview supportOverview)
+            supportOverview.RefreshStatus();
 
         if (_content.Content is MyraTabControl scriptsTabs)
         {

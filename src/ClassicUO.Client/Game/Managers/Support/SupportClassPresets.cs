@@ -1,6 +1,7 @@
 #nullable enable
 
 using System.Collections.Generic;
+using ClassicUO.Game.Data;
 using ClassicUO.Game.Managers.ShardSpells;
 
 namespace ClassicUO.Game.Managers.Support;
@@ -19,9 +20,6 @@ internal static class SupportClassPresets
     /// </summary>
     public const int PRESET_VERSION = 1;
 
-    /// <summary>Gump button of the area heal song in the Zulu Hotel songbook.</summary>
-    private const int BARD_HEAL_SONG_BUTTON = 7;
-
     /// <summary>Shard bandage time is 4.5 s; 4.7 s leaves a margin before the next one.</summary>
     private const int BANDAGE_TIME_MS = 4700;
 
@@ -36,10 +34,21 @@ internal static class SupportClassPresets
     private const int ANTIDOTE_INDEX = 0;
 
     private const int ANGELIC_AURA_INDEX = 3;
+    private const int NATURES_TOUCH_INDEX = 7;
+    internal const int SONG_OF_LIFE_INDEX = 6;
 
     #endregion
 
     #region Public methods
+
+    public static bool CanAttack(SupportClass supportClass) => supportClass != SupportClass.Bard;
+
+    public static bool CanUseRole(SupportClass supportClass, SupportRole role) => supportClass switch
+    {
+        SupportClass.Bard => role == SupportRole.Heal,
+        SupportClass.Ranger => false,
+        _ => true
+    };
 
     /// <summary>Builds a fresh copy of the default abilities for <paramref name="supportClass" />.</summary>
     /// <param name="supportClass">Class to build defaults for.</param>
@@ -48,8 +57,34 @@ internal static class SupportClassPresets
     {
         SupportClass.Warrior => CreateWarrior(),
         SupportClass.Mage => CreateMage(),
+        SupportClass.Ranger => [],
+        SupportClass.MysticArcher => CreateMysticArcher(),
+        SupportClass.BladeSinger => CreateBladeSinger(),
+        SupportClass.Paladin => CreatePaladin(),
         _ => CreateBard()
     };
+
+    public static SupportClassSettings CreateSettings(SupportClass supportClass)
+    {
+        var settings = new SupportClassSettings { Class = supportClass, Abilities = Create(supportClass) };
+        if (supportClass is SupportClass.Ranger or SupportClass.MysticArcher)
+        {
+            bool mysticArcher = supportClass == SupportClass.MysticArcher;
+            settings.Follow = new SupportFollowSettings
+            {
+                FollowDistance = mysticArcher ? 5 : 4,
+                MaxLeaderDistance = mysticArcher ? 9 : 8
+            };
+            settings.Combat = new SupportCombatSettings { PreferredMinRange = mysticArcher ? 6 : 5 };
+        }
+        else if (supportClass is SupportClass.BladeSinger or SupportClass.Paladin)
+        {
+            settings.Follow = new SupportFollowSettings();
+            settings.Combat = new SupportCombatSettings { AttackRange = 1, KeepDistance = false };
+        }
+
+        return settings;
+    }
 
     #endregion
 
@@ -57,27 +92,27 @@ internal static class SupportClassPresets
 
     private static List<SupportAbility> CreateBard() =>
     [
-        new()
-        {
-            Id = "bard.healsong",
-            Name = "Healing song (area, pick songbook)",
-            Role = SupportRole.Heal,
-            Action = SupportActionType.UseItemAndGumpButton,
-            Target = SupportTargetMode.None,
-            GumpButton = BARD_HEAL_SONG_BUTTON,
-            CastTimeMs = 3000,
-            RecoveryMs = 4000
-        },
-        new()
-        {
-            Id = "bard.invisibility",
-            Name = "Invisibility item (pick it below)",
-            Role = SupportRole.Emergency,
-            Action = SupportActionType.UseItem,
-            Target = SupportTargetMode.None,
-            RecoveryMs = 1000
-        }
+        BookHeal("bard.healsong", "Song of Life", ShardSpellBook.Songs, SONG_OF_LIFE_INDEX, SupportTargetMode.None, 3000, 4000)
     ];
+
+    internal static uint ConvertLegacyBardSong(SupportAgentSave settings, out int oldButton)
+    {
+        oldButton = 0;
+        SupportAbility? oldSong = settings.Classes.Find(group => group.Class == SupportClass.Bard)?.Abilities
+            .Find(ability => ability.Id == "bard.healsong" && ability.Action == SupportActionType.UseItemAndGumpButton);
+        if (oldSong == null)
+            return 0;
+
+        uint serial = oldSong.ItemSerial;
+        oldButton = oldSong.GumpButton;
+        oldSong.Action = SupportActionType.CastShardSpell;
+        oldSong.ShardBook = ShardSpellBook.Songs;
+        oldSong.SpellId = SONG_OF_LIFE_INDEX;
+        oldSong.Target = SupportTargetMode.None;
+        oldSong.ItemSerial = 0;
+        oldSong.GumpButton = 0;
+        return serial;
+    }
 
     private static List<SupportAbility> CreateWarrior() =>
     [
@@ -132,6 +167,51 @@ internal static class SupportClassPresets
             RecoveryMs = 750
         }
     ];
+
+    private static List<SupportAbility> CreateMysticArcher() =>
+    [
+        MagerySpell("mysticarcher.cure", "Cure", HealthBarQuickActions.MageryCure, SupportRole.Cure, 1250),
+        BookHeal("mysticarcher.naturestouch", "Nature's Touch", ShardSpellBook.Earth, NATURES_TOUCH_INDEX, SupportTargetMode.Patient, 2000, 750),
+        MagerySpell("mysticarcher.greaterheal", "Greater Heal", HealthBarQuickActions.MageryGreaterHeal, SupportRole.Heal, 1750)
+    ];
+
+    private static List<SupportAbility> CreateBladeSinger() =>
+    [
+        BookHeal("bladesinger.songoflife", "Song of Life", ShardSpellBook.Songs, SONG_OF_LIFE_INDEX, SupportTargetMode.None, 3000, 4000),
+        MagerySpell("bladesinger.heal", "Heal", HealthBarQuickActions.MageryHeal, SupportRole.Heal, 1000)
+    ];
+
+    private static List<SupportAbility> CreatePaladin() =>
+    [
+        BookHeal("paladin.angelicaura", "Angelic Aura", ShardSpellBook.Holy, ANGELIC_AURA_INDEX, SupportTargetMode.Patient, 2000, 750)
+    ];
+
+    private static SupportAbility MagerySpell(string id, string name, int spellId, SupportRole role, int castTimeMs) => new()
+    {
+        Id = id,
+        Name = name,
+        Role = role,
+        Action = SupportActionType.CastSpell,
+        Target = SupportTargetMode.Patient,
+        SpellId = spellId,
+        CastTimeMs = castTimeMs,
+        RecoveryMs = 750
+    };
+
+    private static SupportAbility BookHeal(
+        string id, string name, ShardSpellBook book, int spellIndex, SupportTargetMode target, int castTimeMs, int recoveryMs
+    ) => new()
+    {
+        Id = id,
+        Name = name,
+        Role = SupportRole.Heal,
+        Action = SupportActionType.CastShardSpell,
+        Target = target,
+        ShardBook = book,
+        SpellId = spellIndex,
+        CastTimeMs = castTimeMs,
+        RecoveryMs = recoveryMs
+    };
 
     #endregion
 }

@@ -113,14 +113,16 @@ internal sealed class SupportAbilityRunner
     /// <param name="targetSerial">Mobile to aim at; 0 for abilities without a target.</param>
     /// <param name="now">Current <see cref="Time.Ticks" />.</param>
     /// <returns>True if something was sent to the shard.</returns>
-    public bool TryUse(SupportAbility ability, uint targetSerial, long now)
+    public bool TryUse(SupportAbility ability, uint targetSerial, long now, Action<long> onBookCast)
     {
+        if (ability.Action == SupportActionType.CastShardSpell)
+            return CastShardSpell(ability, targetSerial, onBookCast);
+
         bool sent = ability.Action switch
         {
             SupportActionType.CastSpell => CastSpell(ability, targetSerial),
             SupportActionType.UseItemAndGumpButton => UseItemAndPressButton(ability, now),
             SupportActionType.UseItem => UseItem(ability, targetSerial),
-            SupportActionType.CastShardSpell => CastShardSpell(ability, targetSerial),
             SupportActionType.Bandage => targetSerial != 0 && GameActions.UseBandageOnTarget(_world, targetSerial, TARGET_CURSOR_GRACE_MS),
             SupportActionType.Say => Say(ability),
             _ => false
@@ -222,16 +224,19 @@ internal sealed class SupportAbilityRunner
         return true;
     }
 
-    private bool CastShardSpell(SupportAbility ability, uint targetSerial)
+    private bool CastShardSpell(SupportAbility ability, uint targetSerial, Action<long> onBookCast)
     {
         int generation = _generation;
         _bookDeadline = Time.Ticks + 3000;
         _waitingForBook = ShardSpellCaster.Instance.TryCast(ability.ShardBook, ability.SpellId, () =>
         {
             _waitingForBook = false;
-            TrackSpell(Time.Ticks, ability.CastTimeMs);
+            long started = Time.Ticks;
+            _lastUsed[ability.Id] = started;
+            TrackSpell(started, ability.CastTimeMs);
             if (generation == _generation && targetSerial != 0)
                 SetAutoTarget(ability, targetSerial);
+            onBookCast(started);
         }, () => generation == _generation && SupportAgentManager.Instance.Settings.Enabled
             && _world.Player is { IsDead: false });
         return _waitingForBook;
