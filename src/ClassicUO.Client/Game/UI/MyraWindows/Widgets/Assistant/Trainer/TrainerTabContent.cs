@@ -82,6 +82,27 @@ internal static class TrainerTabContent
             foreach (TrainerSkill skill in TrainerCatalog.Skills.Where(s => s.Class == _selectedClass))
                 AddSkillRow(table, row++, profile, skill, interaction, () => { RefreshOrder(); RefreshControls(); });
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_class_skills", [ClassName(_selectedClass)]), table));
+            if (_selectedClass == TrainerClass.Crafter)
+            {
+                MyraButton Pick(string key, System.Func<uint> get, System.Action<uint> set)
+                {
+                    string Caption() => TazLang.Get(key) + (get() == 0 ? "" : $" · 0x{get():X8}");
+                    var button = DesktopAssistantForm.Button(Caption());
+                    button.OnClick = () => interaction.SelectTarget(target =>
+                    {
+                        if (target is not Item item)
+                            return;
+                        set(item.Serial);
+                        profile.Save();
+                        button.Text = Caption();
+                    });
+                    return button;
+                }
+                details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_smith_equipment"),
+                    DesktopAssistantForm.Actions(
+                        Pick("trainer_pick_smelt_tool", () => profile.Trainer.SmeltTool, value => profile.Trainer.SmeltTool = value),
+                        Pick("trainer_pick_forge", () => profile.Trainer.Forge, value => profile.Trainer.Forge = value))));
+            }
             order = Text("trainer_order_empty");
             RefreshOrder();
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_order"), order, Text("trainer_order_help")));

@@ -22,6 +22,9 @@ public sealed class TrainerSettings
     /// <summary>Skill IDs ticked for training.</summary>
     public List<string> Selected { get; set; } = [];
 
+    public uint SmeltTool { get; set; }
+    public uint Forge { get; set; }
+
     /// <summary>Picked targets by skill ID.</summary>
     public Dictionary<string, TrainerTarget> Targets { get; set; } = new();
 }

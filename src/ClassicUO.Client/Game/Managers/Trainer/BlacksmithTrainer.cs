@@ -143,7 +143,8 @@ internal static class BlacksmithTrainer
             title.Contains("plate", StringComparison.OrdinalIgnoreCase) ||
             title.Contains("armor", StringComparison.OrdinalIgnoreCase) ||
             title.Contains("armour", StringComparison.OrdinalIgnoreCase);
-        if (!smith)
+        bool makePrompt = title.Trim().Equals("What would you like to make?", StringComparison.OrdinalIgnoreCase);
+        if (!smith && !(makePrompt && _categoryDepth is 0 or 2))
             return false;
         int best = 0, index = 0;
         ushort graphic = 0, hue = 0;
@@ -156,7 +157,9 @@ internal static class BlacksmithTrainer
             string label = entries.ReadASCII(entries.ReadUInt8()).Trim().ToLowerInvariant();
             int rank = IsRecipeLabel(_pending.Name, label) ? 3 :
                 label is "platemail" or "plate mail" or "plate armor" ? 2 :
-                label is "armor" or "armour" ? 1 : 0;
+                label is "armor" or "armour" or "armors" or "armours" ? 1 : 0;
+            if (makePrompt && rank != (_categoryDepth == 0 ? 1 : 3))
+                continue;
             if (rank <= best)
                 continue;
             (best, index, graphic, hue) = (rank, i, g, h);
@@ -171,7 +174,7 @@ internal static class BlacksmithTrainer
                     ExistingPieces.Add(item.Serial);
             _stockBefore = CountMetal(world);
             _recovery = Recovery.AwaitPiece;
-            _deadline = Time.Ticks + 10000;
+            _deadline = Time.Ticks + 15000;
             _nextCheck = Time.Ticks + 350;
         }
         if (gray)
@@ -203,12 +206,15 @@ internal static class BlacksmithTrainer
         return amount;
     }
 
-    private static bool MatchesOutput(Item item) => _pending != null && item.Container == _bag &&
+    private static bool MatchesOutput(Item item) => _pending != null && item.Container == _bag && item.Hue == _metalHue &&
         !ExistingPieces.Contains(item.Serial) && IsPlate(_pending.Name, item.Graphic, _outputGraphic);
 
     private static GameObject? NearbyForge(World world)
     {
         var player = world.Player!;
+        uint selected = ProfileManager.CurrentProfile.Trainer.Forge;
+        if (selected != 0)
+            return world.Items.Get(selected) is { OnGround: true, Distance: <= 2 } forge && Math.Abs(forge.Z - player.Z) <= 16 ? forge : null;
         GameObject? closest = null;
         for (int x = Math.Max(0, player.X - 2); x <= player.X + 2; x++)
             for (int y = Math.Max(0, player.Y - 2); y <= player.Y + 2; y++)
@@ -247,7 +253,8 @@ internal static class BlacksmithTrainer
         _stockAfterCraft = CountMetal(world);
         if (_stockAfterCraft > _stockBefore - _pending!.Ingots)
             return;
-        var tool = world.Items.Get(_tool);
+        uint smeltTool = ProfileManager.CurrentProfile.Trainer.SmeltTool;
+        var tool = world.Items.Get(smeltTool == 0 ? _tool : smeltTool);
         if (NearbyForge(world) == null || tool == null || (tool.Container != world.Player.Serial && tool.BackpackOrRootContainer != _bag))
         {
             Pause(world, "trainer_smith_recovery_timeout");
@@ -256,7 +263,7 @@ internal static class BlacksmithTrainer
         _piece = piece.Serial;
         _recovery = Recovery.TargetPiece;
         _deadline = Time.Ticks + 5000;
-        GameActions.DoubleClick(world, _tool);
+        GameActions.DoubleClick(world, tool.Serial);
     }
 
     private static bool HasAnotherOutput(World world)
