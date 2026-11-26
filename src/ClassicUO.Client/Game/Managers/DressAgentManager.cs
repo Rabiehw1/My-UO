@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
 using ClassicUO.Common.Enums;
@@ -38,6 +39,9 @@ namespace ClassicUO.Game.Managers
         public bool IsLoaded { get; private set; }
 
         private const string SaveFileName = DressConfigSave.DressConfigsFileName;
+
+        // How long to give the shard to act on a KR unequip packet before falling back to normal moves.
+        private const int KR_FALLBACK_MS = 1500;
 
         private Layer[] _forbiddenLayers = [Layer.Backpack, Layer.Beard, Layer.Hair, Layer.ShopBuy, Layer.ShopBuyRestock, Layer.ShopSell, Layer.Bank];
 
@@ -358,8 +362,13 @@ namespace ClassicUO.Game.Managers
                 }
 
                 if (layersToUnequip.Count > 0)
+                {
                     // Send KR unequip packet for all layers at once
                     AsyncNetClient.Socket.Send_UnequipMacroKR(layersToUnequip.ToArray().AsSpan());
+
+                    // Shards that ignore the KR packet leave everything on: take what's still worn off the normal way.
+                    Task.Delay(KR_FALLBACK_MS).ContinueWith(_ => MainThreadQueue.InvokeOnMainThread(() => UndressRemaining(config)));
+                }
             }
             else
             {
@@ -378,6 +387,18 @@ namespace ClassicUO.Game.Managers
 
                 foreach (uint serial in itemsToUnequip)
                     UnequipItemAsync(serial, config);
+            }
+        }
+
+        private void UndressRemaining(DressConfig config)
+        {
+            if (World.Instance?.Player == null)
+                return;
+
+            foreach (DressItem dressItem in config.Items)
+            {
+                if (dressItem != null && !_forbiddenLayers.Contains((Layer)dressItem.Layer))
+                    UnequipItemAsync(dressItem.Serial, config);
             }
         }
 

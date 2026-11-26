@@ -70,6 +70,7 @@ internal static class ItemHelpers
         }
 
         container.PushToBack(item);
+        ObjectActionQueue.Instance.ConfirmArrived(serial, containerSerial);
 
         // Fire event after item is fully configured
         if (itemWasCreated)

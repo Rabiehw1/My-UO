@@ -15,6 +15,9 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
 
     private ItemMoveSource? _pendingMove;
     private MoveRequest _pendingRequest;
+
+    // How long a move may wait for the shard's confirmation before the queue carries on anyway.
+    private const long PENDING_MOVE_GIVE_UP_MS = 5000;
     private long _moveStarted;
     private bool _reportedTimeout;
 
@@ -99,6 +102,16 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
         return true;
     }
 
+    /// <summary>
+    /// Confirms the pending move when its item shows up in the container it was sent to. Shards that don't send the
+    /// "drop accepted" message would otherwise leave every later move waiting.
+    /// </summary>
+    internal void ConfirmArrived(uint serial, uint container)
+    {
+        if (HasPendingMove && _pendingMove.Value.Serial == serial && _pendingRequest.Destination == container)
+            ClearPendingMove(serial);
+    }
+
     internal void ConfirmEquip(uint serial, uint destination, Layer layer)
     {
         if (HasPendingMove && _pendingRequest.Layer == layer && _pendingRequest.Destination == destination)
@@ -116,6 +129,10 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
             _reportedTimeout = true;
             GameActions.Print("Item moves paused while waiting for the shard to confirm the last move.");
         }
+
+        // Never wait forever: a confirmation the shard never sends must not stop every later move.
+        if (HasPendingMove && Environment.TickCount64 - _moveStarted >= PENDING_MOVE_GIVE_UP_MS)
+            ClearPendingMove();
 
         if (IsEmpty || GlobalActionCooldown.IsOnCooldown) return; //Quick bool return if empty to avoid checking the queue when unnecessary
 
