@@ -23,7 +23,7 @@ namespace ClassicUO.Game.UI.Gumps
     {
         private Texture2D _backgroundTexture;
         private Vector3 _hueVector;
-        private ushort? _graphic;
+        private int? _graphic;
 
         /// <summary>
         ///     Graphic drawn while the macro is running, already resolved through
@@ -36,7 +36,7 @@ namespace ClassicUO.Game.UI.Gumps
         ///     resting graphic's size and stretches the active one into it, so switching state never moves
         ///     the button or reflows the group it is anchored in.
         /// </remarks>
-        private ushort? _activeGraphic;
+        private int? _activeGraphic;
 
         /// <summary>Draw tint for the running state, resolved through <see cref="Macro.HueFor" />.</summary>
         private Vector3 _activeHueVector;
@@ -154,7 +154,7 @@ namespace ClassicUO.Game.UI.Gumps
             }
         }
 
-        public ushort? Graphic
+        public int? Graphic
         {
             get => _graphic;
             set
@@ -162,12 +162,16 @@ namespace ClassicUO.Game.UI.Gumps
                 _graphic = value;
                 float factor = Scale / 100F;
                 var bounds = new Rectangle(0, 0, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+                IsPartialHue = false;
 
                 if (value.HasValue)
                 {
-                    ref readonly SpriteInfo texture = ref Client.Game.UO.Gumps.GetGump(value.Value);
-                    bounds = texture.UV;
-                    IsPartialHue = texture.Texture != null && Client.Game.UO.FileManager.TileData.StaticData[value.Value].IsPartialHue;
+                    SpriteInfo texture = MacroButtonArt.GetSprite(value.Value);
+                    if (texture.Texture != null)
+                    {
+                        bounds = texture.UV;
+                        IsPartialHue = MacroButtonArt.IsPartialHue(value.Value);
+                    }
                 }
 
                 Width = (int)(bounds.Width * factor);
@@ -190,8 +194,10 @@ namespace ClassicUO.Game.UI.Gumps
         {
             DestroyLabels();
 
-            _gText = CreateLabel(TheMacro.LabelFor(false), _labelHue);
-            _gTextActive = CreateLabel(TheMacro.LabelFor(true), _activeLabelHue);
+            if (!MacroButtonArt.IncludesCaption(Graphic))
+                _gText = CreateLabel(TheMacro.LabelFor(false), _labelHue);
+            if (!MacroButtonArt.IncludesCaption(_activeGraphic))
+                _gTextActive = CreateLabel(TheMacro.LabelFor(true), _activeLabelHue);
         }
 
         /// <summary>Renders one of the button's labels.</summary>
@@ -285,7 +291,7 @@ namespace ClassicUO.Game.UI.Gumps
             // Resolved per frame rather than cached on a state change: nothing signals the macro
             // starting or stopping, and the test is two reference compares.
             bool isActive = World.Macros.IsActive(ActionHead);
-            ushort? graphic = isActive ? _activeGraphic : Graphic;
+            int? graphic = isActive ? _activeGraphic : Graphic;
             Vector3 stateHueVector = isActive ? _activeHueVector : _hueVector;
 
             batcher.Draw
@@ -303,7 +309,7 @@ namespace ClassicUO.Game.UI.Gumps
 
             if (graphic.HasValue)
             {
-                ref readonly SpriteInfo texture = ref Client.Game.UO.Gumps.GetGump(graphic.Value);
+                SpriteInfo texture = MacroButtonArt.GetSprite(graphic.Value);
                 if (texture.Texture != null)
                 {
                     var rect = new Rectangle(x, y, Width, Height);
@@ -312,7 +318,7 @@ namespace ClassicUO.Game.UI.Gumps
                         texture.Texture,
                         rect,
                         texture.UV,
-                        stateHueVector
+                        MacroButtonArt.IncludesCaption(graphic) ? ShaderHueTranslator.GetHueVector(0) : stateHueVector
                     );
                 }
             }

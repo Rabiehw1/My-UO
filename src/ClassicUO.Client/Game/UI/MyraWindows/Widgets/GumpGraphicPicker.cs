@@ -75,12 +75,16 @@ public sealed class GumpGraphicPicker : IndexedComboPicker
 
     private static List<(int Value, string Label)> Catalog => _catalog ??= BuildCatalog();
 
-    /// <summary>Prepends the caller's null entry to the shared catalog, lazily so the catalog is not copied.</summary>
+    /// <summary>Prepends the null entry and any caller-supplied artwork to the shared archive catalog.</summary>
     /// <param name="noneLabel">What to call the null entry; null for the default wording.</param>
+    /// <param name="builtIn">An editor-specific entry outside the archive's ID range.</param>
     /// <returns>The entries for the name list, in display order.</returns>
-    private static IEnumerable<(int Value, string Label)> Entries(string? noneLabel)
+    internal static IEnumerable<(int Value, string Label)> Entries(string? noneLabel, (int Value, string Label)? builtIn = null)
     {
         yield return (NO_GRAPHIC, noneLabel ?? TazLang.Get("gumppicker_default", "Default"));
+
+        if (builtIn.HasValue)
+            yield return builtIn.Value;
 
         foreach ((int value, string label) in Catalog)
             yield return (value, label);

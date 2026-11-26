@@ -65,6 +65,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Game\Managers\DefaultSpellIndicatorConfig.json" />
     <EmbeddedResource Include="Configuration\language.ini" />
+    <EmbeddedResource Include="Game\UI\Assets\MainDress.png" />
     <!-- FNA loads LordBritishKW.png (AssemblyName + .png) at startup and SDL maps it to the macOS Dock icon. -->
     <None Update="LordBritishKW.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

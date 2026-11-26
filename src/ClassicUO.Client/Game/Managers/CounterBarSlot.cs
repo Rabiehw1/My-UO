@@ -271,7 +271,8 @@ public class CounterBarSlot
                 return (ushort)Spell.GumpIconSmallID;
 
             case CounterBarSlotType.Macro:
-                return world?.Macros?.FindMacro(MacroName)?.Graphic ?? 0;
+                int? graphic = world?.Macros?.FindMacro(MacroName)?.Graphic;
+                return graphic is >= 0 and <= ushort.MaxValue ? (ushort)graphic.Value : (ushort)0;
 
             case CounterBarSlotType.Ability:
                 int idx = GetAbilityIndex(world);

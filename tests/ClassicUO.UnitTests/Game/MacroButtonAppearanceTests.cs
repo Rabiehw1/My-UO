@@ -1,6 +1,7 @@
 using System.IO;
 using System.Xml;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI;
 using FluentAssertions;
 using Xunit;
 
@@ -45,7 +46,7 @@ public class MacroButtonAppearanceTests
     }
 
     /// <summary>
-    ///     The sentinel is why the running graphic is a wider signed field: null already means "inherit",
+    ///     The running graphic uses a sentinel because null already means "inherit",
     ///     so without it "draw nothing while running" would be unsayable.
     /// </summary>
     [Fact]
@@ -190,6 +191,31 @@ public class MacroButtonAppearanceTests
         loaded.Graphic.Should().Be(0x1234);
         loaded.ActiveGraphic.Should().Be(0x5678);
         loaded.Scale.Should().Be(150);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RoundTrip_KeepsMainDressInTheSelectedAppearance(bool isActive)
+    {
+        Macro macro = NewMacro();
+        macro.Graphic = isActive ? 0xFFFF : Macro.MAIN_DRESS_GRAPHIC;
+        macro.ActiveGraphic = isActive ? Macro.MAIN_DRESS_GRAPHIC : Macro.ACTIVE_GRAPHIC_NONE;
+
+        Macro loaded = RoundTrip(macro);
+
+        loaded.GraphicFor(isActive).Should().Be(Macro.MAIN_DRESS_GRAPHIC);
+        loaded.GraphicFor(!isActive).Should().Be(isActive ? 0xFFFF : (int?)null);
+        MacroButtonArt.IncludesCaption(loaded.GraphicFor(isActive)).Should().BeTrue();
+        MacroButtonArt.IncludesCaption(loaded.GraphicFor(!isActive)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void MainDressArtwork_IsEmbeddedInTheClient()
+    {
+        using Stream artwork = typeof(MacroButtonArt).Assembly.GetManifestResourceStream("ClassicUO.Game.UI.Assets.MainDress.png");
+        artwork.Should().NotBeNull();
+        artwork.ReadByte().Should().Be(0x89);
     }
 
     /// <summary>

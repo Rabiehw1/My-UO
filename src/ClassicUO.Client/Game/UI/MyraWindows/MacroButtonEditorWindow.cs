@@ -116,7 +116,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
     ///     The active graphic's picker, held for the same reason as <see cref="_activeHueSelector" /> and
     ///     so its gate can adopt whatever it currently shows.
     /// </summary>
-    private GumpGraphicPicker _activeGraphicPicker = null!;
+    private IndexedComboPicker _activeGraphicPicker = null!;
 
     /// <summary>
     ///     The active label's box, kept in step with the resting one while it is set to follow, so
@@ -570,12 +570,13 @@ public sealed class MacroButtonEditorWindow : MyraControl
             : TazLang.Get("macrobtneditor_inactivegraphic_gatetooltip",
                 "Gump graphic of the button at rest. Default draws no graphic");
 
-        GumpGraphicPicker picker = BuildGraphicPicker(_macro.GraphicFor(isActive), tooltip);
+        IndexedComboPicker picker = BuildGraphicPicker(_macro.GraphicFor(isActive), tooltip);
 
         if (!isActive)
         {
-            picker.GraphicChanged += (_, graphic) =>
+            picker.ValueChanged += (_, value) =>
             {
+                int? graphic = value == GumpGraphicPicker.NO_GRAPHIC ? null : value;
                 _macro.Graphic = graphic;
 
                 if (!_macro.ActiveGraphic.HasValue)
@@ -589,20 +590,20 @@ public sealed class MacroButtonEditorWindow : MyraControl
 
         _activeGraphicPicker = picker;
 
-        picker.GraphicChanged += (_, graphic) =>
+        picker.ValueChanged += (_, graphic) =>
         {
             // Mirroring moves this picker while the gate is off; committing then would switch the gate
             // on behind the user's back.
             if (_mirroringActiveGraphic || !_macro.ActiveGraphic.HasValue)
                 return;
 
-            _macro.ActiveGraphic = ToActiveGraphic(graphic);
+            _macro.ActiveGraphic = graphic;
             _preview.Refresh();
         };
 
         var gate = new GateToggle(_macro.ActiveGraphic.HasValue, picker, isOn =>
         {
-            _macro.ActiveGraphic = isOn ? ToActiveGraphic(picker.Graphic) : null;
+            _macro.ActiveGraphic = isOn ? picker.Value : null;
             _preview.Refresh();
         }) { CheckBox = { Tooltip = tooltip } };
 
@@ -677,13 +678,13 @@ public sealed class MacroButtonEditorWindow : MyraControl
 
     /// <summary>Moves the active picker without letting its change handler treat that as an edit.</summary>
     /// <param name="graphic">The graphic to show.</param>
-    private void MirrorToActiveGraphic(ushort? graphic)
+    private void MirrorToActiveGraphic(int? graphic)
     {
         _mirroringActiveGraphic = true;
 
         try
         {
-            _activeGraphicPicker.Graphic = graphic;
+            _activeGraphicPicker.Value = graphic ?? GumpGraphicPicker.NO_GRAPHIC;
         }
         finally
         {
@@ -691,20 +692,14 @@ public sealed class MacroButtonEditorWindow : MyraControl
         }
     }
 
-    /// <summary>
-    ///     Maps what the picker reports onto the active graphic's storage, where null is already spoken
-    ///     for by the gate.
-    /// </summary>
-    /// <param name="graphic">The picker's graphic, null for its Default entry.</param>
-    /// <returns>The value to store.</returns>
-    private static int ToActiveGraphic(ushort? graphic) => graphic ?? Macro.ACTIVE_GRAPHIC_NONE;
-
     /// <summary>Builds a gump-graphic picker sized for a state column.</summary>
     /// <param name="graphic">The graphic to start on.</param>
     /// <param name="tooltip">Tooltip for the number field.</param>
     /// <returns>The picker.</returns>
-    private static GumpGraphicPicker BuildGraphicPicker(ushort? graphic, string tooltip) =>
-        new(graphic)
+    private static IndexedComboPicker BuildGraphicPicker(int? graphic, string tooltip) =>
+        new(graphic ?? GumpGraphicPicker.NO_GRAPHIC,
+            GumpGraphicPicker.Entries(null, (Macro.MAIN_DRESS_GRAPHIC, TazLang.Get("macrobtneditor_graphic_main_dress"))),
+            GumpGraphicPicker.NO_GRAPHIC, Macro.MAIN_DRESS_GRAPHIC, new HexIntInputBox())
         {
             NumberInput = { Width = GRAPHIC_NUMBER_WIDTH, HintText = TazLang.Get("macrobtneditor_graphic_hint", "Graphic # or 0x.."), Tooltip = tooltip },
             NameList = { Width = GRAPHIC_LIST_WIDTH, SearchHintText = TazLang.Get("macrobtneditor_graphic_searchhint", "Search for a gump..") }
@@ -940,7 +935,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
         byte Scale,
         ushort Hue,
         ushort? ActiveHue,
-        ushort? Graphic,
+        int? Graphic,
         int? ActiveGraphic
     )
     {

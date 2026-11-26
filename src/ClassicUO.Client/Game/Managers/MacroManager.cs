@@ -2989,7 +2989,11 @@ namespace ClassicUO.Game.Managers
         public ushort Hue = 0x00;
 
         /// <summary>Gump graphic of the button at rest. Null draws a bare plate.</summary>
-        public ushort? Graphic = null;
+        public int? Graphic = null;
+
+        // Built-in button art is outside the shard's 16-bit gump ID range.
+        internal const int MAIN_DRESS_GRAPHIC = ushort.MaxValue + 1;
+        private const string MAIN_DRESS_GRAPHIC_KEY = "main-dress";
 
         /// <summary>
         /// Hue of the button while the macro is running. Null means "same as <see cref="Hue"/>".
@@ -3007,8 +3011,8 @@ namespace ClassicUO.Game.Managers
         /// appearance - which is what every macro saved before this field existed wants.
         /// </summary>
         /// <remarks>
-        /// Signed, and wider than <see cref="Graphic"/>, because this field has three states where that
-        /// one has two: inherit (null), draw nothing (<see cref="ACTIVE_GRAPHIC_NONE"/>), or draw a
+        /// This field has three states where <see cref="Graphic"/> has two:
+        /// inherit (null), draw nothing (<see cref="ACTIVE_GRAPHIC_NONE"/>), or draw a
         /// graphic. Folding the first two together would make "no graphic while running" unsayable.
         /// </remarks>
         public int? ActiveGraphic = null;
@@ -3033,12 +3037,23 @@ namespace ClassicUO.Game.Managers
         /// <summary>Which graphic the button shows in a given run state.</summary>
         /// <param name="isActive">Whether the macro is currently running.</param>
         /// <returns>The graphic to draw, or null for a bare plate.</returns>
-        public ushort? GraphicFor(bool isActive)
+        public int? GraphicFor(bool isActive)
         {
             if (!isActive || ActiveGraphic is not { } active)
                 return Graphic;
 
-            return active < 0 ? null : (ushort)active;
+            return active < 0 ? null : active;
+        }
+
+        private static string WriteGraphic(int? graphic) => graphic == MAIN_DRESS_GRAPHIC
+            ? MAIN_DRESS_GRAPHIC_KEY : graphic?.ToString() ?? string.Empty;
+
+        private static int? ReadGraphic(string value)
+        {
+            if (value == MAIN_DRESS_GRAPHIC_KEY)
+                return MAIN_DRESS_GRAPHIC;
+
+            return ushort.TryParse(value, out ushort graphic) ? graphic : null;
         }
 
         /// <summary>Which hue the button shows in a given run state.</summary>
@@ -3150,8 +3165,8 @@ namespace ClassicUO.Game.Managers
             writer.WriteAttributeString("activelabelopacity", ActiveLabelOpacity.HasValue ? ActiveLabelOpacity.ToString() : string.Empty);
             writer.WriteAttributeString("hue", Hue.ToString());
             writer.WriteAttributeString("activehue", ActiveHue.HasValue ? ActiveHue.ToString() : string.Empty);
-            writer.WriteAttributeString("graphic", Graphic.HasValue ? Graphic.ToString() : string.Empty);
-            writer.WriteAttributeString("activegraphic", ActiveGraphic.HasValue ? ActiveGraphic.ToString() : string.Empty);
+            writer.WriteAttributeString("graphic", WriteGraphic(Graphic));
+            writer.WriteAttributeString("activegraphic", WriteGraphic(ActiveGraphic));
             writer.WriteAttributeString("scale", Scale.ToString());
             writer.WriteAttributeString("journaltriggers", JournalTriggers ?? string.Empty);
 
@@ -3241,17 +3256,12 @@ namespace ClassicUO.Game.Managers
             {
                 Scale = savedScale;
             }
-            if (ushort.TryParse(xml.GetAttribute("graphic"), out ushort graphic))
-            {
-                Graphic = graphic;
-            }
+            Graphic = ReadGraphic(xml.GetAttribute("graphic"));
 
             // Missing (saved before these fields existed) and empty both leave these null, which means
             // "same as the resting value" - so an older macro keeps one appearance, no migration needed.
-            if (int.TryParse(xml.GetAttribute("activegraphic"), out int activeGraphic))
-            {
-                ActiveGraphic = activeGraphic;
-            }
+            string activeGraphic = xml.GetAttribute("activegraphic");
+            ActiveGraphic = activeGraphic == "-1" ? ACTIVE_GRAPHIC_NONE : ReadGraphic(activeGraphic);
 
             if (ushort.TryParse(xml.GetAttribute("activehue"), out ushort activeHue))
             {

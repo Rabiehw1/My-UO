@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using ClassicUO.Assets;
 using ClassicUO.Game.Managers;
 using ClassicUO.Renderer;
 using FontStashSharp.RichText;
@@ -161,8 +160,9 @@ public sealed class MacroButtonPreview : Panel, IDisposable
         Border = hasGraphic ? null : new SolidBrush(Color.Gray);
         BorderThickness = hasGraphic ? new Thickness(0) : new Thickness(1);
 
-        // Empty is how the macro says "no label", matching what the live button draws.
-        string label = _macro.LabelFor(_showActiveState);
+        // Built-in art with a caption supplies its own label.
+        string label = MacroButtonArt.IncludesCaption(_macro.GraphicFor(_showActiveState))
+            ? string.Empty : _macro.LabelFor(_showActiveState);
 
         _nameLabel.Text = label;
         _nameLabel.Visible = !string.IsNullOrEmpty(label);
@@ -228,7 +228,7 @@ public sealed class MacroButtonPreview : Panel, IDisposable
             return;
         }
 
-        ref readonly SpriteInfo sprite = ref Client.Game.UO.Gumps.GetGump(graphic);
+        SpriteInfo sprite = MacroButtonArt.GetSprite(graphic);
 
         if (sprite.Texture == null)
         {
@@ -241,7 +241,7 @@ public sealed class MacroButtonPreview : Panel, IDisposable
 
         // The atlas region is already the right pixels for an unhued graphic, and nothing off-screen
         // is worth holding a bake for.
-        if (hue == 0 || !IsPlaced)
+        if (hue == 0 || !IsPlaced || MacroButtonArt.IncludesCaption(graphic))
         {
             _graphicImage.Renderable = new TextureRegion(sprite.Texture, sprite.UV);
 
@@ -249,9 +249,9 @@ public sealed class MacroButtonPreview : Panel, IDisposable
         }
 
         uint[] pixels = Client.Game.UO.Gumps.GetHuedGumpPixels(
-            graphic,
+            (ushort)graphic,
             hue,
-            IsPartialHue(graphic),
+            MacroButtonArt.IsPartialHue(graphic),
             out Rectangle bounds
         );
 
@@ -273,7 +273,7 @@ public sealed class MacroButtonPreview : Panel, IDisposable
         if (_macro.Graphic is not { } graphic)
             return new Point(PLATE_WIDTH, PLATE_HEIGHT);
 
-        ref readonly SpriteInfo sprite = ref Client.Game.UO.Gumps.GetGump(graphic);
+        SpriteInfo sprite = MacroButtonArt.GetSprite(graphic);
 
         return sprite.Texture == null ? new Point(PLATE_WIDTH, PLATE_HEIGHT) : new Point(sprite.UV.Width, sprite.UV.Height);
     }
@@ -288,20 +288,6 @@ public sealed class MacroButtonPreview : Panel, IDisposable
         _graphicImage.Renderable = null;
         _baked.Dispose();
         _baked = null;
-    }
-
-    /// <summary>
-    ///     Reads the partial-hue flag from tile data.
-    /// </summary>
-    /// <remarks>
-    ///     Gump indices and tile data indices are separate ranges, so a gump can fall outside tile data
-    ///     entirely; treat that as "hue everything", which is what the shader does without the flag.
-    /// </remarks>
-    private static bool IsPartialHue(ushort graphic)
-    {
-        StaticTiles[] staticData = Client.Game.UO.FileManager.TileData.StaticData;
-
-        return graphic < staticData.Length && staticData[graphic].IsPartialHue;
     }
 
     /// <summary>
