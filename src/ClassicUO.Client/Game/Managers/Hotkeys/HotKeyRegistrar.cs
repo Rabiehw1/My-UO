@@ -1,3 +1,4 @@
+using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Scenes;
 
@@ -50,6 +51,7 @@ namespace ClassicUO.Game.Managers.Hotkeys
 
         public const string WeaponSwitchId = "weapon-switch.auto";
         public const string HealingAssistantToggleId = "healing-assistant.toggle";
+        public const string AutoLootToggleId = "auto-loot.toggle";
 
         /// <summary>Register all systems' hotkeys. Safe to call again on profile switch.</summary>
         public static void RegisterAll()
@@ -64,6 +66,32 @@ namespace ClassicUO.Game.Managers.Hotkeys
                 () => GameScene.Instance?.SwitchWeapon());
             HotKeys.Register(HealingAssistantToggleId, "Toggle Healing Assistant", new HotkeyBinding(), "Healing Assistant",
                 ToggleHealingAssistant);
+            HotKeys.Register(AutoLootToggleId, "Toggle Auto Loot", new HotkeyBinding(), "Auto Loot", ToggleAutoLoot);
+        }
+
+        /// <summary>Stops Auto Loot, or starts it with the preset last used (the first one if none), and says which.</summary>
+        public static void ToggleAutoLoot()
+        {
+            AutoLootManager loot = AutoLootManager.Instance;
+            if (loot == null || ProfileManager.CurrentProfile == null)
+                return;
+
+            if (loot.IsEnabled)
+            {
+                loot.SetEnabled(false);
+                GameActions.Print(TazLang.Get("autoloot_toggled_off"));
+                return;
+            }
+
+            AutoLootManager.AutoLootList preset = loot.CurrentList ?? loot.Lists.FirstOrDefault();
+            if (preset == null)
+            {
+                GameActions.Print(TazLang.Get("autoloot_toggled_nopreset"));
+                return;
+            }
+
+            loot.StartPreset(preset);
+            GameActions.Print(TazLang.Get("autoloot_toggled_on", [preset.Name]));
         }
 
         /// <summary>Turns the Healing Assistant on or off and says which in the journal.</summary>

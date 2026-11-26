@@ -3,6 +3,7 @@ using System;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Utility;
@@ -186,6 +187,8 @@ public static class AutoLootAgentTabContent
                 title.VerticalAlignment = VerticalAlignment.Center;
                 var controls = DesktopAssistantForm.Actions();
                 controls.HorizontalAlignment = HorizontalAlignment.Right;
+                controls.Widgets.Add(HotkeysTabContent.HotkeyButton(interaction, HotKeyRegistrar.AutoLootToggleId,
+                    TazLang.Get("autoloot_hotkey_tooltip")));
                 if (loot.IsEnabled)
                     controls.Widgets.Add(stop);
                 if (!running)

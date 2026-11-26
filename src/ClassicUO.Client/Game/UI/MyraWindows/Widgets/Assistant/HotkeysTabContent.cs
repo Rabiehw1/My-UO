@@ -519,6 +519,28 @@ public static class HotkeysTabContent
         }, _ => refresh());
     }
 
+    /// <summary>A button showing one registered hotkey's binding ("Set hotkey" when unbound); clicking it opens the shortcut dialog.</summary>
+    /// <param name="interaction">Page services; desktop Assistant only.</param>
+    /// <param name="entryId">The hotkey's registered ID.</param>
+    /// <param name="tooltip">What the hotkey does, shown on hover.</param>
+    /// <returns>The button.</returns>
+    internal static MyraButton HotkeyButton(AgentPageInteraction interaction, string entryId, string tooltip)
+    {
+        MyraButton button = DesktopAssistantTheme.ActionButton("");
+        button.Tooltip = tooltip;
+        ShowBinding();
+        button.Click += (_, _) => CaptureHotkey(interaction, button, entryId, ShowBinding);
+        return button;
+
+        void ShowBinding()
+        {
+            HotkeyBinding? binding = HotKeys.Get(entryId)?.Binding;
+            button.Text = binding == null || binding.IsEmpty
+                ? TazLang.Get("hotkey_button_set")
+                : TazLang.Get("hotkey_button_current", [binding.Describe()]);
+        }
+    }
+
     /// <summary>Opens the shortcut dialog for one registered hotkey, for pages that offer their own "Set hotkey" button.</summary>
     /// <param name="interaction">Page services; desktop Assistant only.</param>
     /// <param name="anchor">Widget the dialog opens next to.</param>
