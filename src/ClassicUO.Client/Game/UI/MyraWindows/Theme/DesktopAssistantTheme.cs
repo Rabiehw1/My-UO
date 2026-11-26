@@ -26,7 +26,7 @@ internal sealed class DesktopAssistantTheme
     internal static readonly SolidBrush Selected = new(new Color(229, 238, 247));
 
     private static readonly SolidBrush Focus = new(Accent);
-    private static readonly SolidBrush GroupFill = new(new Color(249, 250, 252));
+    internal static readonly SolidBrush GroupFill = new(new Color(249, 250, 252));
     private static readonly SolidBrush Disabled = new(new Color(240, 242, 245));
     internal static readonly SolidBrush ControlBorder = new(new Color(113, 129, 147));
     private static readonly IBrush SelectedTab = new SelectionSurface(Canvas, underline: true);

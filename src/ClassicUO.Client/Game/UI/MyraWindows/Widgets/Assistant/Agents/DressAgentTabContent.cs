@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
@@ -7,12 +8,17 @@ using Myra.Graphics2D.UI;
 
 namespace ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 
-public static class DressAgentTabContent
+public static partial class DressAgentTabContent
 {
+    internal static string Title => TazLang.Get("assistant_agent_tab_dress", "Dress Agent");
+
     public static Widget Build() => Build(AgentPageInteraction.InGame);
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
+        if (interaction.IsDesktop)
+            return BuildDesktop(interaction);
+
         if (DressAgentManager.Instance == null)
             return new MyraLabel("Dress Agent not loaded", MyraLabel.TextStyle.P);
 

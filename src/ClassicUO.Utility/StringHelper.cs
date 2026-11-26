@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using SDL3;
 
 namespace ClassicUO.Utility
@@ -12,6 +13,9 @@ namespace ClassicUO.Utility
     public static class StringHelper
     {
         private static readonly char[] _dots = { '.', ',', ';', '!' };
+        private static readonly Regex BaseFontTag = new(@"</?basefont(?:\s[^<>]*)?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        public static string RemoveBaseFontTags(string text) => BaseFontTag.Replace(text ?? "", "");
 
         public static IEnumerable<byte> StringToCp1252Bytes(string s, int length = -1)
         {

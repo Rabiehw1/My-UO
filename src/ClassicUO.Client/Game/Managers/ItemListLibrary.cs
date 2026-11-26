@@ -164,15 +164,12 @@ internal sealed class SharedItemList
 
 internal sealed record SharedItem(ushort Graphic, ushort Hue, string Name)
 {
-    private static readonly Regex BaseFontTag = new(@"</?basefont(?:\s[^<>]*)?>", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
-    public string Name { get; init => field = CleanName(value); } = CleanName(Name);
+    public string Name { get; init => field = StringHelper.RemoveBaseFontTags(value); } = StringHelper.RemoveBaseFontTags(Name);
     public string RegexSearch { get; init; } = "";
     public int Priority { get; init; } = 1;
     public int MaxAmount { get; init; }
     public uint DestinationContainer { get; init; }
 
-    private static string CleanName(string? name) => BaseFontTag.Replace(name ?? "", "");
 }
 
 internal static class GatheringListRules

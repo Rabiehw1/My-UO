@@ -28,7 +28,7 @@ public static class AgentTab
     [
         new(AutoLootAgentTabContent.Title, AgentGroup.LootAndScavenge, AutoLootAgentTabContent.Build, true),
         new(TazLang.Get("assistant_agent_tab_scavenger", "Scavenger"), AgentGroup.LootAndScavenge, ScavengerAgentTabContent.Build, true),
-        new(TazLang.Get("assistant_agent_tab_dress", "Dress Agent"), AgentGroup.GearAndInventory, DressAgentTabContent.Build),
+        new(DressAgentTabContent.Title, AgentGroup.GearAndInventory, DressAgentTabContent.Build),
         new(ShoppingAssistantTabContent.Title, AgentGroup.Vendors, ShoppingAssistantTabContent.Build, true),
         new(TazLang.Get("assistant_agent_tab_healing", "Healing Assistant"), AgentGroup.HealingAndStats, HealingAssistantTabContent.Build),
         new(TazLang.Get("assistant_agent_tab_selfheal", "Self Heal"), AgentGroup.HealingAndStats, SelfHealTabContent.Build),
