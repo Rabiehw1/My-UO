@@ -42,6 +42,9 @@ internal static class TrainerSkillUser
         PlayerMobile player = world.Player!;
         switch (skill.Use)
         {
+            case TrainerUse.Lumberjack:
+                return LumberjackTrainer.Begin(world, target);
+
             case TrainerUse.Blacksmith:
                 return BlacksmithTrainer.Use(world, target);
 
