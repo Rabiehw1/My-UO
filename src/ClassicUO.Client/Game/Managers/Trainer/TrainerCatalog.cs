@@ -46,6 +46,8 @@ public enum TrainerUse
     Blacksmith,
     Lumberjack,
     Begging,
+    Entice,
+    Provoke,
     Tailor
 }
 
@@ -99,6 +101,8 @@ internal static class TrainerCatalog
         new("meditation", "Meditation", TrainerClass.Mage, TrainerUse.Meditation, Busy: new TrainerBusyRule(
             "You enter a meditative trance",
             ["You stop meditating", "You've lost your concentration"])),
+        new("enticement", "Enticement", TrainerClass.Bard, TrainerUse.Entice, TrainerTargetKind.Mobile),
+        new("provocation", "Provocation", TrainerClass.Bard, TrainerUse.Provoke, TrainerTargetKind.Mobile),
         new("begging", "Begging", TrainerClass.Bard, TrainerUse.Begging),
         new("musicianship", "Musicianship", TrainerClass.Bard, TrainerUse.Instrument),
         new("peacemaking", "Peacemaking", TrainerClass.Bard, TrainerUse.Plain),

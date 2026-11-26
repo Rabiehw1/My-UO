@@ -94,6 +94,7 @@ internal sealed class TrainerManager
             return;
 
         LumberjackTrainer.Reset(clearCooldowns: true);
+        BardTrainer.Reset();
         BeggingTrainer.Reset();
         TailoringTrainer.Reset();
         BlacksmithTrainer.Reset();
@@ -116,7 +117,7 @@ internal sealed class TrainerManager
             return;
         }
 
-        if (BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
+        if (BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
             return;
 
         if (_closeListUntil != 0)

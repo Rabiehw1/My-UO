@@ -85,6 +85,38 @@ internal static class TrainerTabContent
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_class_skills", [ClassName(_selectedClass)]), table));
             if (_selectedClass == TrainerClass.Bard)
             {
+                var settings = profile.Trainer;
+                var tile = settings.HerdingDestination;
+                var tool = DesktopAssistantForm.Button(TazLang.Get("trainer_herd_tool") +
+                    (settings.HerdingTool == 0 ? "" : $" · 0x{settings.HerdingTool:X8}"), () =>
+                    interaction.SelectTarget(picked =>
+                    {
+                        if (picked is not Item item) return;
+                        settings.HerdingTool = item.Serial;
+                        profile.Save();
+                        ShowClass();
+                    }));
+                var destination = DesktopAssistantForm.Button(TazLang.Get("trainer_herd_tile") +
+                    (tile == null ? "" : $" · {tile.X}, {tile.Y}, {tile.Z}"), () =>
+                    interaction.SelectTarget(picked =>
+                    {
+                        if (picked is not GameObject obj || obj is not (Land or Static)) return;
+                        settings.HerdingDestination = new(World.Instance.MapIndex, obj.X, obj.Y, obj.Z,
+                            obj is Land ? (ushort)0 : obj.Graphic);
+                        profile.Save();
+                        ShowClass();
+                    }));
+                details.Widgets.Add(DesktopAssistantTheme.Group("Enticement", DesktopAssistantForm.Actions(tool, destination)));
+                var opponent = DesktopAssistantForm.Button(TazLang.Get("trainer_provoke_opponent") +
+                    (settings.ProvokeOpponent == null ? "" : $" · {settings.ProvokeOpponent.Name}"), () =>
+                    interaction.SelectTarget(picked =>
+                    {
+                        if (picked is not Mobile mobile || mobile == World.Instance.Player) return;
+                        settings.ProvokeOpponent = new TrainerTarget { Serial = mobile.Serial, Name = mobile.Name ?? "" };
+                        profile.Save();
+                        ShowClass();
+                    }));
+                details.Widgets.Add(DesktopAssistantTheme.Group("Provocation", opponent));
                 var route = new VerticalStackPanel { Spacing = 4 };
                 var vendors = profile.Trainer.BeggingVendors;
                 route.Widgets.Add(DesktopAssistantForm.Button(TazLang.Get("trainer_beg_add"), () =>
