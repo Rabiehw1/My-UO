@@ -36,6 +36,12 @@ public sealed class AutoSkinningManager
     // How long after the latest carve new items in the backpack are treated as carved. Each carve restarts it.
     private const uint CARVE_WATCH_MS = 3000;
     private const ushort GOLD_GRAPHIC = 0x0EED;
+
+    // How long the corpse waits to answer the knife's target cursor.
+    private const int SKIN_TARGET_TIMEOUT_MS = 3000;
+
+    // How many times a carve waits for another feature's target cursor before it is dropped.
+    private const int MAX_SKIN_WAITS = 10;
     private uint _watchCarvedUntil;
 
     // Backpack piles and their amounts at the latest carve: a pile counts as carved only if it grew since.
@@ -110,21 +116,40 @@ public sealed class AutoSkinningManager
         return null;
     }
 
-    private void EnqueueSkin(uint knifeSerial, uint corpseSerial) => ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
-                                                                          {
-                                                                              World world = World.Instance;
-                                                                              if (world == null)
-                                                                                  return;
+    private void EnqueueSkin(uint knifeSerial, uint corpseSerial, int attempt = 0) =>
+        ObjectActionQueue.Instance.Enqueue(
+            new ObjectActionQueueItem(() => Skin(knifeSerial, corpseSerial, attempt)),
+            ActionPriority.UseItem
+        );
 
-                                                                              // Queue the corpse serial to answer the server target request produced by using the knife.
-                                                                              // Match any target cursor type since some servers send a non-neutral cursor for skinning.
-                                                                              TargetManager.SetAutoTarget(corpseSerial, TargetType.Neutral, true);
+    /// <summary>
+    /// Uses the knife and answers its target cursor with the corpse. Waits while another cursor is up or another
+    /// feature (healing, spells) is still waiting for its own cursor: the client answers only one cursor at a time,
+    /// so starting now would aim the knife at that feature's target, or the corpse at that feature's cursor.
+    /// </summary>
+    private void Skin(uint knifeSerial, uint corpseSerial, int attempt)
+    {
+        World world = World.Instance;
+        if (world == null)
+            return;
 
-                                                                              // ignoreQueue: this is already running inside the action queue, don't re-enqueue.
-                                                                              GameActions.DoubleClick(world, knifeSerial, false, true);
+        if (TargetManager.NextAutoTarget.IsSet || world.TargetManager.IsTargeting)
+        {
+            // Retried after the object delay, since the queue starts its cooldown after this item.
+            if (attempt < MAX_SKIN_WAITS)
+                EnqueueSkin(knifeSerial, corpseSerial, attempt + 1);
+            return;
+        }
 
-                                                                              StartCarveWatch(world);
-                                                                          }), ActionPriority.UseItem);
+        // Match any cursor type since some servers send a non-neutral cursor for skinning. The timeout keeps a
+        // knife cursor that never comes from claiming a later, unrelated cursor.
+        TargetManager.SetAutoTarget(corpseSerial, TargetType.Neutral, true, SKIN_TARGET_TIMEOUT_MS);
+
+        // ignoreQueue: this is already running inside the action queue, don't re-enqueue.
+        GameActions.DoubleClick(world, knifeSerial, false, true);
+
+        StartCarveWatch(world);
+    }
 
     /// <summary>
     /// Opens (or, for back-to-back carves, extends) the window in which carved items are moved, and records the

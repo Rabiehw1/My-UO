@@ -437,7 +437,8 @@ namespace ClassicUO.Game.Managers
         {
             if (mobile == null) return;
 
-            if (IsReadyToBandage())
+            // Another feature (e.g. auto skinning) is waiting for its target cursor; a bandage now would take it.
+            if (IsReadyToBandage() && !TargetManager.NextAutoTarget.IsSet)
             {
                 // A heal is being attempted, so refresh the retry deadline for this mobile.
                 _retryDeadlines[mobile.Serial] = Time.Ticks + MAX_RETRY_DURATION_MS;
