@@ -6,6 +6,7 @@ using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Managers.Hotkeys;
 using ClassicUO.Game.Managers.ShardSpells;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Utility;
@@ -54,6 +55,25 @@ internal static partial class HealingAssistantTabContent
         }
     }
 
+    /// <summary>Button showing the on/off hotkey; clicking it opens the shortcut dialog.</summary>
+    private static MyraButton BuildHotkeyButton(AgentPageInteraction interaction)
+    {
+        MyraButton button = DesktopAssistantTheme.ActionButton("");
+        button.Tooltip = TazLang.Get("healingassistant_hotkey_tooltip");
+        ShowBinding();
+        button.Click += (_, _) =>
+            HotkeysTabContent.CaptureHotkey(interaction, button, HotKeyRegistrar.HealingAssistantToggleId, ShowBinding);
+        return button;
+
+        void ShowBinding()
+        {
+            HotkeyBinding? binding = HotKeys.Get(HotKeyRegistrar.HealingAssistantToggleId)?.Binding;
+            button.Text = binding == null || binding.IsEmpty
+                ? TazLang.Get("healingassistant_hotkey_set")
+                : TazLang.Get("healingassistant_hotkey_current", [binding.Describe()]);
+        }
+    }
+
     private static PlannerView BuildPlanner(AgentPageInteraction interaction, Profile profile,
         MethodSetting[] methods, Func<HealingMethod, (int Min, int Max)> allowedRange)
     {
@@ -72,6 +92,7 @@ internal static partial class HealingAssistantTabContent
                 profile.EnableHealingAssistant = value;
                 root.RefreshStatus(force: true);
             }, TazLang.Get("healingassistant_enable")),
+            BuildHotkeyButton(interaction),
             new MyraLabel(TazLang.Get("healingassistant_highest_range"), MyraLabel.TextStyle.P) { Tooltip = first.Tooltip },
             first, status);
         controls.Background = DesktopAssistantTheme.Sidebar;

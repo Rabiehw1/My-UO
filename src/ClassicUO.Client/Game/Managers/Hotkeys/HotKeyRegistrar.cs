@@ -49,6 +49,7 @@ namespace ClassicUO.Game.Managers.Hotkeys
         #endregion
 
         public const string WeaponSwitchId = "weapon-switch.auto";
+        public const string HealingAssistantToggleId = "healing-assistant.toggle";
 
         /// <summary>Register all systems' hotkeys. Safe to call again on profile switch.</summary>
         public static void RegisterAll()
@@ -61,6 +62,19 @@ namespace ClassicUO.Game.Managers.Hotkeys
             RegisterChat();
             HotKeys.Register(WeaponSwitchId, "Auto Switch Weapon", new HotkeyBinding(), "Weapon Switch",
                 () => GameScene.Instance?.SwitchWeapon());
+            HotKeys.Register(HealingAssistantToggleId, "Toggle Healing Assistant", new HotkeyBinding(), "Healing Assistant",
+                ToggleHealingAssistant);
+        }
+
+        /// <summary>Turns the Healing Assistant on or off and says which in the journal.</summary>
+        public static void ToggleHealingAssistant()
+        {
+            Profile profile = ProfileManager.CurrentProfile;
+            if (profile == null)
+                return;
+
+            profile.EnableHealingAssistant = !profile.EnableHealingAssistant;
+            GameActions.Print(TazLang.Get(profile.EnableHealingAssistant ? "healingassistant_toggled_on" : "healingassistant_toggled_off"));
         }
 
         private static void RegisterChat()

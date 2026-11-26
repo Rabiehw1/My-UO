@@ -519,6 +519,18 @@ public static class HotkeysTabContent
         }, _ => refresh());
     }
 
+    /// <summary>Opens the shortcut dialog for one registered hotkey, for pages that offer their own "Set hotkey" button.</summary>
+    /// <param name="interaction">Page services; desktop Assistant only.</param>
+    /// <param name="anchor">Widget the dialog opens next to.</param>
+    /// <param name="entryId">The hotkey's registered ID.</param>
+    /// <param name="changed">Called after a new binding is saved.</param>
+    internal static void CaptureHotkey(AgentPageInteraction interaction, Widget anchor, string entryId, Action changed)
+    {
+        HotkeyRow? row = BuildRows().FirstOrDefault(candidate => candidate.Source is HotKeyEntry entry && entry.Id == entryId);
+        if (row != null)
+            CaptureDesktopBinding(interaction, anchor, row, _ => changed());
+    }
+
     private static void CaptureDesktopBinding(AgentPageInteraction interaction, Widget anchor, HotkeyRow? row,
         Action<HotkeyRow> refresh, IReadOnlyList<HotkeyRow>? available = null)
     {
