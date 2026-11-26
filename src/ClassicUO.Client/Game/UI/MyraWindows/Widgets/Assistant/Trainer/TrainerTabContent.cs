@@ -6,6 +6,7 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers.Trainer;
+using ClassicUO.Game.Managers;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using Myra.Graphics2D.UI;
@@ -102,6 +103,24 @@ internal static class TrainerTabContent
                     DesktopAssistantForm.Actions(
                         Pick("trainer_pick_smelt_tool", () => profile.Trainer.SmeltTool, value => profile.Trainer.SmeltTool = value),
                         Pick("trainer_pick_forge", () => profile.Trainer.Forge, value => profile.Trainer.Forge = value))));
+                var outfits = DressAgentManager.Instance.CurrentPlayerConfigs.ToArray();
+                var outfit = new ComboView();
+                foreach (var config in outfits)
+                    outfit.ListView.Widgets.Add(new Label { Text = config.Name });
+                int saved = System.Array.FindIndex(outfits, config => config.Name == profile.Trainer.TailorOutfit);
+                outfit.ListView.SelectedIndex = saved >= 0 ? saved : null;
+                outfit.ListView.SelectedIndexChanged += (_, _) =>
+                {
+                    if (outfit.ListView.SelectedIndex is not int selected)
+                        return;
+                    profile.Trainer.TailorOutfit = outfits[selected].Name;
+                    profile.Save();
+                };
+                details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_tailor_equipment"),
+                    DesktopAssistantForm.Actions(
+                        Pick("trainer_tailor_leather", () => profile.Trainer.DragonLeather, value => profile.Trainer.DragonLeather = value),
+                        Pick("trainer_tailor_unstitch", () => profile.Trainer.UnstitchTool, value => profile.Trainer.UnstitchTool = value)),
+                    DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(TazLang.Get("trainer_tailor_outfit"), outfit))));
             }
             order = Text("trainer_order_empty");
             RefreshOrder();

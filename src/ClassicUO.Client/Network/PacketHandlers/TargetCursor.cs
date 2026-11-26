@@ -29,6 +29,8 @@ internal static class TargetCursor
             return;
         if (liveCursor && !claimed && !skinTarget && Game.Managers.Trainer.LumberjackTrainer.TryCursor(world, cursorTarget, targetType))
             return;
+        if (liveCursor && !claimed && !skinTarget && Game.Managers.Trainer.TailoringTrainer.TryCursor(world, cursorTarget, targetType))
+            return;
         if (liveCursor)
             SupportAgentManager.Instance.OnPetOrderCursor(cursorTarget, targetType, claimed || skinTarget);
     }

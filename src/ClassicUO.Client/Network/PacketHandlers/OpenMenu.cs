@@ -23,6 +23,9 @@ internal static class OpenMenu
         if (ClassicUO.Game.Managers.Trainer.BlacksmithTrainer.TryMenu(world, serial, id, name, count, p))
             return;
 
+        if (ClassicUO.Game.Managers.Trainer.TailoringTrainer.TryMenu(world, serial, id, name, count, p))
+            return;
+
         ushort menuid = p.ReadUInt16BE();
         p.Seek(p.Position - 2);
 

@@ -94,6 +94,7 @@ internal sealed class TrainerManager
             return;
 
         LumberjackTrainer.Reset(clearCooldowns: true);
+        TailoringTrainer.Reset();
         BlacksmithTrainer.Reset();
         _profile = null;
         EventSink.RawMessageReceived -= OnMessage;
@@ -114,7 +115,7 @@ internal sealed class TrainerManager
             return;
         }
 
-        if (BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
+        if (TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
             return;
 
         if (_closeListUntil != 0)

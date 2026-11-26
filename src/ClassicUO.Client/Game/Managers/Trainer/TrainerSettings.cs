@@ -23,6 +23,9 @@ public sealed class TrainerSettings
     public List<string> Selected { get; set; } = [];
 
     public uint SmeltTool { get; set; }
+    public uint DragonLeather { get; set; }
+    public uint UnstitchTool { get; set; }
+    public string TailorOutfit { get; set; } = "";
     public uint Forge { get; set; }
 
     /// <summary>Picked targets by skill ID.</summary>

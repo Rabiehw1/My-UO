@@ -44,7 +44,8 @@ public enum TrainerUse
     /// <summary>Use the skill, warning first when full mana means it can't train.</summary>
     Meditation,
     Blacksmith,
-    Lumberjack
+    Lumberjack,
+    Tailor
 }
 
 /// <summary>What a skill needs picked.</summary>
@@ -105,6 +106,7 @@ internal static class TrainerCatalog
         new("detecting_hidden", "Detecting Hidden", TrainerClass.Thief, TrainerUse.Plain),
         new("hiding", "Hiding", TrainerClass.Thief, TrainerUse.Plain),
         new("stealth", "Stealth", TrainerClass.Thief, TrainerUse.StealthOrHide),
+        new("tailoring", "Tailoring", TrainerClass.Crafter, TrainerUse.Tailor, TrainerTargetKind.Item),
         new("lumberjacking", "Lumberjacking", TrainerClass.Crafter, TrainerUse.Lumberjack, TrainerTargetKind.Item),
         new("blacksmithy", "Blacksmithy", TrainerClass.Crafter, TrainerUse.Blacksmith, TrainerTargetKind.Item),
         new("arms_lore", "Arms Lore", TrainerClass.Crafter, TrainerUse.Picked, TrainerTargetKind.Item),
