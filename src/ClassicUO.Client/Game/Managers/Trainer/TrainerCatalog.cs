@@ -42,7 +42,8 @@ public enum TrainerUse
     NearestCorpse,
 
     /// <summary>Use the skill, warning first when full mana means it can't train.</summary>
-    Meditation
+    Meditation,
+    Blacksmith
 }
 
 /// <summary>What a skill needs picked.</summary>
@@ -103,6 +104,7 @@ internal static class TrainerCatalog
         new("detecting_hidden", "Detecting Hidden", TrainerClass.Thief, TrainerUse.Plain),
         new("hiding", "Hiding", TrainerClass.Thief, TrainerUse.Plain),
         new("stealth", "Stealth", TrainerClass.Thief, TrainerUse.StealthOrHide),
+        new("blacksmithy", "Blacksmithy", TrainerClass.Crafter, TrainerUse.Blacksmith, TrainerTargetKind.Item),
         new("arms_lore", "Arms Lore", TrainerClass.Crafter, TrainerUse.Picked, TrainerTargetKind.Item),
         new("forensic_evaluation", "Forensic Evaluation", TrainerClass.Other, TrainerUse.NearestCorpse)
     ];

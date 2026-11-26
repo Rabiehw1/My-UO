@@ -93,6 +93,7 @@ internal sealed class TrainerManager
         if (_profile == null)
             return;
 
+        BlacksmithTrainer.Reset();
         _profile = null;
         EventSink.RawMessageReceived -= OnMessage;
         if (announce)
@@ -111,6 +112,9 @@ internal sealed class TrainerManager
             Stop(announce: false);
             return;
         }
+
+        if (BlacksmithTrainer.Waiting(world))
+            return;
 
         if (_closeListUntil != 0)
             CloseOpenedList(world);
