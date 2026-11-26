@@ -33,6 +33,19 @@ namespace ClassicUO.Game.UI.Gumps
         private bool _targetBroke;
 
         public bool IsLastAttackBar { get; set; }
+
+        /// <summary>The mobile was last seen well inside view range, so if it disappears it died rather than walked off.</summary>
+        protected bool LastSeenNearby { get; private set; }
+
+        // Tiles short of the view range a mobile must be, so walking off the edge isn't mistaken for dying.
+        private const int VANISH_MARGIN = 2;
+
+        /// <summary>Health bars snap into stacks; right-click removes one without holding a key.</summary>
+        protected override bool RequiresModifierToCloseWhenAnchored => false;
+
+        /// <summary>Records whether <paramref name="entity" /> is close enough that vanishing means it died.</summary>
+        protected void TrackLastSeen(Entity entity) =>
+            LastSeenNearby = entity.Distance <= World.ClientViewRange - VANISH_MARGIN;
         public static BaseHealthBarGump LastAttackBar { get; set; }
         protected bool HasBeenBuilt { get; set; }
 
@@ -617,7 +630,8 @@ namespace ClassicUO.Game.UI.Gumps
                 bool closeWhenDead = closeType == CloseHealthBarType.Dead || closeType == CloseHealthBarType.Both;
 
                 bool shouldCloseForOutOfRange = LocalSerial != World.Player && closeWhenOutOfRange;
-                bool shouldCloseForDeath = closeWhenDead && hasCorpse;
+                // Some shards (Zulu Hotel) don't tie the corpse to the monster; vanishing up close counts as dying.
+                bool shouldCloseForDeath = closeWhenDead && (hasCorpse || LastSeenNearby && LocalSerial != World.Player);
 
                 if (shouldCloseForOutOfRange || shouldCloseForDeath)
                 {
@@ -710,6 +724,7 @@ namespace ClassicUO.Game.UI.Gumps
                 }
 
                 _hpLineRed.IsVisible = entity.HitsMax > 0;
+                TrackLastSeen(entity);
 
                 var mobile = entity as Mobile;
 
@@ -1925,7 +1940,8 @@ namespace ClassicUO.Game.UI.Gumps
                 bool closeWhenDead = closeType == CloseHealthBarType.Dead || closeType == CloseHealthBarType.Both;
 
                 bool shouldCloseForOutOfRange = LocalSerial != World.Player && closeWhenOutOfRange;
-                bool shouldCloseForDeath = closeWhenDead && hasCorpse;
+                // Some shards (Zulu Hotel) don't tie the corpse to the monster; vanishing up close counts as dying.
+                bool shouldCloseForDeath = closeWhenDead && (hasCorpse || LastSeenNearby && LocalSerial != World.Player);
 
                 if (shouldCloseForOutOfRange || shouldCloseForDeath)
                 {
@@ -2000,6 +2016,7 @@ namespace ClassicUO.Game.UI.Gumps
                 }
 
                 _hpLineRed.IsVisible = entity.HitsMax > 0;
+                TrackLastSeen(entity);
 
                 var mobile = entity as Mobile;
 
