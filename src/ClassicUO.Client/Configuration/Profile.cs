@@ -977,6 +977,9 @@ namespace ClassicUO.Configuration
         public bool SingleClickMobileSetsLastTarget { get; set; } = true;
         public bool OutlineMobilesNotoriety { get; set; }
         public uint DisabledOverheadMessageTypes { get; set; }
+        public bool ReduceSpellAbsorptionMessages { get; set; }
+        public bool ReduceItemCooldownMessages { get; set; }
+        public Dictionary<string, bool> OnScreenMessagePhrases { get; set; } = new();
         public bool DisableAutolootCorpseRetry { get; set; } = false;
         public bool DisableWeather { get; set; }
         public bool EnablePetScaling { get; set; }

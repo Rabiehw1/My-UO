@@ -226,7 +226,7 @@ namespace ClassicUO.Game.UI.Gumps
 
         private void ChatOnMessageReceived(object sender, MessageEventArgs e)
         {
-            if (e.TextType == TextType.CLIENT)
+            if (e.TextType == TextType.CLIENT || e.SuppressOnScreen)
             {
                 return;
             }

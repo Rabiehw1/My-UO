@@ -57,5 +57,7 @@ namespace ClassicUO.Game.Managers
         public bool IsUnicode { get; }
 
         public TextType TextType { get; }
+
+        internal bool SuppressOnScreen { get; init; }
     }
 }

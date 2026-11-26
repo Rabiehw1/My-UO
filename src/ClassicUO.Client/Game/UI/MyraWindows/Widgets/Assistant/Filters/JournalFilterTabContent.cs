@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
-using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
@@ -16,10 +15,13 @@ public static class JournalFilterTabContent
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
+        MyraButton Button(string text, System.Action? action = null, bool primary = false, bool destructive = false, string? tooltip = null) =>
+            FilterPageStyle.Button(interaction, text, action, primary, destructive, tooltip);
+
         var root = new VerticalStackPanel { Spacing = 6 };
 
         root.Widgets.Add(new MyraLabel(
-            "Hide journal messages containing the filter text.", MyraLabel.TextStyle.P));
+            TazLang.Get("assistant_filters_journal_help"), MyraLabel.TextStyle.P) { Wrap = true });
 
         var addFilterPanel = new VerticalStackPanel { Visible = false, Spacing = 4 };
         var newFilterBox = new MyraInputBox { HintText = "Text to hide", Width = 260 };
@@ -35,7 +37,7 @@ public static class JournalFilterTabContent
 
             if (filters.Count == 0)
             {
-                filtersPanel.Widgets.Add(new MyraLabel("No filters configured.", MyraLabel.TextStyle.H3));
+                filtersPanel.Widgets.Add(new MyraLabel(TazLang.Get("assistant_filters_empty"), MyraLabel.TextStyle.P));
                 return;
             }
 
@@ -65,12 +67,12 @@ public static class JournalFilterTabContent
                 }, tooltip: "Enable or disable this filter."), dataRow, 0);
                 grid.AddWidget(filterBox, dataRow, 1);
 
-                grid.AddWidget(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Delete", () =>
+                grid.AddWidget(Button(TazLang.Get("remove"), () =>
                 {
                     manager.RemoveFilter(filter);
                     manager.Save(false);
                     BuildFilterList();
-                }) { Tooltip = "Delete this filter" }), dataRow, 2);
+                }, destructive: true), dataRow, 2);
 
                 dataRow++;
             }
@@ -78,8 +80,8 @@ public static class JournalFilterTabContent
             filtersPanel.Widgets.Add(grid);
         }
 
-        var addConfirmRow = new HorizontalStackPanel { Spacing = 4 };
-        addConfirmRow.Widgets.Add(new MyraButton("Add", () =>
+        var addConfirmRow = DesktopAssistantForm.Actions();
+        addConfirmRow.Widgets.Add(Button(TazLang.Get("add"), () =>
         {
             string text = newFilterBox.Text ?? "";
             if (!string.IsNullOrWhiteSpace(text))
@@ -91,13 +93,13 @@ public static class JournalFilterTabContent
                 BuildFilterList();
             }
         }));
-        addConfirmRow.Widgets.Add(new MyraButton("Cancel", () =>
+        addConfirmRow.Widgets.Add(Button(TazLang.Get("cancel"), () =>
         {
             addFilterPanel.Visible = false;
             newFilterBox.Text = "";
         }));
 
-        var addFieldRow = new HorizontalStackPanel { Spacing = 4 };
+        var addFieldRow = DesktopAssistantForm.Actions();
         addFieldRow.Widgets.Add(new MyraLabel("Filter Text:", MyraLabel.TextStyle.P)
             { Tooltip = "Matches part of a journal entry, regardless of capitalization." });
         addFieldRow.Widgets.Add(newFilterBox);
@@ -106,12 +108,10 @@ public static class JournalFilterTabContent
         addFilterPanel.Widgets.Add(addFieldRow);
         addFilterPanel.Widgets.Add(addConfirmRow);
 
-        var actionRow = new HorizontalStackPanel { Spacing = 4 };
-        var addEntry = new MyraButton(TazLang.Get("assistant_filters_add_entry"), () => addFilterPanel.Visible = !addFilterPanel.Visible);
-        if (interaction.IsDesktop)
-            DesktopAssistantTheme.ApplyActionButtonStyle(addEntry, primary: true);
+        var actionRow = DesktopAssistantForm.Actions();
+        var addEntry = Button(TazLang.Get("assistant_filters_add_entry"), () => addFilterPanel.Visible = !addFilterPanel.Visible, primary: true);
         actionRow.Widgets.Add(addEntry);
-        actionRow.Widgets.Add(new MyraButton("Import", () =>
+        actionRow.Widgets.Add(Button(TazLang.Get("assistant_filters_import"), () =>
         {
             string? json = Clipboard.GetClipboardText();
             if (json.NotNullNotEmpty() && manager.ImportFromJson(json, message => Report(message, Constants.HUE_SUCCESS)))
@@ -120,19 +120,17 @@ public static class JournalFilterTabContent
                 return;
             }
             Report("The clipboard does not contain a filter list.", Constants.HUE_ERROR);
-        }) { Tooltip = "Import from your clipboard, must have a valid export copied." });
-        actionRow.Widgets.Add(new MyraButton("Export", () =>
+        }, tooltip: "Import from your clipboard, must have a valid export copied."));
+        actionRow.Widgets.Add(Button(TazLang.Get("assistant_filters_export"), () =>
         {
             manager.GetJsonExport()?.CopyToClipboard();
             Report("Copied enabled journal filters.", Constants.HUE_SUCCESS);
-        }) { Tooltip = "Copy enabled filters to the clipboard." });
+        }, tooltip: "Copy enabled filters to the clipboard."));
 
-        root.Widgets.Add(actionRow);
-        root.Widgets.Add(status);
-        root.Widgets.Add(addFilterPanel);
-        root.Widgets.Add(new MyraLabel("Current Journal Filters:", MyraLabel.TextStyle.H3));
         BuildFilterList();
-        root.Widgets.Add(interaction.IsDesktop ? filtersPanel : new ScrollViewer { Height = 250, Content = filtersPanel });
+        root.Widgets.Add(FilterPageStyle.Group(interaction, TazLang.Get("assistant_filters_journal_rules"),
+            actionRow, status, addFilterPanel,
+            interaction.IsDesktop ? filtersPanel : new ScrollViewer { Height = 250, Content = filtersPanel }));
 
         return root;
 

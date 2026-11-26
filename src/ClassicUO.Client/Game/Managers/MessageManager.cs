@@ -42,6 +42,7 @@ namespace ClassicUO.Game.Managers
     public sealed class MessageManager
     {
         private readonly World _world;
+        private readonly OnScreenMessageFilter _onScreenFilter = new();
 
         public MessageManager(World world)
         {
@@ -117,6 +118,7 @@ namespace ClassicUO.Game.Managers
                 unicode = currentProfile.OverrideAllFontsIsUnicode;
             }
 
+            bool suppressOnScreen = _onScreenFilter.IsMuted(currentProfile, text, Time.Ticks);
             switch (type)
             {
                 case MessageType.ChatSystem:
@@ -126,7 +128,7 @@ namespace ClassicUO.Game.Managers
                 case MessageType.System:
                     break;
                 case MessageType.Party:
-                    if (!currentProfile.DisplayPartyChatOverhead)
+                    if (suppressOnScreen || !currentProfile.DisplayPartyChatOverhead)
                         break;
 
                     if (parent == null) //No parent entity, need to check party members by name
@@ -228,7 +230,7 @@ namespace ClassicUO.Game.Managers
                     goto case MessageType.Limit3Spell;
                 case MessageType.Limit3Spell:
                     {
-                        if (parent == null)
+                        if (parent == null || suppressOnScreen)
                         {
                             break;
                         }
@@ -312,7 +314,7 @@ namespace ClassicUO.Game.Managers
                         textType,
                         unicode,
                         lang
-                    )
+                    ) { SuppressOnScreen = suppressOnScreen }
                 );
         }
 

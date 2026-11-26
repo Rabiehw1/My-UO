@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text.Json;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
-using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
 using Myra.Graphics2D.UI;
@@ -18,6 +17,9 @@ public static class SoundFilterTabContent
 
     internal static Widget Build(AgentPageInteraction interaction, bool isMusic)
     {
+        MyraButton Button(string text, System.Action? action = null, bool primary = false, bool destructive = false, string? tooltip = null) =>
+            FilterPageStyle.Button(interaction, text, action, primary, destructive, tooltip);
+
         SoundFilterManager manager = SoundFilterManager.Instance;
         var filters = isMusic ? manager.FilteredMusic : manager.FilteredSounds;
         var audio = Client.Game.Audio;
@@ -29,10 +31,10 @@ public static class SoundFilterTabContent
         var history = new VerticalStackPanel { Spacing = 3 };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false, Wrap = true };
         var idBox = new MyraInputBox { HintText = $"{idName} (0–{maxId})", Width = 170 };
-        var toolbar = new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 4 };
-        var clear = new MyraButton("Clear All Filters");
+        var toolbar = DesktopAssistantForm.Actions();
+        var clear = Button(TazLang.Get("assistant_filters_clear"), destructive: true);
         toolbar.Widgets.Add(idBox);
-        var addFilter = new MyraButton(TazLang.Get("assistant_filters_add_entry"), () =>
+        var addFilter = Button(TazLang.Get("assistant_filters_add_entry"), () =>
         {
             if (!TryReadId(idBox.Text, out int id))
                 return;
@@ -41,17 +43,15 @@ public static class SoundFilterTabContent
             idBox.Text = "";
             status.Visible = false;
             BuildRules();
-        });
-        if (interaction.IsDesktop)
-            DesktopAssistantTheme.ApplyActionButtonStyle(addFilter, primary: true);
+        }, primary: true);
         toolbar.Widgets.Add(addFilter);
-        toolbar.Widgets.Add(new MyraButton("Test Play", () =>
+        toolbar.Widgets.Add(Button("Test Play", () =>
         {
             if (TryReadId(idBox.Text, out int id))
                 Play(id, preview: true);
         }));
-        toolbar.Widgets.Add(new MyraButton("Import", Import));
-        toolbar.Widgets.Add(new MyraButton("Export", Export) { Tooltip = "Copy enabled filters to the clipboard." });
+        toolbar.Widgets.Add(Button(TazLang.Get("assistant_filters_import"), Import));
+        toolbar.Widgets.Add(Button(TazLang.Get("assistant_filters_export"), Export, tooltip: "Copy enabled filters to the clipboard."));
 
         clear.Click += (_, _) => interaction.Confirm(clear, clear.Text,
             isMusic ? "Remove all music filters?" : "Remove all sound filters?", () =>
@@ -59,14 +59,13 @@ public static class SoundFilterTabContent
                 manager.Clear(isMusic);
                 BuildRules();
             }, confirmText: TazLang.Get("remove"), destructive: true);
-        toolbar.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(clear));
+        toolbar.Widgets.Add(clear);
 
-        root.Widgets.Add(toolbar);
-        root.Widgets.Add(status);
-        root.Widgets.Add(interaction.IsDesktop ? rules : new ScrollViewer { Height = 250, Content = rules });
-        root.Widgets.Add(new MyraLabel("Recently played", MyraLabel.TextStyle.H3)
-            .PlaceBefore(new MyraButton("Refresh", BuildHistory)));
-        root.Widgets.Add(interaction.IsDesktop ? history : new ScrollViewer { MaxHeight = 200, Content = history });
+        root.Widgets.Add(FilterPageStyle.Group(interaction, TazLang.Get("assistant_filters_audio_rules"),
+            toolbar, status, interaction.IsDesktop ? rules : new ScrollViewer { Height = 250, Content = rules }));
+        root.Widgets.Add(FilterPageStyle.Group(interaction, TazLang.Get("assistant_filters_recent_audio"),
+            DesktopAssistantForm.Actions(Button(TazLang.Get("assistant_filters_refresh"), BuildHistory)),
+            interaction.IsDesktop ? history : new ScrollViewer { MaxHeight = 200, Content = history }));
         BuildRules();
         BuildHistory();
         return root;
@@ -104,13 +103,13 @@ public static class SoundFilterTabContent
                     enabled => manager.SetEnabled(id, enabled, isMusic), tooltip: "Enable or disable this filter."), row, 0);
                 grid.AddWidget(field, row, 1);
 
-                var actions = new HorizontalStackPanel { Spacing = 4 };
-                actions.Widgets.Add(new MyraButton("Play", () => Play(id, preview: true)) { Tooltip = "Play once while bypassing this filter." });
-                actions.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Delete", () =>
+                var actions = DesktopAssistantForm.Actions();
+                actions.Widgets.Add(Button("Play", () => Play(id, preview: true), tooltip: "Play once while bypassing this filter."));
+                actions.Widgets.Add(Button(TazLang.Get("remove"), () =>
                 {
                     manager.RemoveFilter(id, isMusic);
                     BuildRules();
-                })));
+                }, destructive: true));
                 grid.AddWidget(actions, row++, 2);
             }
 
@@ -125,12 +124,12 @@ public static class SoundFilterTabContent
             {
                 var row = new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 2 };
                 row.Widgets.Add(new MyraLabel($"{idName} {id} ({name})", MyraLabel.TextStyle.P));
-                row.Widgets.Add(new MyraButton("Add Filter", () =>
+                row.Widgets.Add(Button("Add Filter", () =>
                 {
                     manager.AddFilter(id, isMusic);
                     BuildRules();
                 }));
-                row.Widgets.Add(new MyraButton("Play Again", () => Play(id, preview: !isMusic)));
+                row.Widgets.Add(Button("Play Again", () => Play(id, preview: !isMusic)));
                 history.Widgets.Add(row);
             }
 

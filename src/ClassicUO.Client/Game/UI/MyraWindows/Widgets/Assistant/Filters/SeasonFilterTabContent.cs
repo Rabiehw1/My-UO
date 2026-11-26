@@ -33,6 +33,9 @@ public static class SeasonFilterTabContent
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
+        MyraButton Button(string text, System.Action? action = null, bool primary = false, bool destructive = false, string? tooltip = null) =>
+            FilterPageStyle.Button(interaction, text, action, primary, destructive, tooltip);
+
         var root = new VerticalStackPanel { Spacing = 6 };
 
         root.Widgets.Add(new MyraLabel(
@@ -42,13 +45,12 @@ public static class SeasonFilterTabContent
         // Each row is rebuilt when its selected override changes.
         var rebuildActions = new System.Collections.Generic.List<System.Action>();
 
-        var clear = new MyraButton("Clear All Filters");
+        var clear = Button(TazLang.Get("assistant_filters_clear"), destructive: true);
         clear.Click += (_, _) => interaction.Confirm(clear, clear.Text, "Remove all season overrides?", () =>
         {
             SeasonFilter.Instance.Clear();
             foreach (System.Action rebuild in rebuildActions) rebuild();
         }, confirmText: TazLang.Get("remove"), destructive: true);
-        root.Widgets.Add(MyraStyle.ApplyButtonDangerStyle(clear));
 
         var grid = new MyraGrid();
         grid.SetupWithHeaders(GridColumnInfo.Auto("When Server Sends"), GridColumnInfo.Fill("Show As"),
@@ -84,7 +86,7 @@ public static class SeasonFilterTabContent
                     }
                 }
 
-                cycleWrapper.Widgets.Add(new MyraButton(currentLabel, () =>
+                cycleWrapper.Widgets.Add(Button(currentLabel, () =>
                 {
                     int nextIdx = (currentIdx + 1) % DisplayOptions.Length;
                     if (nextIdx == 0)
@@ -92,7 +94,7 @@ public static class SeasonFilterTabContent
                     else
                         SeasonFilter.Instance.SetFilter(incoming, AllSeasons[nextIdx - 1]);
                     BuildCycleBtn();
-                }) { Tooltip = $"Click to cycle season override for {incomingName}" });
+                }, tooltip: $"Click to cycle season override for {incomingName}"));
                 var enabled = MyraCheckButton.CreateWithCallback(currentIdx != 0 && SeasonFilter.Instance.IsEnabled(incoming),
                     value => SeasonFilter.Instance.SetEnabled(incoming, value), tooltip: "Enable or disable this override.");
                 enabled.Enabled = currentIdx != 0;
@@ -105,10 +107,9 @@ public static class SeasonFilterTabContent
             grid.AddWidget(enableWrapper, i + 1, 2);
         }
 
-        root.Widgets.Add(grid);
-        root.Widgets.Add(new MyraLabel(
-            "Click the button to cycle through options. 'None' disables the filter.",
-            MyraLabel.TextStyle.P));
+        root.Widgets.Add(FilterPageStyle.Group(interaction, TazLang.Get("assistant_filters_season_rules"),
+            new MyraLabel(TazLang.Get("assistant_filters_season_help"), MyraLabel.TextStyle.P) { Wrap = true },
+            DesktopAssistantForm.Actions(clear), grid));
 
         return root;
     }

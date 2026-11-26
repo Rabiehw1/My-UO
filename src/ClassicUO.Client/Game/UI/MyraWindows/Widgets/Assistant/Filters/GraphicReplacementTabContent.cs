@@ -5,7 +5,6 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
 using ClassicUO.Game.Map;
-using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.ArtTexture;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
 using ClassicUO.Utility;
@@ -25,6 +24,9 @@ public static class GraphicReplacementTabContent
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
+        MyraButton Button(string text, System.Action? action = null, bool primary = false, bool destructive = false, string? tooltip = null) =>
+            FilterPageStyle.Button(interaction, text, action, primary, destructive, tooltip);
+
         var root = new VerticalStackPanel { Spacing = 6 };
         var status = new MyraLabel("", MyraLabel.TextStyle.P) { Visible = false, Wrap = true };
 
@@ -83,7 +85,7 @@ public static class GraphicReplacementTabContent
                 void BuildTypeBtn()
                 {
                     typeWrapper.Widgets.Clear();
-                    var btn = new MyraButton(GetTypeName(filter.OriginalType), () =>
+                    var btn = Button(GetTypeName(filter.OriginalType), () =>
                     {
                         int idx = System.Array.IndexOf(TypeValues, filter.OriginalType);
                         byte newType = TypeValues[(idx + 1) % TypeValues.Length];
@@ -101,7 +103,7 @@ public static class GraphicReplacementTabContent
                         RefreshEntities(filter.OriginalGraphic, filter.OriginalType);
                         RefreshEntities(moved.OriginalGraphic, newType);
                         BuildFilterList();
-                    }) { Tooltip = "Click to cycle: Mobile / Land / Static", MinWidth = 65 };
+                    }, tooltip: "Click to cycle: Mobile / Land / Static");
                     btn.Content.HorizontalAlignment = HorizontalAlignment.Center;
                     typeWrapper.Widgets.Add(btn);
                 }
@@ -159,12 +161,12 @@ public static class GraphicReplacementTabContent
                 grid.AddWidget(hueBox, dataRow, 5);
 
                 // Delete
-                grid.AddWidget(MyraStyle.ApplyButtonDangerStyle(new MyraButton("Delete", () =>
+                grid.AddWidget(Button(TazLang.Get("remove"), () =>
                 {
                     GraphicsReplacement.DeleteFilter(capturedOrigGraphic, capturedOrigType);
                     RefreshEntities(capturedOrigGraphic, capturedOrigType);
                     BuildFilterList();
-                }) { Tooltip = "Delete this replacement" }), dataRow, 6);
+                }, destructive: true), dataRow, 6);
 
                 dataRow++;
             }
@@ -185,16 +187,16 @@ public static class GraphicReplacementTabContent
         void BuildNewTypeBtn()
         {
             newTypeWrapper.Widgets.Clear();
-            newTypeWrapper.Widgets.Add(new MyraButton(TypeNames[newTypeIndex[0]], () =>
+            newTypeWrapper.Widgets.Add(Button(TypeNames[newTypeIndex[0]], () =>
             {
                 newTypeIndex[0] = (newTypeIndex[0] + 1) % TypeNames.Length;
                 BuildNewTypeBtn();
-            }) { Tooltip = "Click to cycle: Mobile / Land / Static" });
+            }, tooltip: "Click to cycle: Mobile / Land / Static"));
         }
         BuildNewTypeBtn();
 
-        var addConfirmRow = new HorizontalStackPanel { Spacing = 4 };
-        addConfirmRow.Widgets.Add(new MyraButton("Add", () =>
+        var addConfirmRow = DesktopAssistantForm.Actions();
+        addConfirmRow.Widgets.Add(Button(TazLang.Get("add"), () =>
         {
             string origText = newOriginalBox.Text ?? "";
             string replText = newReplacementBox.Text ?? "";
@@ -237,7 +239,7 @@ public static class GraphicReplacementTabContent
             addEntryPanel.Visible = false;
             BuildFilterList();
         }));
-        addConfirmRow.Widgets.Add(new MyraButton("Cancel", () =>
+        addConfirmRow.Widgets.Add(Button(TazLang.Get("cancel"), () =>
         {
             addEntryPanel.Visible = false;
             newOriginalBox.Text = "";
@@ -252,7 +254,7 @@ public static class GraphicReplacementTabContent
         addFieldsRow1.Widgets.Add(new MyraLabel("Replacement:", MyraLabel.TextStyle.P));
         addFieldsRow1.Widgets.Add(newReplacementBox);
 
-        var addFieldsRow2 = new HorizontalStackPanel { Spacing = 4 };
+        var addFieldsRow2 = DesktopAssistantForm.Actions();
         addFieldsRow2.Widgets.Add(new MyraLabel("Type:", MyraLabel.TextStyle.P));
         addFieldsRow2.Widgets.Add(newTypeWrapper);
         addFieldsRow2.Widgets.Add(new MyraLabel("New Hue:", MyraLabel.TextStyle.P));
@@ -265,11 +267,9 @@ public static class GraphicReplacementTabContent
         addEntryPanel.Widgets.Add(addConfirmRow);
 
         var actionRow = new WrapPanel { HorizontalSpacing = 4, VerticalSpacing = 4 };
-        var addEntry = new MyraButton(TazLang.Get("assistant_filters_add_entry"), () => addEntryPanel.Visible = !addEntryPanel.Visible);
-        if (interaction.IsDesktop)
-            DesktopAssistantTheme.ApplyActionButtonStyle(addEntry, primary: true);
+        var addEntry = Button(TazLang.Get("assistant_filters_add_entry"), () => addEntryPanel.Visible = !addEntryPanel.Visible, primary: true);
         actionRow.Widgets.Add(addEntry);
-        actionRow.Widgets.Add(new MyraButton("Target Entity", () =>
+        actionRow.Widgets.Add(Button("Target Entity", () =>
         {
             if (World.Instance == null) return;
             interaction.SelectTarget(targeted =>
@@ -290,8 +290,8 @@ public static class GraphicReplacementTabContent
                     RefreshEntities(graphic, entityType);
                 BuildFilterList();
             });
-        }) { Tooltip = "Target an entity to add it to the replacement list" });
-        actionRow.Widgets.Add(new MyraButton("Import", () =>
+        }, tooltip: "Target an entity to add it to the replacement list"));
+        actionRow.Widgets.Add(Button(TazLang.Get("assistant_filters_import"), () =>
         {
             string? json = Clipboard.GetClipboardText();
             if (json.NotNullNotEmpty() && GraphicsReplacement.ImportFromJson(json, message => Report(message, Constants.HUE_SUCCESS)))
@@ -301,24 +301,22 @@ public static class GraphicReplacementTabContent
                 return;
             }
             Report("The clipboard does not contain a filter list.", Constants.HUE_ERROR);
-        }) { Tooltip = "Import from your clipboard, must have a valid export copied." });
-        actionRow.Widgets.Add(new MyraButton("Export", () =>
+        }, tooltip: "Import from your clipboard, must have a valid export copied."));
+        actionRow.Widgets.Add(Button(TazLang.Get("assistant_filters_export"), () =>
         {
             GraphicsReplacement.GetJsonExport()?.CopyToClipboard();
             Report("Copied graphic filters to the clipboard.", Constants.HUE_SUCCESS);
-        }) { Tooltip = "Export your filters to your clipboard." });
-        actionRow.Widgets.Add(new MyraButton("Apply to All Entities", () =>
+        }, tooltip: "Export your filters to your clipboard."));
+        actionRow.Widgets.Add(Button("Apply to All Entities", () =>
         {
             int count = RefreshEntities();
             Report($"Refreshed {count} objects.", Constants.HUE_SUCCESS);
-        }) { Tooltip = "Reapply graphic replacements to all entities currently in the world" });
+        }, tooltip: "Reapply graphic replacements to all entities currently in the world"));
 
-        root.Widgets.Add(actionRow);
-        root.Widgets.Add(status);
-        root.Widgets.Add(addEntryPanel);
-        root.Widgets.Add(new MyraLabel("Current Graphic Replacements:", MyraLabel.TextStyle.H3));
         BuildFilterList();
-        root.Widgets.Add(interaction.IsDesktop ? filtersPanel : new ScrollViewer { Height = 300, Content = filtersPanel });
+        root.Widgets.Add(FilterPageStyle.Group(interaction, TazLang.Get("assistant_filters_graphic_rules"),
+            actionRow, status, addEntryPanel,
+            interaction.IsDesktop ? filtersPanel : new ScrollViewer { Height = 300, Content = filtersPanel }));
 
         return root;
 

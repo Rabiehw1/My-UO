@@ -23,9 +23,10 @@ public static class FiltersTab
 
     internal static Widget Build(AgentPageInteraction interaction)
     {
-        var tabs = new MyraTabControl();
+        var tabs = new MyraTabControl { HorizontalAlignment = HorizontalAlignment.Stretch };
         tabs.AddTab(TazLang.Get("assistant_desktop_filter_journal", "Journal"),
             () => JournalFilterTabContent.Build(interaction), rebuildOnSelect: true);
+        tabs.AddTab(TazLang.Get("assistant_filters_on_screen"), OnScreenMessageTabContent.Build, rebuildOnSelect: true);
         tabs.AddTab(TazLang.Get("assistant_desktop_filter_audio", "Sound & Music"), () => BuildPair(
             TazLang.Get("assistant_desktop_filter_sound", "Sounds"), () => SoundFilterTabContent.Build(interaction, isMusic: false),
             TazLang.Get("assistant_desktop_filter_music", "Music"), () => SoundFilterTabContent.Build(interaction, isMusic: true)));
@@ -38,7 +39,7 @@ public static class FiltersTab
 
     private static MyraTabControl BuildPair(string firstLabel, Func<Widget> first, string secondLabel, Func<Widget> second)
     {
-        var tabs = new MyraTabControl();
+        var tabs = new MyraTabControl { HorizontalAlignment = HorizontalAlignment.Stretch };
         tabs.AddTab(firstLabel, first, rebuildOnSelect: true);
         tabs.AddTab(secondLabel, second, rebuildOnSelect: true);
         tabs.SelectFirst();
