@@ -99,6 +99,7 @@ internal static class TrainerCatalog
         new("meditation", "Meditation", TrainerClass.Mage, TrainerUse.Meditation, Busy: new TrainerBusyRule(
             "You enter a meditative trance",
             ["You stop meditating", "You've lost your concentration"])),
+        new("begging", "Begging", TrainerClass.Bard, TrainerUse.Begging),
         new("musicianship", "Musicianship", TrainerClass.Bard, TrainerUse.Instrument),
         new("peacemaking", "Peacemaking", TrainerClass.Bard, TrainerUse.Plain),
         new("taste_identification", "Taste Identification", TrainerClass.Bard, TrainerUse.Picked, TrainerTargetKind.Item),
@@ -111,7 +112,6 @@ internal static class TrainerCatalog
         new("lumberjacking", "Lumberjacking", TrainerClass.Crafter, TrainerUse.Lumberjack, TrainerTargetKind.Item),
         new("blacksmithy", "Blacksmithy", TrainerClass.Crafter, TrainerUse.Blacksmith, TrainerTargetKind.Item),
         new("arms_lore", "Arms Lore", TrainerClass.Crafter, TrainerUse.Picked, TrainerTargetKind.Item),
-        new("begging", "Begging", TrainerClass.Other, TrainerUse.Begging),
         new("forensic_evaluation", "Forensic Evaluation", TrainerClass.Other, TrainerUse.NearestCorpse)
     ];
 

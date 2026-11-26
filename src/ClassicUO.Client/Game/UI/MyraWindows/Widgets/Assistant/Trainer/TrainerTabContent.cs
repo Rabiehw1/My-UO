@@ -83,7 +83,7 @@ internal static class TrainerTabContent
             foreach (TrainerSkill skill in TrainerCatalog.Skills.Where(s => s.Class == _selectedClass))
                 AddSkillRow(table, row++, profile, skill, interaction, () => { RefreshOrder(); RefreshControls(); });
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_class_skills", [ClassName(_selectedClass)]), table));
-            if (_selectedClass == TrainerClass.Other)
+            if (_selectedClass == TrainerClass.Bard)
             {
                 var route = new VerticalStackPanel { Spacing = 4 };
                 var vendors = profile.Trainer.BeggingVendors;
