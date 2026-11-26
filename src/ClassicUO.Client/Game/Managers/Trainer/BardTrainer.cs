@@ -1,5 +1,6 @@
 #nullable enable
 using ClassicUO.Configuration;
+using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 
 namespace ClassicUO.Game.Managers.Trainer;
@@ -8,8 +9,7 @@ internal static class BardTrainer
 {
     private enum Step { Idle, HerdAnimal, Destination, EnticeAnimal, ProvokeCreature, Opponent }
     private static Step _step;
-    private static uint _first, _second, _herdedAnimal;
-    private static TrainerSettings.HerdingTile? _tile;
+    private static uint _first, _herdedAnimal;
     private static Profile? _profile;
     private static int _facet;
     private static long _deadline, _nextEntice, _nextProvoke;
@@ -31,13 +31,11 @@ internal static class BardTrainer
         if (herd)
         {
             var tool = world.Items.Get(settings.HerdingTool);
-            var tile = settings.HerdingDestination;
-            if (!Living(world, target) || tile?.Facet != _facet || tool == null || tool.IsDestroyed ||
+            if (!Living(world, target) || tool == null || tool.IsDestroyed ||
                 (tool.Container != world.Player.Serial && tool.BackpackOrRootContainer != world.Player.Backpack?.Serial))
                 return Warn(world, ref _herdWarned, "trainer_herd_setup");
             _herdWarned = false;
-            bool entice = _herdedAnimal == target && tile == _tile;
-            _tile = tile;
+            bool entice = _herdedAnimal == target;
             _herdedAnimal = 0;
             Await(entice ? Step.EnticeAnimal : Step.HerdAnimal);
             _nextEntice = Time.Ticks + 10500;
@@ -46,8 +44,7 @@ internal static class BardTrainer
         }
         else
         {
-            _second = settings.ProvokeOpponent?.Serial ?? 0;
-            if (_second == target || !Living(world, target) || !Living(world, _second))
+            if (!Living(world, target))
                 return Warn(world, ref _provokeWarned, "trainer_provoke_setup");
             _provokeWarned = false;
             Await(Step.ProvokeCreature);
@@ -78,9 +75,7 @@ internal static class BardTrainer
         if (Time.Ticks < _deadline && !world.Player.IsDead && world.MapIndex == _facet &&
             _profile != null && ReferenceEquals(_profile, ProfileManager.CurrentProfile) &&
             _profile.Trainer.Selected.Contains(id) && _profile.Trainer.Targets.TryGetValue(id, out var pick) &&
-            pick.Serial == _first && Living(world, _first) &&
-            (provoke ? _profile.Trainer.ProvokeOpponent?.Serial == _second && Living(world, _second)
-                     : _profile.Trainer.HerdingDestination == _tile))
+            pick.Serial == _first && Living(world, _first))
             return true;
         _step = Step.Idle;
         return false;
@@ -102,18 +97,43 @@ internal static class BardTrainer
         }
         if (step == Step.Destination)
         {
-            var tile = _tile!;
+            var tile = FindDestination(world);
+            if (tile == null)
+            {
+                world.TargetManager.CancelTarget();
+                GameActions.Print(world, TazLang.Get("trainer_herd_no_tile"), Constants.HUE_WARN);
+                return true;
+            }
             _herdedAnimal = _first;
             _nextEntice = Time.Ticks + 10500;
-            world.TargetManager.Target(tile.Graphic, tile.X, tile.Y, tile.Z);
+            world.TargetManager.Target(tile is Land ? (ushort)0 : tile.Graphic, tile.X, tile.Y, tile.Z);
         }
         else
         {
             if (step == Step.EnticeAnimal) _nextEntice = Time.Ticks + 10500;
             if (step == Step.Opponent) _nextProvoke = Time.Ticks + 10500;
-            world.TargetManager.Target(step == Step.Opponent ? _second : _first);
+            world.TargetManager.Target(step == Step.Opponent ? world.Player.Serial : _first);
         }
         return true;
+    }
+
+    private static GameObject? FindDestination(World world)
+    {
+        var player = world.Player;
+        var animal = world.Mobiles.Get(_first);
+        for (int i = 0; i < 8; i++)
+        {
+            var direction = (Direction)i;
+            int x = player.X, y = player.Y;
+            sbyte z = player.Z;
+            if (!player.Pathfinder.CanWalk(ref direction, ref x, ref y, ref z) ||
+                (x == animal.X && y == animal.Y))
+                continue;
+            for (var tile = world.Map.GetTile(x, y); tile != null; tile = tile.TNext)
+                if (tile is Land or Static && tile.Z == z && LineOfSightHelper.IsVisible(player, tile))
+                    return tile;
+        }
+        return null;
     }
 
     internal static void Reset()

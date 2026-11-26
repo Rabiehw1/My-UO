@@ -26,9 +26,6 @@ public sealed class TrainerSettings
     public uint UnstitchTool { get; set; }
     public List<TrainerTarget> BeggingVendors { get; set; } = [];
     public uint HerdingTool { get; set; }
-    public HerdingTile? HerdingDestination { get; set; }
-    public TrainerTarget? ProvokeOpponent { get; set; }
-    public sealed record HerdingTile(int Facet, ushort X, ushort Y, short Z, ushort Graphic);
     public uint Forge { get; set; }
 
     /// <summary>Picked targets by skill ID.</summary>
