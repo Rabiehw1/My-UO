@@ -37,6 +37,7 @@ namespace ClassicUO.Game.UI.Gumps
         ///     the button or reflows the group it is anchored in.
         /// </remarks>
         private int? _activeGraphic;
+        private bool? _editorPreviewActive;
 
         /// <summary>Draw tint for the running state, resolved through <see cref="Macro.HueFor" />.</summary>
         private Vector3 _activeHueVector;
@@ -86,6 +87,12 @@ namespace ClassicUO.Game.UI.Gumps
         }
 
         public override GumpType GumpType => GumpType.MacroButton;
+
+        internal void RefreshAppearanceFromEditor(bool? previewActive)
+        {
+            _editorPreviewActive = previewActive;
+            TheMacro = _macr;
+        }
 
         public Macro TheMacro
         {
@@ -290,7 +297,7 @@ namespace ClassicUO.Game.UI.Gumps
 
             // Resolved per frame rather than cached on a state change: nothing signals the macro
             // starting or stopping, and the test is two reference compares.
-            bool isActive = World.Macros.IsActive(ActionHead);
+            bool isActive = _editorPreviewActive ?? World.Macros.IsActive(ActionHead);
             int? graphic = isActive ? _activeGraphic : Graphic;
             Vector3 stateHueVector = isActive ? _activeHueVector : _hueVector;
 

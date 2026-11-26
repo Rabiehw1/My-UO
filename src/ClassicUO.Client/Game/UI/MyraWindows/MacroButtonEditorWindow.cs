@@ -22,10 +22,9 @@ namespace ClassicUO.Game.UI.MyraWindows;
 /// </summary>
 /// <remarks>
 ///     Edits are written straight onto the live macro, which is what lets the preview show them as they
-///     happen. The button already on screen does not follow along - it caches the macro's appearance
-///     when it is handed one - so saving and reverting both re-hand it the macro. Closing therefore has
-///     to put back what was there on open, or "close without saving" would still have changed the macro
-///     for the session. Open through <see cref="Show" />, which keeps a single editor across call sites.
+///     happen. On-screen buttons also show the edited appearance and the selected preview state.
+///     Closing restores normal running-state behavior, and discards any appearance changes that were
+///     not saved. Open through <see cref="Show" />, which keeps a single editor across call sites.
 /// </remarks>
 public sealed class MacroButtonEditorWindow : MyraControl
 {
@@ -203,7 +202,11 @@ public sealed class MacroButtonEditorWindow : MyraControl
         _preview?.Dispose();
 
         _preview = new MacroButtonPreview(_macro);
-        _preview.ShowActiveStateChanged += (_, _) => SyncPreviewStateLabel();
+        _preview.ShowActiveStateChanged += (_, isActive) =>
+        {
+            SyncPreviewStateLabel();
+            RefreshLiveButtons(isActive);
+        };
 
         // Rebuilt alongside the preview rather than reused: a Myra widget belongs to one parent, and a
         // rebuild hands both of these to a new one.
@@ -250,6 +253,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
                 // Scale alone never invalidates the hue bake, so stay off the re-baking path: this
                 // fires on every pixel of a slider drag.
                 _preview.RefreshScale();
+                RefreshLiveButtons(_preview.ShowActiveState);
             }
         );
 
@@ -313,8 +317,8 @@ public sealed class MacroButtonEditorWindow : MyraControl
 
         var header = new MyraLabel(
             isActive
-                ? TazLang.Get("macrobtneditor_state_active", "Active")
-                : TazLang.Get("macrobtneditor_state_inactive", "Inactive / Default"),
+                ? TazLang.Get("macrobtneditor_state_while_running", "While Running")
+                : TazLang.Get("macrobtneditor_state_at_rest", "At Rest"),
             MyraLabel.TextStyle.H5
         );
 
@@ -371,7 +375,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
         {
             SetLabel(isActive, input.Text ?? string.Empty);
             MirrorInheritedLabel();
-            _preview.RefreshSurface();
+            PreviewEdit(isActive, _preview.RefreshSurface);
         };
 
         // Ticking adopts the text inherited from the level above, which the mirroring keeps this box
@@ -381,7 +385,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
             SetLabel(isActive, isOn ? _macro.LabelFor(isActive) : null);
             input.Text = _macro.LabelFor(isActive);
             MirrorInheritedLabel();
-            _preview.RefreshSurface();
+            PreviewEdit(isActive, _preview.RefreshSurface);
         }) { CheckBox = { Tooltip = tooltip } };
 
         return new SettingRow(
@@ -419,7 +423,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
         selector.HueChanged += (_, hue) =>
         {
             SetHue(target, isActive, hue);
-            refresh();
+            PreviewEdit(isActive, refresh);
         };
 
         MyraLabel caption = Caption(
@@ -441,7 +445,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
         var gate = new GateToggle(HasHueOverride(target), selector, isOn =>
         {
             SetActiveHue(target, isOn ? selector.Hue : null);
-            refresh();
+            PreviewEdit(isActive, refresh);
         }) { CheckBox = { Tooltip = tooltip } };
 
         return new SettingRow(gate, caption, selector);
@@ -474,7 +478,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
 
                 // Opacity is applied to the label as it is drawn, so the graphic's bake still stands -
                 // and this fires on every pixel of a slider drag.
-                _preview.RefreshSurface();
+                PreviewEdit(isActive, _preview.RefreshSurface);
             }
         );
 
@@ -490,7 +494,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
         var gate = new GateToggle(_macro.ActiveLabelOpacity.HasValue, slider, isOn =>
         {
             _macro.ActiveLabelOpacity = isOn ? (byte)slider.Value : null;
-            _preview.RefreshSurface();
+            PreviewEdit(isActive, _preview.RefreshSurface);
         }) { CheckBox = { Tooltip = tooltip } };
 
         return new SettingRow(gate, caption, slider);
@@ -582,7 +586,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
                 if (!_macro.ActiveGraphic.HasValue)
                     MirrorToActiveGraphic(graphic);
 
-                _preview.Refresh();
+                PreviewEdit(false, _preview.Refresh);
             };
 
             return new SettingRow(null, Caption("macrobtneditor_graphic", "Graphic", tooltip), picker);
@@ -598,13 +602,13 @@ public sealed class MacroButtonEditorWindow : MyraControl
                 return;
 
             _macro.ActiveGraphic = graphic;
-            _preview.Refresh();
+            PreviewEdit(true, _preview.Refresh);
         };
 
         var gate = new GateToggle(_macro.ActiveGraphic.HasValue, picker, isOn =>
         {
             _macro.ActiveGraphic = isOn ? picker.Value : null;
-            _preview.Refresh();
+            PreviewEdit(true, _preview.Refresh);
         }) { CheckBox = { Tooltip = tooltip } };
 
         return new SettingRow(gate, Caption("macrobtneditor_graphic", "Graphic", tooltip), picker);
@@ -724,8 +728,8 @@ public sealed class MacroButtonEditorWindow : MyraControl
     /// </remarks>
     private void SyncPreviewStateLabel() =>
         _previewStateLabel.Text = _preview.ShowActiveState
-            ? TazLang.Get("macrobtneditor_previewstate_active", "Active - click to toggle")
-            : TazLang.Get("macrobtneditor_previewstate_inactive", "Inactive - click to toggle");
+            ? TazLang.Get("macrobtneditor_preview_while_running", "While running · Click to preview at rest")
+            : TazLang.Get("macrobtneditor_preview_at_rest", "At rest · Click to preview while running");
 
     /// <summary>
     ///     Builds the save/close row. Both leave; the pair differ in what they do with the edits, so
@@ -756,20 +760,13 @@ public sealed class MacroButtonEditorWindow : MyraControl
     }
 
     /// <summary>
-    ///     Commits the current appearance, persists the macro list, re-reads the macro into any button
-    ///     already on screen - which caches the appearance rather than reading it per frame - and closes.
+    ///     Commits the current appearance, persists the macro list, and ends the live preview.
     /// </summary>
-    /// <remarks>
-    ///     Closing is the confirmation. Left open, saving looked like nothing had happened: the preview
-    ///     already showed the edits, and the button on screen is only reached through the refresh below.
-    ///     Disposing is safe straight after committing, since the revert it runs finds nothing to undo.
-    /// </remarks>
     private void Save()
     {
         _committed = MacroButtonAppearance.Capture(_macro);
 
         World.Instance.Macros.Save();
-        RefreshLiveButtons();
         Dispose();
     }
 
@@ -781,6 +778,7 @@ public sealed class MacroButtonEditorWindow : MyraControl
     {
         MacroButtonAppearance.Defaults.ApplyTo(_macro);
         RebuildContent();
+        RefreshLiveButtons(_preview.ShowActiveState);
     }
 
     /// <summary>
@@ -812,19 +810,30 @@ public sealed class MacroButtonEditorWindow : MyraControl
 
         _closed = true;
 
-        if (_committed.Matches(_macro))
-            return;
+        if (!_committed.Matches(_macro))
+            _committed.ApplyTo(_macro);
 
-        _committed.ApplyTo(_macro);
-        RefreshLiveButtons();
+        RefreshLiveButtons(null);
     }
 
-    /// <summary>Re-reads the macro into every button showing it, which caches its appearance.</summary>
-    private void RefreshLiveButtons()
+    private void PreviewEdit(bool isActive, Action repaint)
     {
-        foreach (MacroButtonGump button in UIManager.Gumps.OfType<MacroButtonGump>().ToList())
-            if (button.TheMacro == _macro)
-                button.TheMacro = _macro;
+        if (_preview.ShowActiveState != isActive)
+        {
+            // Changing the preview state refreshes its contents and raises ShowActiveStateChanged.
+            _preview.ShowActiveState = isActive;
+            return;
+        }
+
+        repaint();
+        RefreshLiveButtons(isActive);
+    }
+
+    private void RefreshLiveButtons(bool? previewActive)
+    {
+        foreach (MacroButtonGump button in UIManager.Gumps.OfType<MacroButtonGump>())
+            if (!button.IsDisposed && button.TheMacro == _macro)
+                button.RefreshAppearanceFromEditor(previewActive);
     }
 
     #endregion
