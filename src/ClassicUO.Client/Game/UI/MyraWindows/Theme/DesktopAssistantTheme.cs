@@ -204,6 +204,13 @@ internal sealed class DesktopAssistantTheme
         return button;
     }
 
+    internal static void ApplyPickedButtonStyle(MyraButton button)
+    {
+        ApplyActionButtonStyle(button, primary: true);
+        button.Background = button.Border = RunningAction;
+        button.OverBackground = button.PressedBackground = RunningActionHover;
+    }
+
     internal static void ApplyActionButtonStyle(MyraButton button, bool primary = false)
     {
         button.Background = primary ? PrimaryAction : SecondaryAction;

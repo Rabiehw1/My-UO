@@ -81,6 +81,9 @@ internal static class BlacksmithTrainer
         return _pending != null;
     }
 
+    internal static bool IsHammer(ushort graphic) => graphic is 0x13E3 or 0x13E4;
+    internal static bool IsTongs(ushort graphic) => graphic is 0x0FBB or 0x0FBC;
+
     internal static bool Use(World world, uint toolSerial)
     {
         var player = world.Player!;
@@ -94,8 +97,12 @@ internal static class BlacksmithTrainer
         var bag = player.Backpack;
         var tool = world.Items.Get(toolSerial);
         if (bag == null || tool == null || (tool.Container != player.Serial && tool.BackpackOrRootContainer != bag.Serial)
-            || tool.Graphic is not (0x13E3 or 0x13E4 or 0xFBB or 0xFBC))
+            || !IsHammer(tool.Graphic))
             return Warn(world, "trainer_smith_tool");
+
+        var tongs = world.Items.Get(ProfileManager.CurrentProfile.Trainer.SmeltTool);
+        if (tongs == null || !IsTongs(tongs.Graphic) || (tongs.Container != player.Serial && tongs.BackpackOrRootContainer != bag.Serial))
+            return Warn(world, "trainer_smith_tongs");
 
         Item? best = null;
         int highest = -1;
@@ -254,8 +261,8 @@ internal static class BlacksmithTrainer
         if (_stockAfterCraft > _stockBefore - _pending!.Ingots)
             return;
         uint smeltTool = ProfileManager.CurrentProfile.Trainer.SmeltTool;
-        var tool = world.Items.Get(smeltTool == 0 ? _tool : smeltTool);
-        if (NearbyForge(world) == null || tool == null || (tool.Container != world.Player.Serial && tool.BackpackOrRootContainer != _bag))
+        var tool = world.Items.Get(smeltTool);
+        if (NearbyForge(world) == null || tool == null || !IsTongs(tool.Graphic) || (tool.Container != world.Player.Serial && tool.BackpackOrRootContainer != _bag))
         {
             Pause(world, "trainer_smith_recovery_timeout");
             return;

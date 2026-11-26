@@ -78,70 +78,11 @@ internal static class TrainerTabContent
             details.Widgets.Clear();
             var table = new MyraGrid();
             table.SetupWithHeaders(GridColumnInfo.Auto(TazLang.Get("trainer_column_skill")),
-                GridColumnInfo.Fill(TazLang.Get("trainer_column_use")), GridColumnInfo.Auto(TazLang.Get("trainer_column_target")));
+                GridColumnInfo.Fill(TazLang.Get("trainer_column_use")), GridColumnInfo.Pixels(TazLang.Get("trainer_column_setup"), 172));
             int row = 1;
             foreach (TrainerSkill skill in TrainerCatalog.Skills.Where(s => s.Class == _selectedClass))
-                AddSkillRow(table, row++, profile, skill, interaction, () => { RefreshOrder(); RefreshControls(); });
+                AddSkillRow(table, row++, profile, skill, interaction, () => { RefreshOrder(); RefreshControls(); }, ShowClass);
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_class_skills", [ClassName(_selectedClass)]), table));
-            if (_selectedClass == TrainerClass.Bard)
-            {
-                var settings = profile.Trainer;
-                var tool = DesktopAssistantForm.Button(TazLang.Get("trainer_herd_tool") +
-                    (settings.HerdingTool == 0 ? "" : $" · 0x{settings.HerdingTool:X8}"), () =>
-                    interaction.SelectTarget(picked =>
-                    {
-                        if (picked is not Item item) return;
-                        settings.HerdingTool = item.Serial;
-                        profile.Save();
-                        ShowClass();
-                    }));
-                details.Widgets.Add(DesktopAssistantTheme.Group("Enticement", tool));
-                var route = new VerticalStackPanel { Spacing = 4 };
-                var vendors = profile.Trainer.BeggingVendors;
-                route.Widgets.Add(DesktopAssistantForm.Button(TazLang.Get("trainer_beg_add"), () =>
-                    interaction.SelectTarget(target =>
-                    {
-                        if (target is not Mobile mobile || mobile == World.Instance?.Player ||
-                            vendors.Any(v => v.Serial == mobile.Serial))
-                            return;
-                        vendors.Add(new TrainerTarget { Serial = mobile.Serial, Name = mobile.Name ?? "" });
-                        profile.Save();
-                        ShowClass();
-                    }), primary: true));
-                foreach (var vendor in vendors)
-                    route.Widgets.Add(DesktopAssistantForm.Actions(MyraGrid.TableText($"{vendor.Name} · 0x{vendor.Serial:X8}"),
-                        DesktopAssistantForm.Button(TazLang.Get("trainer_beg_remove"), () =>
-                        {
-                            vendors.Remove(vendor);
-                            profile.Save();
-                            ShowClass();
-                        }, destructive: true)));
-                details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_beg_route"), route));
-            }
-            if (_selectedClass == TrainerClass.Crafter)
-            {
-                MyraButton Pick(string key, System.Func<uint> get, System.Action<uint> set)
-                {
-                    string Caption() => TazLang.Get(key) + (get() == 0 ? "" : $" · 0x{get():X8}");
-                    var button = DesktopAssistantForm.Button(Caption());
-                    button.OnClick = () => interaction.SelectTarget(target =>
-                    {
-                        if (target is not Item item)
-                            return;
-                        set(item.Serial);
-                        profile.Save();
-                        button.Text = Caption();
-                    });
-                    return button;
-                }
-                details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_smith_equipment"),
-                    DesktopAssistantForm.Actions(
-                        Pick("trainer_pick_smelt_tool", () => profile.Trainer.SmeltTool, value => profile.Trainer.SmeltTool = value),
-                        Pick("trainer_pick_forge", () => profile.Trainer.Forge, value => profile.Trainer.Forge = value))));
-                details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_tailor_equipment"),
-                    DesktopAssistantForm.Actions(Pick("trainer_tailor_unstitch", () => profile.Trainer.UnstitchTool,
-                        value => profile.Trainer.UnstitchTool = value))));
-            }
             order = Text("trainer_order_empty");
             RefreshOrder();
             details.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("trainer_order"), order, Text("trainer_order_help")));
@@ -225,7 +166,7 @@ internal static class TrainerTabContent
     }
 
     /// <summary>One skill: tick box, what it does, and the picked target with a pick button when it needs one.</summary>
-    private static void AddSkillRow(MyraGrid table, int row, Profile profile, TrainerSkill skill, AgentPageInteraction interaction, System.Action changed)
+    private static void AddSkillRow(MyraGrid table, int row, Profile profile, TrainerSkill skill, AgentPageInteraction interaction, System.Action changed, System.Action refresh)
     {
         TrainerSettings settings = profile.Trainer;
         table.AddWidget(MyraCheckButton.CreateWithCallback(
@@ -242,17 +183,102 @@ internal static class TrainerTabContent
         };
         table.AddWidget(info, row, 1);
 
-        if (skill.Target != TrainerTargetKind.None)
-            table.AddWidget(DesktopAssistantForm.Button(TazLang.Get(skill.Target == TrainerTargetKind.Item ? "trainer_choose_item" : "trainer_choose_creature"), () =>
-                interaction.SelectTarget(picked =>
-                {
-                    if (!IsValidTarget(skill, picked, out Entity? entity))
-                        return;
+        var setup = new VerticalStackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        void AddPicker(string key, uint serial, System.Action<object> select)
+        {
+            string caption = TazLang.Get(key);
+            var button = DesktopAssistantForm.Button(serial == 0 ? caption : "✓  " + caption,
+                () => interaction.SelectTarget(select));
+            button.HorizontalAlignment = HorizontalAlignment.Stretch;
+            if (serial != 0)
+            {
+                DesktopAssistantTheme.ApplyPickedButtonStyle(button);
+                button.Tooltip = $"0x{serial:X8}";
+            }
+            setup.Widgets.Add(button);
+        }
 
-                    settings.Targets[skill.Id] = new TrainerTarget { Serial = entity!.Serial, Name = entity.Name ?? "" };
+        void Equipment(string key, uint serial, System.Action<uint> save)
+        {
+            AddPicker(key, serial, picked =>
+            {
+                if (picked is not Item item) return;
+                if (key == "trainer_pick_smelt_tool" && !BlacksmithTrainer.IsTongs(item.Graphic))
+                {
+                    GameActions.Print(TazLang.Get("trainer_smith_tongs"), Constants.HUE_WARN);
+                    return;
+                }
+                save(item.Serial);
+                profile.Save();
+                refresh();
+            });
+        }
+
+        if (skill.Target != TrainerTargetKind.None)
+        {
+            string key = skill.Id switch
+            {
+                "blacksmithy" => "trainer_pick_hammer",
+                "tailoring" => "trainer_pick_kit",
+                "arms_lore" => "trainer_pick_examine",
+                "lumberjacking" => "trainer_pick_axe",
+                "enticement" => "trainer_pick_animal",
+                "fishing" => "trainer_pick_pole",
+                _ => skill.Target == TrainerTargetKind.Item ? "trainer_choose_item" : "trainer_choose_creature"
+            };
+            settings.Targets.TryGetValue(skill.Id, out var saved);
+            AddPicker(key, saved?.Serial ?? 0, picked =>
+            {
+                if (!IsValidTarget(skill, picked, out var entity)) return;
+                if (skill.Use == TrainerUse.Blacksmith && !BlacksmithTrainer.IsHammer(entity!.Graphic))
+                {
+                    GameActions.Print(TazLang.Get("trainer_smith_tool"), Constants.HUE_WARN);
+                    return;
+                }
+                settings.Targets[skill.Id] = new TrainerTarget { Serial = entity!.Serial, Name = entity.Name ?? "" };
+                profile.Save();
+                refresh();
+            });
+        }
+
+        switch (skill.Use)
+        {
+            case TrainerUse.Entice:
+                Equipment("trainer_herd_tool", settings.HerdingTool, value => settings.HerdingTool = value);
+                break;
+            case TrainerUse.Tailor:
+                Equipment("trainer_tailor_unstitch", settings.UnstitchTool, value => settings.UnstitchTool = value);
+                break;
+            case TrainerUse.Blacksmith:
+                Equipment("trainer_pick_smelt_tool", settings.SmeltTool, value => settings.SmeltTool = value);
+                Equipment("trainer_pick_forge", settings.Forge, value => settings.Forge = value);
+                break;
+            case TrainerUse.Begging:
+                var vendors = settings.BeggingVendors;
+                AddPicker("trainer_beg_add", vendors.FirstOrDefault()?.Serial ?? 0, target =>
+                {
+                    if (target is not Mobile mobile || mobile == World.Instance?.Player ||
+                        vendors.Any(v => v.Serial == mobile.Serial)) return;
+                    vendors.Add(new TrainerTarget { Serial = mobile.Serial, Name = mobile.Name ?? "" });
                     profile.Save();
-                    info.Text = DetailsText(settings, skill);
-                })), row, 2);
+                    refresh();
+                });
+                foreach (var vendor in vendors)
+                {
+                    setup.Widgets.Add(MyraGrid.TableText(string.IsNullOrEmpty(vendor.Name) ? $"0x{vendor.Serial:X8}" : vendor.Name));
+                    var remove = DesktopAssistantForm.Button(TazLang.Get("trainer_beg_remove"), () =>
+                    {
+                        vendors.Remove(vendor);
+                        profile.Save();
+                        refresh();
+                    }, destructive: true);
+                    remove.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    setup.Widgets.Add(remove);
+                }
+                break;
+        }
+        if (setup.Widgets.Count > 0)
+            table.AddWidget(setup, row, 2);
     }
 
     private static bool IsValidTarget(TrainerSkill skill, object? picked, out Entity? entity)
