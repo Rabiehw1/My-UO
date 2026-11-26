@@ -5,25 +5,23 @@ namespace ClassicUO.UnitTests.Game.Managers;
 
 public class TailoringTrainerTests
 {
-    [Theory]
-    [InlineData(true, "Studded Leather Armors", true)]
-    [InlineData(false, "Studded Leggings", true)]
-    [InlineData(false, "Studded Gorget", false)]
-    [InlineData(true, "Studded Leggings", false)]
-    public void SelectsOnlyTheExpectedMenuEntry(bool category, string entry, bool expected)
+    [Fact]
+    public void NewProfilesChooseTheirOwnRecipe()
     {
-        Assert.Equal(expected, TailoringTrainer.MatchesMenu(category, "What would you like to make?", entry, false));
-        Assert.False(TailoringTrainer.MatchesMenu(category, "Another menu", entry, false));
+        var settings = new TrainerSettings();
+        Assert.Equal("", TailoringTrainer.RecipePath(settings));
+        settings.TailorStuddedTunic = true;
+        Assert.EndsWith("Studded Tunic", TailoringTrainer.RecipePath(settings));
+        settings.TailorRecipePath = "Leather > Gloves";
+        Assert.Equal(settings.TailorRecipePath, TailoringTrainer.RecipePath(settings));
     }
 
-    [Fact]
-    public void MatchesSelectedRecipeAndLeatherHue()
-    {
-        Assert.True(TailoringTrainer.MatchesMenu(false, "What would you like to make?", "Studded Tunic", true));
-        Assert.True(TailoringTrainer.IsOutput(0x13DB, 0, true, 0));
-        Assert.False(TailoringTrainer.IsOutput(0x13DA, 0, true, 0));
-        Assert.True(TailoringTrainer.IsOutput(0x13DA, 0x0486, false, 0x0486));
-        Assert.False(TailoringTrainer.IsOutput(0x13DA, 0, false, 0x0486));
-        Assert.False(TailoringTrainer.IsOutput(0x13D6, 0x0486, false, 0x0486));
-    }
+    [Theory]
+    [InlineData(200, 1, "", 200, true)]
+    [InlineData(201, 1, "", 200, false)]
+    [InlineData(200, 2, "", 200, false)]
+    [InlineData(201, 1, "gloves", 0, true)]
+    [InlineData(201, 1, "Boots", 0, false)]
+    public void OutputFollowsRecipeMenuAndMaterial(int graphic, int hue, string name, int menuGraphic, bool expected) =>
+        Assert.Equal(expected, TailoringTrainer.MatchesOutput((ushort)graphic, (ushort)hue, name, (ushort)menuGraphic, 1, "Gloves"));
 }

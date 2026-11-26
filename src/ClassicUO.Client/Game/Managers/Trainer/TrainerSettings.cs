@@ -24,7 +24,8 @@ public sealed class TrainerSettings
 
     public uint SmeltTool { get; set; }
     // Existing profiles store the picked leather stack under this name.
-    public bool TailorStuddedTunic { get; set; }
+    public string TailorRecipePath { get; set; } = "";
+    public bool? TailorStuddedTunic { get; set; }
     public uint DragonLeather { get; set; }
     public uint UnstitchTool { get; set; }
     public string TailorOutfit { get; set; } = "";

@@ -23,15 +23,18 @@ internal static class TailoringTrainer
     private static long _ready, _deadline;
     private static string? _warning;
 
-    private static bool _tunic;
-    private static ushort _hue;
+    private static string[] _path = [];
+    private static int _menuIndex;
+    private static ushort _menuGraphic, _hue;
 
-    internal static bool IsOutput(ushort graphic, ushort hue, bool tunic, ushort leatherHue) =>
-        hue == leatherHue && (tunic ? graphic is 0x13DB or 0x13E2 : graphic is 0x13DA or 0x13E1);
+    // Honor explicit selections saved by the earlier two-recipe prototype.
+    internal static string RecipePath(TrainerSettings settings) =>
+        !string.IsNullOrWhiteSpace(settings.TailorRecipePath) ? settings.TailorRecipePath :
+        settings.TailorStuddedTunic is bool tunic ? "Studded Leather Armors > " + (tunic ? "Studded Tunic" : "Studded Leggings") : "";
 
-    internal static bool MatchesMenu(bool category, string title, string entry, bool tunic) =>
-        title.Trim().Equals("What would you like to make?", StringComparison.OrdinalIgnoreCase) &&
-        entry.Trim().Equals(category ? "Studded Leather Armors" : tunic ? "Studded Tunic" : "Studded Leggings", StringComparison.OrdinalIgnoreCase);
+    internal static bool MatchesOutput(ushort graphic, ushort hue, string name, ushort menuGraphic,
+        ushort materialHue, string recipe) => hue == materialHue && (menuGraphic != 0
+            ? graphic == menuGraphic : name.Trim().Equals(recipe, StringComparison.OrdinalIgnoreCase));
 
     private static Item? Carried(World world, uint serial) =>
         world.Items.Get(serial) is { IsDestroyed: false } item && (item.Container == world.Player.Serial ||
@@ -43,10 +46,11 @@ internal static class TailoringTrainer
             return false;
         var profile = ProfileManager.CurrentProfile;
         var settings = profile.Trainer;
+        string[] path = RecipePath(settings).Split('>', StringSplitOptions.TrimEntries);
         var leather = Carried(world, settings.DragonLeather);
         var outfit = DressAgentManager.Instance.CurrentPlayerConfigs.Find(c => c.Name == settings.TailorOutfit);
         if (Carried(world, tool) == null || Carried(world, settings.UnstitchTool) == null ||
-            leather == null || leather.Amount < (settings.TailorStuddedTunic ? 14 : 12) ||
+            leather == null || leather.Amount == 0 || path.Any(string.IsNullOrWhiteSpace) ||
             (leather.Graphic is not (0x1067 or 0x1068 or 0x1078 or 0x1079) &&
              !leather.GetNormalizedName(false).Contains("leather", StringComparison.OrdinalIgnoreCase) &&
              !leather.GetNormalizedName(false).Contains("hide", StringComparison.OrdinalIgnoreCase)) || outfit == null || outfit.Items.Count == 0)
@@ -56,7 +60,8 @@ internal static class TailoringTrainer
             _warning = "setup";
             return false;
         }
-        _tunic = settings.TailorStuddedTunic;
+        _path = path;
+        _menuIndex = 0;
         _hue = leather.Hue;
         _profile = profile;
         _player = world.Player.Serial;
@@ -114,22 +119,23 @@ internal static class TailoringTrainer
     {
         if (_step is not (Step.Category or Step.Recipe) || !Active(world))
             return false;
-        bool category = _step == Step.Category;
+        if (!title.Trim().Equals("What would you like to make?", StringComparison.OrdinalIgnoreCase))
+            return false;
         bool gray = false;
         for (ushort index = 1; index <= count; index++)
         {
             ushort graphic = entries.ReadUInt16BE(), hue = entries.ReadUInt16BE();
             if (index == 1)
                 gray = graphic == 0;
-            if (!MatchesMenu(category, title, entries.ReadASCII(entries.ReadUInt8()), _tunic))
+            if (!entries.ReadASCII(entries.ReadUInt8()).Trim().Equals(_path[_menuIndex], StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (category)
+            if (++_menuIndex < _path.Length)
                 Advance(Step.Recipe);
             else
             {
+                _menuGraphic = graphic;
                 foreach (var item in world.Items.Values)
-                    if (IsOutput(item.Graphic, item.Hue, _tunic, _hue))
-                        Existing.Add(item.Serial);
+                    Existing.Add(item.Serial);
                 _initialAmount = Carried(world, _leather)?.Amount ?? 0;
                 Advance(Step.Craft, 4000);
             }
@@ -147,7 +153,9 @@ internal static class TailoringTrainer
         uint found = 0;
         foreach (var item in world.Items.Values)
         {
-            if (!IsOutput(item.Graphic, item.Hue, _tunic, _hue) || Existing.Contains(item.Serial) || Carried(world, item.Serial) == null)
+            if (Existing.Contains(item.Serial) || Carried(world, item.Serial) == null ||
+                !MatchesOutput(item.Graphic, item.Hue, _menuGraphic == 0 ? item.GetNormalizedName(false) : "",
+                    _menuGraphic, _hue, _path[^1]))
                 continue;
             if (found != 0)
                 return 0;

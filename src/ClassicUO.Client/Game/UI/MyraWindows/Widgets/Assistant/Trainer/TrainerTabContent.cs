@@ -103,14 +103,16 @@ internal static class TrainerTabContent
                     DesktopAssistantForm.Actions(
                         Pick("trainer_pick_smelt_tool", () => profile.Trainer.SmeltTool, value => profile.Trainer.SmeltTool = value),
                         Pick("trainer_pick_forge", () => profile.Trainer.Forge, value => profile.Trainer.Forge = value))));
-                var recipe = new ComboView();
-                foreach (string key in new[] { "trainer_tailor_leggings", "trainer_tailor_tunic" })
-                    recipe.ListView.Widgets.Add(new Label { Text = TazLang.Get(key) });
-                recipe.ListView.SelectedIndex = profile.Trainer.TailorStuddedTunic ? 1 : 0;
-                recipe.ListView.SelectedIndexChanged += (_, _) =>
+                var recipe = new MyraInputBox
                 {
-                    profile.Trainer.TailorStuddedTunic = recipe.ListView.SelectedIndex == 1;
-                    profile.Save();
+                    Text = TailoringTrainer.RecipePath(profile.Trainer),
+                    MinWidth = 220,
+                    Tooltip = TazLang.Get("trainer_tailor_path_help")
+                };
+                recipe.TextChangedByUser += (_, _) =>
+                {
+                    profile.Trainer.TailorRecipePath = recipe.Text;
+                    profile.Trainer.TailorStuddedTunic = null;
                 };
                 var outfits = DressAgentManager.Instance.CurrentPlayerConfigs.ToArray();
                 var outfit = new ComboView();
