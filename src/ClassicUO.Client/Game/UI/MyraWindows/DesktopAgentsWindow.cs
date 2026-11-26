@@ -106,6 +106,13 @@ internal sealed class DesktopAgentsWindow
 
     public static void Show() => Show(null);
 
+    /// <summary>Rebuilds the open page on the next frame, e.g. after an agent reloaded its settings.</summary>
+    internal static void RequestRefresh()
+    {
+        if (_instance is { } window)
+            window._refreshRequested = true;
+    }
+
     /// <summary>Opens the window as the launcher: only launcher settings, and closing it closes the program.</summary>
     internal static void ShowLauncher() => Show(LauncherTabContent.Title);
 

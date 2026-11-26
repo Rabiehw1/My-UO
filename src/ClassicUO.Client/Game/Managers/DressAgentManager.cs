@@ -34,7 +34,11 @@ namespace ClassicUO.Game.Managers
 
         private DressConfigSave _save = new();
 
-        public List<DressConfig> CurrentPlayerConfigs => _save.Configs;
+        // One list for the manager's whole life: open Assistant pages keep showing and editing the live sets
+        // across logins and reconnects instead of a copy from an earlier load.
+        private readonly List<DressConfig> _configs = new();
+
+        public List<DressConfig> CurrentPlayerConfigs => _configs;
         public List<DressConfig> OtherCharacterConfigs { get; private set; } = new();
         public bool IsLoaded { get; private set; }
 
@@ -55,9 +59,12 @@ namespace ClassicUO.Game.Managers
             string characterName = ProfileManager.CurrentProfile?.CharacterName ?? "";
 
             _save = DressConfigSave.LoadForCurrentProfile();
+            _configs.Clear();
+            _configs.AddRange(_save.Configs);
+            _save.Configs = _configs;
 
             // Ensure all configs have the correct character name and clean up null items
-            foreach (DressConfig config in _save.Configs)
+            foreach (DressConfig config in _configs)
             {
                 config.CharacterName = characterName;
                 CleanupNullItems(config);
@@ -66,9 +73,27 @@ namespace ClassicUO.Game.Managers
             LoadOtherCharacterConfigs();
 
             IsLoaded = true;
+
+            // An Assistant page built before this load still holds the previous sets; have it rebuild.
+            UI.MyraWindows.DesktopAgentsWindow.RequestRefresh();
         }
 
-        public void Unload() => Instance = null;
+        /// <summary>Forgets the character's sets; the manager itself stays so open pages keep a valid reference.</summary>
+        public void Unload()
+        {
+            IsLoaded = false;
+            _configs.Clear();
+            OtherCharacterConfigs.Clear();
+        }
+
+        /// <summary>
+        /// The live copy of <paramref name="config" />. A page built before the sets were reloaded may still pass an
+        /// old object; acting on that would dress an outdated set or save edits nowhere.
+        /// </summary>
+        private DressConfig Live(DressConfig config) =>
+            config == null || _configs.Contains(config)
+                ? config
+                : _configs.FirstOrDefault(live => live.Name.Equals(config.Name, StringComparison.OrdinalIgnoreCase)) ?? config;
 
         private void LoadOtherCharacterConfigs()
         {
@@ -210,6 +235,7 @@ namespace ClassicUO.Game.Managers
 
         public void AddItemToConfig(DressConfig config, uint serial, string name)
         {
+            config = Live(config);
             if (config.Items.Any(i => i.Serial == serial))
                 return;
 
@@ -248,6 +274,7 @@ namespace ClassicUO.Game.Managers
 
         public void AddCurrentlyEquippedItems(DressConfig config)
         {
+            config = Live(config);
             if (World.Instance.Player == null)
                 return;
 
@@ -264,6 +291,7 @@ namespace ClassicUO.Game.Managers
 
         public void DressFromConfig(DressConfig config)
         {
+            config = Live(config);
             if (config == null)
                 return;
 
@@ -272,6 +300,7 @@ namespace ClassicUO.Game.Managers
 
         public void UndressFromConfig(DressConfig config)
         {
+            config = Live(config);
             if (config == null)
                 return;
             Undress(config);
