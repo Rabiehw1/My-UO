@@ -4,13 +4,14 @@ using System;
 using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
+using ClassicUO.Game.UI.Gumps;
 
 namespace ClassicUO.Game.Managers.Trainer;
 
 /// <summary>
-/// Trains the ticked skills in turn: every <see cref="TrainerSettings.WaitSeconds"/> it runs the next skill's built-in
-/// script once, since the shard lets you use one skill per shared cooldown. Main thread only; driven by
-/// <see cref="Update"/> each frame while in game.
+/// Trains the ticked skills in turn: every <see cref="TrainerSettings.WaitSeconds"/> it uses the next skill once,
+/// since the shard lets you use one skill per shared cooldown. Main thread only; driven by <see cref="Update"/> each
+/// frame while in game.
 /// </summary>
 internal sealed class TrainerManager
 {
@@ -36,7 +37,9 @@ internal sealed class TrainerManager
     // A busy skill whose end line never came is tried again after this long.
     private const uint BUSY_GIVE_UP_MS = 5 * 60 * 1000;
 
-    private readonly Dictionary<string, TrainerScriptFile> _scripts = new(StringComparer.Ordinal);
+    // How long after a list-opening use (Tracking) its gump is waited for and closed.
+    private const uint CLOSE_LIST_WINDOW_MS = 3000;
+
     private readonly Dictionary<string, uint> _busyUntil = new(StringComparer.Ordinal);
 
     // Skills whose missing target was already reported, so the message shows once until it is found again.
@@ -45,6 +48,8 @@ internal sealed class TrainerManager
     private Profile? _profile;
     private uint _nextUseAt;
     private int _turn;
+    private uint _closeListUntil;
+    private uint _gumpBeforeList;
 
     #endregion
 
@@ -67,12 +72,6 @@ internal sealed class TrainerManager
         if (profile.Trainer.Selected.Count == 0)
         {
             GameActions.Print(TazLang.Get("trainer_nothing_selected"), Constants.HUE_WARN);
-            return false;
-        }
-
-        if (string.IsNullOrEmpty(LegionScripting.LegionScripting.ScriptPath))
-        {
-            GameActions.Print(TazLang.Get("trainer_scripts_not_ready"), Constants.HUE_WARN);
             return false;
         }
 
@@ -113,8 +112,18 @@ internal sealed class TrainerManager
             return;
         }
 
+        if (_closeListUntil != 0)
+            CloseOpenedList(world);
+
         if (Time.Ticks < _nextUseAt)
             return;
+
+        // Another feature is waiting on a target cursor; try again shortly rather than cross cursors with it.
+        if (TrainerSkillUser.CursorBusy(world))
+        {
+            _nextUseAt = Time.Ticks + ALL_SKIPPED_RETRY_MS;
+            return;
+        }
 
         TrainerSettings settings = _profile.Trainer;
         if (settings.Selected.Count == 0)
@@ -143,19 +152,39 @@ internal sealed class TrainerManager
             if (skill == null || IsBusy(skill) || !TryResolveTarget(world, settings, skill, out uint target))
                 continue;
 
-            if (!_scripts.TryGetValue(id, out TrainerScriptFile? script))
-                _scripts[id] = script = new TrainerScriptFile(world, skill);
+            if (skill.Use == TrainerUse.CloseList)
+            {
+                _gumpBeforeList = world.Player!.LastGumpID;
+                _closeListUntil = Time.Ticks + CLOSE_LIST_WINDOW_MS;
+            }
 
-            // The previous run of this skill is still going (e.g. waiting for a cursor): leave it a turn.
-            if (script.IsPlaying)
-                continue;
+            if (TrainerSkillUser.Use(world, skill, target))
+                return true;
 
-            script.TargetSerial = target;
-            LegionScripting.LegionScripting.PlayScript(script);
-            return true;
+            _closeListUntil = 0;
         }
 
         return false;
+    }
+
+    /// <summary>Closes the server gump a list-opening use brought up, once it arrives.</summary>
+    private void CloseOpenedList(World world)
+    {
+        if (Time.Ticks > _closeListUntil)
+        {
+            _closeListUntil = 0;
+            return;
+        }
+
+        uint gumpId = world.Player!.LastGumpID;
+        if (gumpId == 0 || gumpId == _gumpBeforeList || UIManager.GetGumpServer(gumpId) is not { } gump)
+            return;
+
+        _closeListUntil = 0;
+        if (gump.CanCloseWithRightClick)
+            gump.InvokeMouseCloseGumpWithRClick();
+        else
+            gump.Dispose();
     }
 
     private bool IsBusy(TrainerSkill skill) =>
