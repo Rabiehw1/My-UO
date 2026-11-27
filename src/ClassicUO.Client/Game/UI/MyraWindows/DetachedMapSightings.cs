@@ -3,6 +3,9 @@ using System;
 using System.Linq;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.Gumps;
+using ClassicUO.Game.UI.MyraWindows.Theme;
+using Microsoft.Xna.Framework;
 using ClassicUO.Game.UI.MyraWindows.Widgets;
 using Myra.Graphics2D.UI;
 
@@ -23,6 +26,7 @@ internal sealed partial class DetachedMapMarkers
                 if (!value)
                     sightings.Flush();
             });
+        _content.Widgets.Add(DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_profession_picker"), () => ShowNearbyProfessions(ShowSightings)));
         _content.Widgets.Add(Label("Show saved sightings"));
         foreach (var (label, layer) in new[]
         {
@@ -42,6 +46,81 @@ internal sealed partial class DetachedMapMarkers
         _content.Widgets.Add(_townStatus);
         _content.Widgets.Add(new MyraButton("Manage town areas", ShowTownAreas));
         _content.Widgets.Add(new MyraButton("Set creature tiers", ShowCreatureTiers));
+    }
+
+    private void ShowNearbyProfessions(Action back)
+    {
+        Show();
+        var world = _map.MapWorld;
+        int facet = world.MapIndex;
+        var people = world.MapSightings.NearbyPeople().ToArray();
+        var status = Label("");
+        var profession = new MyraInputBox { HintText = TazLang.Get("detached_map_profession_hint") };
+        var picker = Choice(people.Select(person =>
+        {
+            string name = person.Name.Length == 0 ? $"0x{person.Serial:X8}" : person.Name;
+            return person.Profession.Length == 0 ? name : $"{name} · {person.Profession}";
+        }), 0);
+        _content.Widgets.Add(Row(
+            DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_back"), back),
+            DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_profession_refresh"), () => ShowNearbyProfessions(back))));
+        if (people.Length == 0)
+        {
+            _content.Widgets.Add(Label(TazLang.Get("detached_map_profession_empty")));
+            return;
+        }
+
+        _content.Widgets.Add(Label(TazLang.Get("detached_map_profession_help")));
+        _content.Widgets.Add(picker);
+        _content.Widgets.Add(profession);
+        _content.Widgets.Add(DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_profession_save"), Save, primary: true));
+        _content.Widgets.Add(status);
+        picker.ListView.SelectedIndexChanged += (_, _) => FillProfession();
+        FillProfession();
+
+        void FillProfession()
+        {
+            if (picker.ListView.SelectedIndex is not int index)
+                return;
+            string suggested = people[index].Profession;
+            profession.Text = suggested.Length == 0 ? "" : char.ToUpperInvariant(suggested[0]) + suggested[1..];
+            status.Text = "";
+        }
+
+        void Save()
+        {
+            if (picker.ListView.SelectedIndex is not int index)
+                return;
+            string label = profession.Text?.Trim() ?? "";
+            if (label.Length is 0 or > 25 || label.IndexOfAny([',', '\r', '\n']) >= 0)
+            {
+                status.Text = TazLang.Get("detached_map_profession_invalid");
+                return;
+            }
+
+            if (world.MapIndex != facet || !world.Mobiles.TryGetValue(people[index].Serial, out var person)
+                || person.IsDestroyed || person.IsDead || person.Distance > world.ClientViewRange)
+            {
+                status.Text = TazLang.Get("detached_map_profession_missing");
+                return;
+            }
+
+            var point = new Point(person.X, person.Y);
+            if (_map.DesktopUserMarkers?.Any(marker => marker.MapId == facet && marker.X == point.X
+                && marker.Y == point.Y && marker.Name.Equals(label, StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                status.Text = TazLang.Get("detached_map_profession_already_saved");
+                return;
+            }
+
+            bool saved = _map.TryChangeDesktopMarker(null, new WorldMapGump.WMapMarker
+            {
+                X = point.X, Y = point.Y, MapId = facet, Name = label, ColorName = "yellow", ZoomIndex = 4
+            });
+            status.Text = saved
+                ? TazLang.Get("detached_map_profession_saved", [label])
+                : TazLang.Get("detached_map_marker_write_failed");
+        }
     }
 
     private string CurrentTownText()

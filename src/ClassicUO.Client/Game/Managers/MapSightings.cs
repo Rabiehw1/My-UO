@@ -54,6 +54,12 @@ internal sealed class MapSightings(World world)
     private static readonly string[] SuperBossRoles = ["super boss", "superboss"];
     private static readonly string[] NpcRoles = ["guard", "healer", "quest giver", "town crier", "guildmaster", "guild master"];
 
+    private static readonly string[] ProfessionRoles = new[]
+    {
+        "bard", "musician", "mage", "scribe", "fisherman", "miner", "lumberjack",
+        "farmer", "brewer", "cook", "bowyer", "cartographer", "weaver", "beggar"
+    }.Concat(VendorRoles.OrderByDescending(role => role.Length)).Concat(NpcRoles).ToArray();
+
     private readonly record struct LocationKey(int Facet, int X, int Y, ushort Graphic, ushort Hue, string Name, MapSightingLayers Group);
     private readonly Dictionary<LocationKey, MapSighting> _locations = new();
     private MapSightingsData _data = new();
@@ -118,6 +124,24 @@ internal sealed class MapSightings(World world)
     {
         if (_data.Towns.Remove(town))
             _dirty = true;
+    }
+
+    internal IEnumerable<(uint Serial, string Name, string Profession)> NearbyPeople()
+    {
+        foreach (Mobile mobile in world.Mobiles.Values.OrderBy(mobile => mobile.Distance))
+        {
+            if (mobile == world.Player || mobile.IsDestroyed || mobile.IsDead || mobile.IsRenamable
+                || (!mobile.IsHuman && !mobile.IsGargoyle) || mobile.Distance > world.ClientViewRange)
+                continue;
+
+            world.OPL.TryGetNameAndData(mobile.Serial, out string? propertyName, out string? properties);
+            string name = CleanName(string.IsNullOrWhiteSpace(mobile.Name) ? propertyName : mobile.Name);
+            string details = CleanName(mobile.Title);
+            string cachedProperties = CleanName(properties);
+            string profession = ProfessionRoles.FirstOrDefault(role =>
+                HasRole($"{details} {cachedProperties}", [role]) || HasRole(name, [role])) ?? "";
+            yield return (mobile.Serial, name, profession);
+        }
     }
 
     internal IEnumerable<string> MonsterNames()

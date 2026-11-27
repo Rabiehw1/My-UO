@@ -254,6 +254,7 @@ internal sealed partial class DetachedMapMarkers
         Show();
         _content.Widgets.Add(Row(DesktopAssistantTheme.ActionButton(TazLang.Get("add_marker_on_player"), AddAtPlayer, primary: true),
             DesktopAssistantTheme.ActionButton(TazLang.Get("reload_markers"), () => { _map.ReloadDesktopMarkers(); Browse(); })));
+        _content.Widgets.Add(DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_profession_picker"), () => ShowNearbyProfessions(Browse)));
         var files = _markerFiles.ToArray();
         if (files.Length == 0)
         {
