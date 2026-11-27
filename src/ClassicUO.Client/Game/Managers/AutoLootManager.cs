@@ -113,7 +113,7 @@ namespace ClassicUO.Game.Managers
 
         private const int CorpseReopenDelayMs = 120_000;
         private const int CorpseOpenTimeoutMs = 5_000;
-        private const int ContentsQuietMs = 250;
+        private const int ContentsQuietMs = 150;
         private readonly Queue<uint> _corpseQueue = new();
         private readonly HashSet<uint> _queuedCorpses = new();
         private readonly HashSet<uint> _nearbyLootRequests = new();
@@ -427,8 +427,20 @@ namespace ClassicUO.Game.Managers
 
             if (!IsProcessingCorpse(corpse.Serial) || !CanLootCorpse(corpse)) return;
 
-            for (LinkedObject i = corpse.Items; i != null; i = i.Next)
-                CheckAndLoot((Item)i);
+            ScanContents(corpse);
+
+            void ScanContents(Item container)
+            {
+                for (LinkedObject node = container.Items; node != null; node = node.Next)
+                {
+                    var item = (Item)node;
+                    if (item.IsCorpse)
+                        continue;
+                    CheckAndLoot(item);
+                    if (item.Items != null)
+                        ScanContents(item);
+                }
+            }
 
             if(ProfileManager.CurrentProfile.HueCorpseAfterAutoloot)
             {
@@ -634,11 +646,21 @@ namespace ClassicUO.Game.Managers
             }
 
             Item root = _world.Items.Get(i.RootContainer);
-            if (root is { IsCorpse: true } && IsProcessingCorpse(root.Serial) && CanLootCorpse(root))
+            if (root is not { IsCorpse: true } || !CanLootCorpse(root))
+                return;
+
+            if (IsProcessingCorpse(root.Serial))
             {
                 _contentsQuietUntil = Time.Ticks + ContentsQuietMs;
                 // Each corpse item raises its own event, so only check the triggering item (avoids O(N²)).
                 CheckAndLoot(i);
+            }
+            else if (!_recentlyLooted.Contains(i.Serial) && !IsIgnored(i) &&
+                (i.ShouldAutoLoot || IsOnLootList(i) != null))
+            {
+                // A late item or its properties can arrive after the corpse's turn ended.
+                // Revisit the confirmed contents without opening the corpse again.
+                EnqueueCorpse(root.Serial);
             }
         }
 

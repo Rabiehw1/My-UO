@@ -55,6 +55,22 @@ namespace ClassicUO.UnitTests.Game.Managers
         }
 
         [Fact]
+        public void CannotLiftRejectionInvokesRetryOnceWithoutLatchingCursorBusy()
+        {
+            var queue = new ObjectActionQueue();
+            const uint serial = 0x40000001;
+            int retries = 0;
+            queue.BeginMove(new ItemMoveSource { Serial = serial, Amount = 1 },
+                new MoveRequest(serial, 0x40000002, 1), 0, 0, () => retries++);
+
+            queue.RejectPendingMove(serial, alreadyHolding: false, retryCannotLift: true);
+            queue.RejectPendingMove(serial, alreadyHolding: false, retryCannotLift: true);
+
+            retries.Should().Be(1);
+            queue.HasPendingMove.Should().BeFalse();
+        }
+
+        [Fact]
         public void PromotedCorpseOpens_ShareTurnsWithLootAndPreserveUrgentActions()
         {
             var queue = new ObjectActionQueue();

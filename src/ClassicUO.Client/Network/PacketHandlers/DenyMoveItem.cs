@@ -169,7 +169,10 @@ internal static class DenyMoveItem
             Log.Warn("There was a problem with ItemHold object. It was cleared before :|");
 
         if (hasPendingMove)
-            ObjectActionQueue.Instance.RejectPendingMove(deniedSerial, rejectReason == (byte)RejectMoveItemReason.AlreadyHoldingSomething);
+            ObjectActionQueue.Instance.RejectPendingMove(
+                deniedSerial,
+                rejectReason == (byte)RejectMoveItemReason.AlreadyHoldingSomething,
+                retryCannotLift: rejectReason == (byte)RejectMoveItemReason.CannotLiftItem);
 
         if (rejectReason < 5)
             world.MessageManager.HandleMessage(

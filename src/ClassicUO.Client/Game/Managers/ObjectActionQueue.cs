@@ -247,17 +247,16 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     }
 
     /// <summary>Completes a rejection and keeps a busy pickup eligible once the cursor is free.</summary>
-    internal void RejectPendingMove(uint serial, bool alreadyHolding)
+    internal void RejectPendingMove(uint serial, bool alreadyHolding, bool retryCannotLift = false)
     {
         if (_pendingMove is not { } move || move.Source.Serial != serial)
             return;
 
         _pendingMove = null;
-        if (!alreadyHolding)
-            return;
-
-        _waitingForFreeCursor = true;
-        move.RetryWhenFree?.Invoke();
+        if (alreadyHolding)
+            _waitingForFreeCursor = true;
+        if (alreadyHolding || retryCannotLift && !move.SourceChanged && !move.DestinationChanged)
+            move.RetryWhenFree?.Invoke();
     }
 
     internal void ConfirmEquip(uint serial, uint destination, Layer layer)
