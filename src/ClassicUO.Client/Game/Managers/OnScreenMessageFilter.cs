@@ -17,6 +17,7 @@ internal sealed class OnScreenMessageFilter
     private Profile? _profile;
     private uint? _lastAbsorption;
     private uint? _lastCooldown;
+    private uint? _lastFrozen;
 
     /// <summary>Whether a received message should stay off screen; the journal still records it.</summary>
     /// <param name="profile">Settings to apply; null mutes nothing.</param>
@@ -36,7 +37,7 @@ internal sealed class OnScreenMessageFilter
         if (!ReferenceEquals(_profile, profile))
         {
             _profile = profile;
-            _lastAbsorption = _lastCooldown = null;
+            _lastAbsorption = _lastCooldown = _lastFrozen = null;
         }
 
         if (profile == null)
@@ -58,6 +59,12 @@ internal sealed class OnScreenMessageFilter
             _lastAbsorption = null;
         if (!profile.ReduceItemCooldownMessages)
             _lastCooldown = null;
+
+        if (!profile.ReduceFrozenMessages)
+            _lastFrozen = null;
+
+        if (profile.ReduceFrozenMessages && IsFrozenWarning(text))
+            return SuppressRepeat(ref _lastFrozen, now);
 
         if (profile.ReduceSpellAbsorptionMessages && Contains(text, SpellAbsorbed))
             return SuppressRepeat(ref _lastAbsorption, now);
@@ -92,6 +99,13 @@ internal sealed class OnScreenMessageFilter
 
         lastShown = now;
         return false;
+    }
+
+    private static bool IsFrozenWarning(string text)
+    {
+        string warning = text.Trim().TrimEnd('.');
+        return warning.Equals("I am frozen and cannot move", StringComparison.OrdinalIgnoreCase)
+            || warning.Equals("I am frozen and cannot do that", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool Contains(string text, string phrase) => text.Contains(phrase, StringComparison.OrdinalIgnoreCase);

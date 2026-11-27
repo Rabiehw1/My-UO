@@ -37,7 +37,12 @@ internal static class OnScreenMessageTabContent
             {
                 profile.ReduceItemCooldownMessages = value;
                 profile.Save();
-            }, TazLang.Get("assistant_filters_cooldown"))));
+            }, TazLang.Get("assistant_filters_cooldown")),
+            MyraCheckButton.CreateWithCallback(profile.ReduceFrozenMessages, value =>
+            {
+                profile.ReduceFrozenMessages = value;
+                profile.Save();
+            }, TazLang.Get("assistant_filters_frozen"))));
         root.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("assistant_filters_spell_words"),
             Text("assistant_filters_spell_words_help"),
             MyraCheckButton.CreateWithCallback(profile.MuteSpellPowerWords, value =>

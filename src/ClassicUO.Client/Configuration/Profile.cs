@@ -989,6 +989,7 @@ namespace ClassicUO.Configuration
         public uint DisabledOverheadMessageTypes { get; set; }
         public bool ReduceSpellAbsorptionMessages { get; set; }
         public bool ReduceItemCooldownMessages { get; set; }
+        public bool ReduceFrozenMessages { get; set; }
         public Game.Managers.Trainer.TrainerSettings Trainer { get; set; } = new();
         public bool MuteSpellPowerWords { get; set; }
         public Dictionary<string, bool> OnScreenMessagePhrases { get; set; } = new();

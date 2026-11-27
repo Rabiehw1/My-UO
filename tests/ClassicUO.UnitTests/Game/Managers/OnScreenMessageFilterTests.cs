@@ -7,6 +7,18 @@ namespace ClassicUO.UnitTests.Game.Managers;
 
 public class OnScreenMessageFilterTests
 {
+    [Fact]
+    public void FrozenWarningsShareARepeatWindow()
+    {
+        var profile = new Profile { ReduceFrozenMessages = true };
+        var filter = new OnScreenMessageFilter();
+        Assert.False(filter.IsMuted(profile, "I am frozen and cannot move.", 100));
+        Assert.True(filter.IsMuted(profile, "I am frozen and cannot do that.", 101));
+        Assert.False(filter.IsMuted(profile, "I am frozen and cannot move.", 3100));
+        profile.ReduceFrozenMessages = false;
+        Assert.False(filter.IsMuted(profile, "I am frozen and cannot do that.", 3101));
+    }
+
     private const string Absorption = "an Ebony Horror's spell is absorbed by your magical protection!";
     private const string Cooldown = "You must wait to use something again.";
 
