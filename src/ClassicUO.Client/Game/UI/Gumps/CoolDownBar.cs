@@ -23,6 +23,7 @@ namespace ClassicUO.Game.UI.Gumps
         private readonly bool isBuffBar;
         private readonly BraidedGoldProgress _braided;
         private readonly bool _untimed;
+        private readonly BraidedGoldResizeGrip _resizeGrip;
 
         private GumpPic gumpPic;
 
@@ -60,6 +61,26 @@ namespace ClassicUO.Game.UI.Gumps
                 Add(_braided = new BraidedGoldProgress(Width, Height, _name,
                     icon, graphic,
                     accentHue: isBuffBar && _hue != Profile.DefaultImprovedBuffBarHue ? _hue : (ushort)0));
+                Profile profile = ProfileManager.CurrentProfile;
+                if (isBuffBar)
+                {
+                    ResizeBraidedCard(profile.BraidedGoldBuffScale);
+                }
+                else
+                {
+                    bool fish = icon == BraidedGoldIcon.Fish;
+                    Add(_resizeGrip = new BraidedGoldResizeGrip(this,
+                        () => fish ? profile.BraidedGoldFishScale : profile.BraidedGoldPotionScale,
+                        scale =>
+                        {
+                            if (fish)
+                                profile.BraidedGoldFishScale = scale;
+                            else
+                                profile.BraidedGoldPotionScale = scale;
+                            ResizeBraidedCard(scale);
+                        }));
+                    ResizeBraidedCard(fish ? profile.BraidedGoldFishScale : profile.BraidedGoldPotionScale);
+                }
                 return;
             }
 
@@ -108,6 +129,18 @@ namespace ClassicUO.Game.UI.Gumps
             Add(nameText);
             Add(timerText);
             #endregion
+        }
+
+        internal void ResizeBraidedCard(int scale)
+        {
+            Width = BraidedGoldResizeGrip.ScalePixels(isBuffBar ? BraidedGoldProgress.BuffWidth : BraidedGoldProgress.CardWidth, scale);
+            Height = BraidedGoldResizeGrip.ScalePixels(isBuffBar ? BraidedGoldProgress.BuffHeight : BraidedGoldProgress.CardHeight, scale);
+            _braided.Resize(Width, Height);
+            if (_resizeGrip != null)
+            {
+                _resizeGrip.X = Width - _resizeGrip.Width;
+                _resizeGrip.Y = Height - _resizeGrip.Height;
+            }
         }
 
         private static string GetBuffBarFont()

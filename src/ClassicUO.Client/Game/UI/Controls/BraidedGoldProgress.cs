@@ -26,6 +26,7 @@ internal sealed class BraidedGoldProgress : Control
     private readonly ushort _graphic;
     private readonly BraidedGoldIcon? _icon;
     private readonly Color _fillColor;
+    private float _titleSize = 12;
     private static readonly Color Ivory = new(255, 236, 190);
 
     internal double Fraction { get; set; }
@@ -40,17 +41,24 @@ internal sealed class BraidedGoldProgress : Control
         _graphic = graphic;
         _icon = icon;
         _fillColor = accentHue == 0 ? new Color(26, 97, 206) : TextBox.ConvertHueToColor(accentHue);
-        int left = (int)(width * 0.38f);
-        _title = TextBox.GetOne(title, EmbeddedFontNames.AVADONIAN, 12, Ivory,
-            TextBox.RTLOptions.Default(Width - left - 8));
-        _title.X = left;
-        _title.Y = height * 14 / 100;
+        _title = TextBox.GetOne(title, EmbeddedFontNames.AVADONIAN, 12, Ivory, TextBox.RTLOptions.Default());
+        _value = TextBox.GetOne("", EmbeddedFontNames.AVADONIAN, 18, Ivory,
+            new TextBox.RTLOptions { StrokeEffect = true });
         Add(_title);
-        _value = TextBox.GetOne("", EmbeddedFontNames.AVADONIAN, height * 0.31f, Ivory,
-            new TextBox.RTLOptions { Width = Width - left - 8, StrokeEffect = true });
-        _value.X = left;
-        _value.Y = height * 34 / 100;
         Add(_value);
+        Resize(width, height);
+    }
+
+    internal void Resize(int width, int height)
+    {
+        Width = width;
+        Height = height;
+        int left = (int)(width * 0.38f);
+        _title.X = _value.X = left;
+        _title.Y = height * 14 / 100;
+        _value.Y = height * 34 / 100;
+        _title.Width = _value.Width = width - left - 8;
+        UpdateFontSizes();
     }
 
     internal void SetFont(string font, float size)
@@ -58,8 +66,17 @@ internal sealed class BraidedGoldProgress : Control
         if (_title.Font != font)
             _title.Font = _value.Font = font;
         float fittedSize = Math.Clamp(size, 8, 14);
-        if (_title.FontSize != fittedSize)
-            _title.FontSize = fittedSize;
+        if (_titleSize != fittedSize)
+        {
+            _titleSize = fittedSize;
+            UpdateFontSizes();
+        }
+    }
+
+    private void UpdateFontSizes()
+    {
+        _title.FontSize = Math.Clamp(_titleSize * Height / BuffHeight, 7, 14);
+        _value.FontSize = Height * 0.31f;
     }
 
     public override bool Draw(UltimaBatcher2D batcher, int x, int y)

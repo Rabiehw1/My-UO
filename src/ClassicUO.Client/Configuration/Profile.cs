@@ -259,6 +259,11 @@ namespace ClassicUO.Configuration
         public bool RestoreScaleAfterUnpressCtrl { get; set => SetProperty(ref field, value); }
         public bool BandageSelfOld { get; set => SetProperty(ref field, value); } = true;
 
+        public int BraidedGoldPotionScale { get; set => SetProperty(ref field, value); } = 75;
+        public int BraidedGoldFishScale { get; set => SetProperty(ref field, value); } = 75;
+        public int BraidedGoldLootScale { get; set => SetProperty(ref field, value); } = 75;
+        public int BraidedGoldBuffScale { get; set => SetProperty(ref field, value); } = 75;
+
         public bool ShowConsumableCooldowns { get; set => SetProperty(ref field, value); }
         public ConsumableCooldownItems TrackedCooldownPotions { get; set => SetProperty(ref field, value); } = ConsumableCooldownItems.AllPotions;
         public int PotionDisplayCooldownSeconds { get; set => SetProperty(ref field, value); } = 20;

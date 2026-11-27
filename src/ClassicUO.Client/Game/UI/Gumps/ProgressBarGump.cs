@@ -6,6 +6,7 @@ namespace ClassicUO.Game.UI.Gumps;
 public class ProgressBarGump : Gump
 {
     private readonly BraidedGoldProgress _progress;
+    private readonly BraidedGoldResizeGrip _resizeGrip;
 
     public ProgressBarGump(World world, string title, double startPercentage = 1, int width = BraidedGoldProgress.CardWidth, int height = BraidedGoldProgress.CardHeight)
         : base(world, 0, 0)
@@ -19,6 +20,24 @@ public class ProgressBarGump : Gump
         {
             Fraction = startPercentage
         });
+
+        Profile profile = ProfileManager.CurrentProfile;
+        _resizeGrip = new BraidedGoldResizeGrip(this, () => profile.BraidedGoldLootScale, scale =>
+        {
+            profile.BraidedGoldLootScale = scale;
+            Resize(scale);
+        });
+        Add(_resizeGrip);
+        Resize(profile.BraidedGoldLootScale);
+
+        void Resize(int scale)
+        {
+            Width = BraidedGoldResizeGrip.ScalePixels(width, scale);
+            Height = BraidedGoldResizeGrip.ScalePixels(height, scale);
+            _progress.Resize(Width, Height);
+            _resizeGrip.X = Width - _resizeGrip.Width;
+            _resizeGrip.Y = Height - _resizeGrip.Height;
+        }
     }
 
     internal void SetLootProgress(int processed, int total)

@@ -14,10 +14,12 @@ namespace ClassicUO.Game.UI.Gumps
 
         private GumpPic _background;
         private Button _button;
-        private bool _direction = false;
+        private bool _horizontal;
+        private int _lastViewportWidth;
+        private BraidedGoldResizeGrip _resizeGrip;
+        private readonly List<CoolDownBar> _bars = new();
         private ushort _graphic = 2091;
         private DataBox _box;
-        private int _lastBarCount;
 
         public ImprovedBuffGump(World world) : base(world, 0, 0)
         {
@@ -43,7 +45,17 @@ namespace ClassicUO.Game.UI.Gumps
             {
                 var coolDownBar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks), (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, icon.Graphic, icon.Type, true, IconArt(icon.Type), untimed: icon.Timer == uint.MaxValue);
                 coolDownBar.SetTooltip(icon.Text);
-                BuffBarManager.AddCoolDownBar(coolDownBar, _direction, _box);
+                _bars.RemoveAll(bar => bar.IsDisposed);
+                int index = _bars.FindIndex(bar => bar.buffIconType == icon.Type);
+                if (index >= 0)
+                {
+                    _bars[index].Dispose();
+                    _bars[index] = coolDownBar;
+                }
+                else
+                {
+                    _bars.Add(coolDownBar);
+                }
                 _box.Add(coolDownBar);
                 UpdateSize();
             }
@@ -97,31 +109,14 @@ namespace ClassicUO.Game.UI.Gumps
             BuffIconType.BoneBreakerImmune or BuffIconType.CaddelliteInfused or BuffIconType.PotionGloriousFortune or
             BuffIconType.MysticalPolymorphTotem;
 
-        public void RemoveBuff(BuffIconType graphic)
+        public void RemoveBuff(BuffIconType type)
         {
-            BuffBarManager.RemoveBuffType(graphic);
-            UpdateSize();
-        }
+            foreach (CoolDownBar bar in _bars)
+                if (bar.buffIconType == type)
+                    bar.Dispose();
 
-        private void SwitchDirections()
-        {
-            int dynamicHeight = CalculateDynamicHeight();
-            if (!_direction)
-            {
-                Y -= dynamicHeight - 11;
-                _background.Y = dynamicHeight - 11;
-            }
-            else
-            {
-                Y += dynamicHeight - 11;
-                _background.Y = 0;
-            }
-            Height = dynamicHeight;
-            _box.Height = dynamicHeight;
-            _box.Y = 0;
-            _button.Y = _background.Y - 5;
-            _lastBarCount = BuffBarManager.GetActiveBarCount();
-            BuffBarManager.UpdatePositions(_direction, _box);
+            _bars.RemoveAll(bar => bar.IsDisposed);
+            UpdateSize();
         }
 
         protected override void UpdateContents()
@@ -133,79 +128,78 @@ namespace ClassicUO.Game.UI.Gumps
         public override void PreDraw()
         {
             base.PreDraw();
-
-            int currentCount = BuffBarManager.GetActiveBarCount();
-            if (currentCount != _lastBarCount)
-            {
+            if (_bars.RemoveAll(bar => bar.IsDisposed) != 0 || _lastViewportWidth != ScaleHelper.LogicalWindowWidth)
                 UpdateSize();
-            }
-        }
-
-        private int CalculateDynamicHeight()
-        {
-            int barCount = BuffBarManager.GetActiveBarCount();
-            if (barCount == 0)
-                return PADDING_HANDLE;
-
-            return PADDING_HANDLE + barCount * (BraidedGoldProgress.BuffHeight + BAR_GAP);
         }
 
         private void UpdateSize()
         {
-            int newHeight = CalculateDynamicHeight();
-            int oldHeight = Height;
+            int scale = ProfileManager.CurrentProfile.BraidedGoldBuffScale;
+            int cardWidth = BraidedGoldResizeGrip.ScalePixels(BraidedGoldProgress.BuffWidth, scale);
+            int cardHeight = BraidedGoldResizeGrip.ScalePixels(BraidedGoldProgress.BuffHeight, scale);
+            _lastViewportWidth = ScaleHelper.LogicalWindowWidth;
+            int columns = _horizontal
+                ? Math.Min(Math.Max(1, _bars.Count), Math.Max(1, (_lastViewportWidth + BAR_GAP) / (cardWidth + BAR_GAP)))
+                : 1;
+            int rows = (_bars.Count + columns - 1) / columns;
+            int handleY = Y + Height - PADDING_HANDLE;
+            Width = columns * (cardWidth + BAR_GAP) - BAR_GAP;
+            Height = PADDING_HANDLE + rows * (cardHeight + BAR_GAP);
+            Y = handleY - Height + PADDING_HANDLE;
+            if (_horizontal && _lastViewportWidth >= Width)
+                X = Math.Clamp(X, 0, _lastViewportWidth - Width);
 
-            if (!_direction && newHeight != oldHeight)
+            _background.Width = cardWidth;
+            _background.Y = Height - PADDING_HANDLE + 2;
+            _button.Y = Height - PADDING_HANDLE;
+            _resizeGrip.X = Width - _resizeGrip.Width;
+            _resizeGrip.Y = Height - _resizeGrip.Height;
+            _box.Width = Width;
+            _box.Height = Height - PADDING_HANDLE;
+
+            for (int i = 0; i < _bars.Count; i++)
             {
-                Y -= newHeight - oldHeight;
+                CoolDownBar bar = _bars[i];
+                if (bar.Width != cardWidth || bar.Height != cardHeight)
+                    bar.ResizeBraidedCard(scale);
+                bar.X = i % columns * (cardWidth + BAR_GAP);
+                int row = _horizontal ? i / columns : rows - i - 1;
+                bar.Y = row * (cardHeight + BAR_GAP);
             }
-
-            Height = newHeight;
-            _box.Height = newHeight;
-            _box.Y = 0;
-
-            if (!_direction)
-            {
-                _background.Y = newHeight - 11;
-            }
-            else
-            {
-                _background.Y = 0;
-            }
-
-            _button.Y = _background.Y - 5;
-            _lastBarCount = BuffBarManager.GetActiveBarCount();
-            BuffBarManager.UpdatePositions(_direction, _box);
         }
 
         public override void OnButtonClick(int buttonID)
         {
             if (buttonID == 0)
             {
-                _direction = !_direction;
-                SwitchDirections();
+                _horizontal = !_horizontal;
+                UpdateSize();
             }
         }
 
         private void BuildGump()
         {
             _background = new GumpPic(0, 0, _graphic, 0);
-            _background.Width = BraidedGoldProgress.BuffWidth;
 
             _button = new Button(0, 0x7585, 0x7589, 0x7589)
             {
                 ButtonAction = ButtonAction.Activate
             };
 
+            _button.SetTooltip(TazLang.Get("assistant_braided_toggle_buff_layout"));
             _box = new DataBox(0, 0, Width, PADDING_HANDLE);
-
-
+            Profile profile = ProfileManager.CurrentProfile;
+            _resizeGrip = new BraidedGoldResizeGrip(this, () => profile.BraidedGoldBuffScale, scale =>
+            {
+                profile.BraidedGoldBuffScale = scale;
+                UpdateSize();
+            });
 
             Add(_background);
-            Add(_button);
             Add(_box);
+            Add(_button);
+            Add(_resizeGrip);
 
-            BuffBarManager.Clear();
             if (World.Player != null)
             {
                 foreach (KeyValuePair<BuffIconType, BuffIcon> k in World.Player.BuffIcons)
@@ -222,14 +216,14 @@ namespace ClassicUO.Game.UI.Gumps
 
             writer.WriteAttributeString("type", ((int)GumpType).ToString());
             writer.WriteAttributeString("x", X.ToString());
-            writer.WriteAttributeString("y", (_direction ? Y : Bounds.Bottom - PADDING_HANDLE).ToString());
+            writer.WriteAttributeString("y", (Y + Height - PADDING_HANDLE).ToString());
             writer.WriteAttributeString("serial", LocalSerial.ToString());
             writer.WriteAttributeString("serverSerial", ServerSerial.ToString());
             writer.WriteAttributeString("isLocked", IsLocked.ToString());
             writer.WriteAttributeString("alphaOffset", AlphaOffset.ToString());
 
             writer.WriteAttributeString("graphic", _graphic.ToString());
-            writer.WriteAttributeString("updown", _direction.ToString());
+            writer.WriteAttributeString("horizontal", _horizontal.ToString());
         }
 
         public override void Restore(XmlElement xml)
@@ -237,95 +231,15 @@ namespace ClassicUO.Game.UI.Gumps
             base.Restore(xml);
 
             _graphic = ushort.Parse(xml.GetAttribute("graphic"));
-            _direction = bool.Parse(xml.GetAttribute("updown"));
+            _horizontal = bool.TryParse(xml.GetAttribute("horizontal"), out bool horizontal) && horizontal;
+            // The persisted Y coordinate is the handle anchor; the profile loader sets
+            // it after Restore returns. Lay out the rows relative to it on the next update.
+            Height = PADDING_HANDLE;
 
             RequestUpdateContents();
         }
 
         public override GumpType GumpType => GumpType.Buff;
 
-        private static class BuffBarManager
-        {
-            public const int MAX_COOLDOWN_BARS = 20;
-            private static CoolDownBar[] coolDownBars = new CoolDownBar[MAX_COOLDOWN_BARS];
-
-            public static int GetActiveBarCount()
-            {
-                int count = 0;
-                for (int i = 0; i < coolDownBars.Length; i++)
-                {
-                    if (coolDownBars[i] != null && !coolDownBars[i].IsDisposed)
-                        count++;
-                }
-                return count;
-            }
-
-            public static void AddCoolDownBar(CoolDownBar coolDownBar, bool topDown, DataBox _boxContainer)
-            {
-                for (int i = 0; i < coolDownBars.Length; i++)
-                {
-                    if (coolDownBars[i] != null && !coolDownBars[i].IsDisposed && coolDownBars[i].buffIconType == coolDownBar.buffIconType)
-                    {
-                        coolDownBars[i].Dispose();
-                        coolDownBars[i] = coolDownBar;
-                        UpdatePositions(topDown, _boxContainer);
-                        return;
-                    }
-                    if (coolDownBars[i] == null || coolDownBars[i].IsDisposed)
-                    {
-                        coolDownBars[i] = coolDownBar;
-                        UpdatePositions(topDown, _boxContainer);
-                        return;
-                    }
-                }
-            }
-
-            public static void UpdatePositions(bool topDown, DataBox _boxContainer)
-            {
-                int actualI = 0;
-                int barStride = BraidedGoldProgress.BuffHeight + BAR_GAP;
-                for (int i = 0; i < coolDownBars.Length; i++)
-                {
-                    if (coolDownBars[i] != null && !coolDownBars[i].IsDisposed)
-                    {
-                        if (topDown)
-                        {
-                            coolDownBars[i].Y = (actualI * barStride) + PADDING_HANDLE;
-                        }
-                        else
-                        {
-                            coolDownBars[i].Y = _boxContainer.Height - ((actualI + 1) * barStride) - 11;
-                        }
-                        actualI++;
-                    }
-                }
-            }
-
-            public static void RemoveBuffType(BuffIconType type)
-            {
-                for (int i = 0; i < coolDownBars.Length; i++)
-                {
-                    if (coolDownBars[i] != null && !coolDownBars[i].IsDisposed)
-                    {
-                        if (coolDownBars[i].buffIconType == type)
-                        {
-                            coolDownBars[i].Dispose();
-                        }
-                    }
-                }
-            }
-
-            public static void Clear()
-            {
-                for (int i = 0; i < coolDownBars.Length; i++)
-                {
-                    if (coolDownBars[i] != null)
-                    {
-                        coolDownBars[i].Dispose();
-                    }
-                }
-                coolDownBars = new CoolDownBar[MAX_COOLDOWN_BARS];
-            }
-        }
     }
 }
