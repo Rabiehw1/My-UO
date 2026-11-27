@@ -20,6 +20,9 @@ internal static class OpenMenu
         string name = p.ReadASCII(p.ReadUInt8());
         int count = p.ReadUInt8();
 
+        if (ClassicUO.Game.Managers.Trainer.PracticeTrainer.TryMenu(world, serial, id, name, count, p))
+            return;
+
         if (ClassicUO.Game.Managers.Trainer.BlacksmithTrainer.TryMenu(world, serial, id, name, count, p))
             return;
 

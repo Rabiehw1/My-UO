@@ -52,6 +52,17 @@ internal static class TrainerSkillUser
             case TrainerUse.Tailor:
                 return TailoringTrainer.Begin(world, target);
 
+            case TrainerUse.Gather:
+            case TrainerUse.Craft:
+            case TrainerUse.Unlock:
+            case TrainerUse.Tame:
+                return PracticeTrainer.Begin(world, skill, target);
+            case TrainerUse.Appraise:
+                return UseSkill(world, "Item Identification", target, fallbackIndex: 3);
+            case TrainerUse.Bandage:
+                return world.Mobiles.Get(target) is { IsDead: false, HitsDiff: > 0, Distance: <= 1 } patient &&
+                    patient.IsHuman == (skill.Id == "healing") && BandageManager.Instance.TryTrainingBandage(patient);
+
             case TrainerUse.Inscription:
                 return InscriptionTrainer.Begin(world, target);
 
@@ -102,9 +113,10 @@ internal static class TrainerSkillUser
     #region Private methods
 
     /// <summary>Uses a skill by name, answering its cursor with <paramref name="target"/> when not 0.</summary>
-    private static bool UseSkill(World world, string name, uint target)
+    private static bool UseSkill(World world, string name, uint target, int fallbackIndex = -1)
     {
         int index = FindSkillIndex(world.Player!, name);
+        if (index < 0) index = fallbackIndex;
         if (index < 0)
         {
             GameActions.Print(world, TazLang.Get("trainer_skill_not_known", [name]), Constants.HUE_WARN);

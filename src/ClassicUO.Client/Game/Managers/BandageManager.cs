@@ -458,6 +458,9 @@ namespace ClassicUO.Game.Managers
 
         /// <summary>Uses a bandage (or the self command) on <paramref name="mobile" /> and starts the bandage timer.</summary>
         /// <returns>True if something was sent; false when no bandage was found.</returns>
+        internal bool TryTrainingBandage(Mobile mobile) =>
+            !IsBandaging && IsReadyToBandage() && SendBandage(mobile);
+
         private bool SendBandage(Mobile mobile)
         {
             World world = World.Instance;

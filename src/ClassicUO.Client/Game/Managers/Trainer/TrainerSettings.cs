@@ -26,6 +26,11 @@ public sealed class TrainerSettings
     public uint UnstitchTool { get; set; }
     public List<TrainerTarget> BeggingVendors { get; set; } = [];
     public uint HerdingTool { get; set; }
+    public uint Lockpicks { get; set; }
+    public MiningTile? MiningGround { get; set; }
+    public List<string> AlchemyFamilies { get; set; } = ["heal", "cure", "refresh", "agility", "strength", "night_sight", "poison", "explosion"];
+    public int FletchingLogReserve { get; set; }
+    public sealed record MiningTile(int Facet, ushort X, ushort Y, ushort Graphic, bool Land);
     public uint Forge { get; set; }
 
     /// <summary>Picked targets by skill ID.</summary>

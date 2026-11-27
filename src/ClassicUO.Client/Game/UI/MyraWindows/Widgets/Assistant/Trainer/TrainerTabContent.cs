@@ -193,7 +193,7 @@ internal static class TrainerTabContent
             if (serial != 0)
             {
                 DesktopAssistantTheme.ApplyPickedButtonStyle(button);
-                button.Tooltip = $"0x{serial:X8}";
+                if (serial > 1) button.Tooltip = $"0x{serial:X8}";
             }
             setup.Widgets.Add(button);
         }
@@ -223,6 +223,13 @@ internal static class TrainerTabContent
                 "arms_lore" => "trainer_pick_examine",
                 "lumberjacking" => "trainer_pick_axe",
                 "enticement" => "trainer_pick_animal",
+                "mining" => "trainer_pick_mining_tool",
+                "carpentry" => "trainer_pick_carpentry_tool",
+                "bowcraft" => "trainer_pick_fletching_tool",
+                "alchemy" => "trainer_pick_mortar",
+                "item_identification" => "trainer_pick_examine",
+                "lockpicking" => "trainer_pick_chest",
+                "healing" or "veterinary" => "trainer_pick_patient",
                 "inscription" => "trainer_pick_scrolls",
                 "fishing" => "trainer_pick_pole",
                 _ => skill.Target == TrainerTargetKind.Item ? "trainer_choose_item" : "trainer_choose_creature"
@@ -244,6 +251,39 @@ internal static class TrainerTabContent
 
         switch (skill.Use)
         {
+            case TrainerUse.Unlock:
+                Equipment("trainer_pick_lockpicks", settings.Lockpicks, value => settings.Lockpicks = value);
+                break;
+            case TrainerUse.Gather:
+                AddPicker("trainer_pick_mining_ground", settings.MiningGround == null ? 0u : 1u, picked =>
+                {
+                    if (picked is not GameObject tile || tile is not (Land or Static)) return;
+                    settings.MiningGround = new(World.Instance.MapIndex, tile.X, tile.Y, tile.Graphic, tile is Land);
+                    profile.Save();
+                    refresh();
+                });
+                break;
+            case TrainerUse.Craft when skill.Id == "alchemy":
+                foreach (string family in PracticeTrainer.PotionFamilies)
+                    setup.Widgets.Add(MyraCheckButton.CreateWithCallback(
+                        settings.AlchemyFamilies.Contains(family), enabled =>
+                        {
+                            if (enabled) settings.AlchemyFamilies.Add(family);
+                            else settings.AlchemyFamilies.Remove(family);
+                            profile.Save();
+                            refresh();
+                        }, TazLang.Get("trainer_potion_" + family)));
+                break;
+            case TrainerUse.Craft when skill.Id == "bowcraft":
+                setup.Widgets.Add(Text("trainer_fletching_reserve"));
+                var reserve = new SpinButton { Integer = true, Minimum = 0, Maximum = 60000, Value = settings.FletchingLogReserve };
+                reserve.ValueChangedByUser += (_, _) =>
+                {
+                    settings.FletchingLogReserve = (int)(reserve.Value ?? 0);
+                    profile.Save();
+                };
+                setup.Widgets.Add(reserve);
+                break;
             case TrainerUse.Entice:
                 Equipment("trainer_herd_tool", settings.HerdingTool, value => settings.HerdingTool = value);
                 break;

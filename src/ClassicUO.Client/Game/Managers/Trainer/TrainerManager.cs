@@ -94,6 +94,7 @@ internal sealed class TrainerManager
             return;
 
         LumberjackTrainer.Reset(clearCooldowns: true);
+        PracticeTrainer.Reset();
         InscriptionTrainer.Reset();
         FishingTrainer.Reset();
         BardTrainer.Reset();
@@ -125,7 +126,7 @@ internal sealed class TrainerManager
             Stop();
             return;
         }
-        if (InscriptionTrainer.Waiting(world) || FishingTrainer.Waiting(world) || BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
+        if (PracticeTrainer.Waiting(world) || InscriptionTrainer.Waiting(world) || FishingTrainer.Waiting(world) || BardTrainer.Waiting(world) || BeggingTrainer.Waiting(world) || TailoringTrainer.Waiting(world) || BlacksmithTrainer.Waiting(world) || LumberjackTrainer.Waiting(world))
             return;
 
         if (_closeListUntil != 0)
@@ -249,6 +250,8 @@ internal sealed class TrainerManager
     {
         if (_profile == null || string.IsNullOrEmpty(e.Text))
             return;
+
+        PracticeTrainer.OnJournal(e.Text);
 
         foreach (TrainerSkill skill in TrainerCatalog.Skills)
         {
