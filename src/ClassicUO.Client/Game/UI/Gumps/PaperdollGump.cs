@@ -33,8 +33,8 @@ namespace ClassicUO.Game.UI.Gumps
         private GumpPic _picBase;
         private GumpPic _profilePic;
 
-        private readonly List<EquipmentSlot> _slotsLeft = new(9);
-        private readonly List<EquipmentSlot> _slotsRight = new(9);
+        private readonly List<EquipmentSlot> _slotsLeft = new(10);
+        private readonly List<EquipmentSlot> _slotsRight = new(10);
         private Label _titleLabel;
         private GumpPic _virtueMenuPic;
         private Button _warModeBtn;
@@ -303,7 +303,8 @@ namespace ClassicUO.Game.UI.Gumps
                 Graphic = Settings.Graphic_Button_Durability
             });
 
-            // Equipment slots for hat/earrings/neck/ring/bracelet
+            // Left side equip slots
+            AddEquipSlot(EquipSlotSide.Left, Layer.Legs);
             AddEquipSlot(EquipSlotSide.Left, Layer.Helmet);
             AddEquipSlot(EquipSlotSide.Left, Layer.Earrings);
             AddEquipSlot(EquipSlotSide.Left, Layer.Neck);
@@ -391,13 +392,12 @@ namespace ClassicUO.Game.UI.Gumps
             {
                 slotArray = _slotsLeft;
                 x = Settings.Position_X_LeftSlots;
-                y = Settings.Position_Y_LeftSlots + Settings.Size_Height_LeftSlots * slotArray.Count;
+                y = Settings.Position_Y_LeftSlots + Settings.Size_Height_LeftSlots * (slotArray.Count - 1);
             }
             else
             {
                 slotArray = _slotsRight;
                 x = Settings.Position_X_RightSlots;
-                // Right side is offset 1 slot 'up' as there's a bit more free space there
                 y = Settings.Position_Y_RightSlots + Settings.Size_Height_RightSlots * (slotArray.Count - 1);
             }
 
@@ -1135,7 +1135,7 @@ namespace ClassicUO.Game.UI.Gumps
             public static int Position_X_Virtue { get; set; } = 80;
             public static int Position_Y_Virtue { get; set; } = 4;
 
-            public static int Position_X_Durability { get; set; } = 12;
+            public static int Position_X_Durability { get; set; } = 24;
             public static int Position_Y_Durability { get; set; } = 33;
 
             public static int Position_X_LeftSlots { get; set; } = 2;

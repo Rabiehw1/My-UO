@@ -278,9 +278,8 @@ namespace ClassicUO.Game.Managers
             if (World.Instance.Player == null)
                 return;
 
-            for (int i = 0; i <= Constants.USED_LAYER_COUNT; i++)
+            for (Layer layer = Layer.OneHanded; layer <= Layer.Legs; layer++)
             {
-                var layer = (Layer)i;
                 if (layer == Layer.Backpack || layer == Layer.Face || layer == Layer.Hair || layer == Layer.Beard)
                     continue;
 
