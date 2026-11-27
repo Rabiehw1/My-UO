@@ -23,7 +23,7 @@ namespace ClassicUO.Game.UI.Gumps
         {
             X = 100;
             Y = 100;
-            Width = CoolDownBar.COOL_DOWN_WIDTH;
+            Width = BraidedGoldProgress.BuffWidth;
             Height = PADDING_HANDLE;
             CanMove = true;
             CanCloseWithRightClick = true;
@@ -41,13 +41,23 @@ namespace ClassicUO.Game.UI.Gumps
         {
             if (icon != null && IsPositiveBuff(icon.Type))
             {
-                var coolDownBar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks), (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, icon.Graphic, icon.Type, true, untimed: icon.Timer == uint.MaxValue);
+                var coolDownBar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks), (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, icon.Graphic, icon.Type, true, IconArt(icon.Type), untimed: icon.Timer == uint.MaxValue);
                 coolDownBar.SetTooltip(icon.Text);
                 BuffBarManager.AddCoolDownBar(coolDownBar, _direction, _box);
                 _box.Add(coolDownBar);
                 UpdateSize();
             }
         }
+
+        private static BraidedGoldIcon? IconArt(BuffIconType type) => type switch
+        {
+            BuffIconType.Bless => BraidedGoldIcon.Bless,
+            BuffIconType.Protection or BuffIconType.ArchProtection => BraidedGoldIcon.Protection,
+            BuffIconType.Agility => BraidedGoldIcon.Agility,
+            BuffIconType.Strength => BraidedGoldIcon.Strength,
+            BuffIconType.Cunning => BraidedGoldIcon.Cunning,
+            _ => null
+        };
 
         private static bool IsPositiveBuff(BuffIconType type) => type is
             BuffIconType.NightSight or BuffIconType.AchievePerfection or BuffIconType.DivineFury or
@@ -137,7 +147,7 @@ namespace ClassicUO.Game.UI.Gumps
             if (barCount == 0)
                 return PADDING_HANDLE;
 
-            return PADDING_HANDLE + barCount * (CoolDownBar.COOL_DOWN_HEIGHT + BAR_GAP);
+            return PADDING_HANDLE + barCount * (BraidedGoldProgress.BuffHeight + BAR_GAP);
         }
 
         private void UpdateSize()
@@ -180,7 +190,7 @@ namespace ClassicUO.Game.UI.Gumps
         private void BuildGump()
         {
             _background = new GumpPic(0, 0, _graphic, 0);
-            _background.Width = CoolDownBar.COOL_DOWN_WIDTH;
+            _background.Width = BraidedGoldProgress.BuffWidth;
 
             _button = new Button(0, 0x7585, 0x7589, 0x7589)
             {
@@ -273,7 +283,7 @@ namespace ClassicUO.Game.UI.Gumps
             public static void UpdatePositions(bool topDown, DataBox _boxContainer)
             {
                 int actualI = 0;
-                int barStride = CoolDownBar.COOL_DOWN_HEIGHT + BAR_GAP;
+                int barStride = BraidedGoldProgress.BuffHeight + BAR_GAP;
                 for (int i = 0; i < coolDownBars.Length; i++)
                 {
                     if (coolDownBars[i] != null && !coolDownBars[i].IsDisposed)

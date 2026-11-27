@@ -28,7 +28,12 @@ namespace ClassicUO.Game.UI.Gumps
 
         public BuffIconType buffIconType;
 
-        public CoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, int x, int y, ushort graphic = ushort.MaxValue, BuffIconType type = BuffIconType.Unknown2, bool isBuffBar = false, ushort itemGraphic = ushort.MaxValue, bool untimed = false, ushort itemHue = 0) : base(world, 0, 0)
+        public CoolDownBar(World world, TimeSpan duration, string name, ushort hue, int x, int y,
+            ushort graphic = ushort.MaxValue, BuffIconType type = BuffIconType.Unknown2, bool isBuffBar = false)
+            : this(world, duration, name, hue, x, y, graphic, type, isBuffBar, null, false) { }
+
+        internal CoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, int x, int y,
+            ushort graphic, BuffIconType type, bool isBuffBar, BraidedGoldIcon? icon, bool untimed) : base(world, 0, 0)
         {
             #region VARS
             Width = COOL_DOWN_WIDTH;
@@ -47,11 +52,13 @@ namespace ClassicUO.Game.UI.Gumps
             _untimed = untimed;
             #endregion
 
-            if (isBuffBar || itemGraphic != ushort.MaxValue)
+            if (isBuffBar || icon.HasValue)
             {
+                Width = isBuffBar ? BraidedGoldProgress.BuffWidth : BraidedGoldProgress.CardWidth;
+                Height = isBuffBar ? BraidedGoldProgress.BuffHeight : BraidedGoldProgress.CardHeight;
                 WantUpdateSize = false;
                 Add(_braided = new BraidedGoldProgress(Width, Height, _name,
-                    isBuffBar ? graphic : itemGraphic, itemArt: !isBuffBar, hue: itemHue,
+                    icon, graphic,
                     accentHue: isBuffBar && _hue != Profile.DefaultImprovedBuffBarHue ? _hue : (ushort)0));
                 return;
             }

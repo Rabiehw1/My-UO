@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using ClassicUO.Configuration;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.UI.Gumps;
+using ClassicUO.Game.UI.Controls;
 
 namespace ClassicUO.Game.Managers;
 
@@ -110,7 +111,7 @@ internal sealed class ConsumableCooldownMonitor
         bar?.Dispose();
         bar = CoolDownBarManager.CreateCoolDownBar(world, duration,
             TazLang.Get(fish ? "assistant_consumable_fish_bar" : "assistant_consumable_potion_bar"),
-            fish ? (ushort)0x0075 : (ushort)0x0021, replace: false, itemGraphic: attempt.Graphic, itemHue: attempt.Hue);
+            fish ? (ushort)0x0075 : (ushort)0x0021, replace: false, icon: fish ? BraidedGoldIcon.Fish : BraidedGoldIcon.Potion);
         bar?.Update(currentValue: remaining);
     }
 

@@ -8,40 +8,48 @@ using Microsoft.Xna.Framework.Graphics;
 
 namespace ClassicUO.Game.UI.Controls;
 
+internal enum BraidedGoldIcon
+{
+    Potion, Fish, Loot, Bless, Protection, Agility, Strength, Cunning
+}
+
 internal sealed class BraidedGoldProgress : Control
 {
+    internal const int CardWidth = 164;
+    internal const int CardHeight = 78;
+    internal const int BuffWidth = 140;
+    internal const int BuffHeight = 66;
     private static Texture2D? _frame;
+    private static Texture2D? _icons;
     private readonly TextBox _title;
     private readonly TextBox _value;
     private readonly ushort _graphic;
-    private readonly ushort _hue;
-    private readonly bool _itemArt;
+    private readonly BraidedGoldIcon? _icon;
     private readonly Color _fillColor;
     private static readonly Color Ivory = new(255, 236, 190);
 
     internal double Fraction { get; set; }
     internal string Value { get => _value.Text; set { if (_value.Text != value) _value.Text = value; } }
 
-    internal BraidedGoldProgress(int width, int height, string title, ushort graphic, bool itemArt, ushort hue = 0, ushort accentHue = 0)
+    internal BraidedGoldProgress(int width, int height, string title, BraidedGoldIcon? icon, ushort graphic = ushort.MaxValue, ushort accentHue = 0)
     {
         Width = width;
         Height = height;
         AcceptMouseInput = false;
         WantUpdateSize = false;
         _graphic = graphic;
-        _hue = hue;
-        _itemArt = itemArt;
+        _icon = icon;
         _fillColor = accentHue == 0 ? new Color(26, 97, 206) : TextBox.ConvertHueToColor(accentHue);
-        int left = graphic == ushort.MaxValue ? 8 : 33;
-        _title = TextBox.GetOne(title, TrueTypeLoader.EMBEDDED_FONT, 12, Ivory,
-            TextBox.RTLOptions.Default(Width - left - 52));
+        int left = (int)(width * 0.38f);
+        _title = TextBox.GetOne(title, EmbeddedFontNames.AVADONIAN, 12, Ivory,
+            TextBox.RTLOptions.Default(Width - left - 8));
         _title.X = left;
-        _title.Y = 3;
+        _title.Y = height * 14 / 100;
         Add(_title);
-        _value = TextBox.GetOne("", TrueTypeLoader.EMBEDDED_FONT, 12, Ivory,
-            TextBox.RTLOptions.DefaultCenterStroked(46));
-        _value.X = Width - 51;
-        _value.Y = 3;
+        _value = TextBox.GetOne("", EmbeddedFontNames.AVADONIAN, height * 0.31f, Ivory,
+            new TextBox.RTLOptions { Width = Width - left - 8, StrokeEffect = true });
+        _value.X = left;
+        _value.Y = height * 34 / 100;
         Add(_value);
     }
 
@@ -51,7 +59,7 @@ internal sealed class BraidedGoldProgress : Control
             _title.Font = _value.Font = font;
         float fittedSize = Math.Clamp(size, 8, 14);
         if (_title.FontSize != fittedSize)
-            _title.FontSize = _value.FontSize = fittedSize;
+            _title.FontSize = fittedSize;
     }
 
     public override bool Draw(UltimaBatcher2D batcher, int x, int y)
@@ -59,46 +67,60 @@ internal sealed class BraidedGoldProgress : Control
         if (IsDisposed)
             return false;
 
-        GraphicsDevice device = Client.Game.GraphicsDevice;
-        if (_frame is not { IsDisposed: false } || _frame.GraphicsDevice != device)
-        {
-            _frame?.Dispose();
-            using Stream artwork = typeof(BraidedGoldProgress).Assembly.GetManifestResourceStream(
-                "ClassicUO.Game.UI.Assets.BraidedGoldTimer.png")!;
-            _frame = Texture2D.FromStream(device, artwork);
-        }
-
+        Texture2D frame = LoadTexture(ref _frame, "BraidedGoldTimer.png");
         var plain = ShaderHueTranslator.GetHueVector(0);
-        batcher.Draw(_frame, new Rectangle(x, y, Width, Height), new Rectangle(0, 0, _frame.Width, _frame.Height), plain);
+        batcher.Draw(frame, new Rectangle(x, y, Width, Height), frame.Bounds, plain);
 
-        if (_graphic != ushort.MaxValue)
+        int iconSize = Math.Min(Width * 29 / 100, Height * 58 / 100);
+        int iconX = x + Width * 18 / 100;
+        int iconY = y + Height * 43 / 100;
+        if (_icon is { } icon)
         {
-            SpriteInfo sprite = _itemArt ? Client.Game.UO.Arts.GetArt(_graphic) : Client.Game.UO.Gumps.GetGump(_graphic);
+            Texture2D atlas = LoadTexture(ref _icons, "BraidedGoldIcons.png");
+            const int cell = 96;
+            int index = (int)icon;
+            var source = new Rectangle(index % 3 * cell, index / 3 * cell, cell, cell);
+            batcher.Draw(atlas, new Rectangle(iconX - iconSize / 2, iconY - iconSize / 2, iconSize, iconSize), source, plain);
+        }
+        else if (_graphic != ushort.MaxValue)
+        {
+            ref readonly SpriteInfo sprite = ref Client.Game.UO.Gumps.GetGump(_graphic);
             if (sprite.Texture != null && sprite.UV.Width > 0 && sprite.UV.Height > 0)
             {
-                float scale = Math.Min(25f / sprite.UV.Width, (Height - 8f) / sprite.UV.Height);
+                float scale = Math.Min((float)iconSize / sprite.UV.Width, (float)iconSize / sprite.UV.Height);
                 int w = Math.Max(1, (int)(sprite.UV.Width * scale));
                 int h = Math.Max(1, (int)(sprite.UV.Height * scale));
-                batcher.Draw(sprite.Texture, new Rectangle(x + 18 - w / 2, y + (Height - h) / 2, w, h),
-                    sprite.UV, ShaderHueTranslator.GetHueVector(_hue));
+                batcher.Draw(sprite.Texture, new Rectangle(iconX - w / 2, iconY - h / 2, w, h), sprite.UV, plain);
             }
         }
 
-        int start = x + (_graphic == ushort.MaxValue ? 8 : 33);
-        int trackWidth = x + Width - 8 - start;
-        int trackY = y + Height - 10;
-        Fill(new Rectangle(start, trackY, trackWidth, 6), new Color(166, 111, 45));
-        Fill(new Rectangle(start + 1, trackY + 1, trackWidth - 2, 4), new Color(12, 21, 47));
-        int fill = double.IsFinite(Fraction) ? (int)((trackWidth - 2) * Math.Clamp(Fraction, 0, 1)) : 0;
+        // Normalized bounds of the inset track in BraidedGoldTimer.png.
+        int start = x + Width * 104 / 1000;
+        int trackWidth = Width * 791 / 1000;
+        int trackY = y + Height * 766 / 1000;
+        int trackHeight = Math.Max(1, Height * 78 / 1000);
+        int fill = double.IsFinite(Fraction) ? (int)(trackWidth * Math.Clamp(Fraction, 0, 1)) : 0;
         if (fill > 0)
         {
-            Fill(new Rectangle(start + 1, trackY + 1, fill, 4), _fillColor);
-            Fill(new Rectangle(start + 1, trackY + 1, fill, 1), Color.Lerp(_fillColor, Color.White, 0.35f));
+            Fill(new Rectangle(start, trackY, fill, trackHeight), _fillColor);
+            Fill(new Rectangle(start, trackY, fill, 1), Color.Lerp(_fillColor, Color.White, 0.45f));
         }
 
         return base.Draw(batcher, x, y);
 
         void Fill(Rectangle rectangle, Color color) =>
             batcher.Draw(SolidColorTextureCache.GetTexture(color), rectangle, plain);
+    }
+
+    private static Texture2D LoadTexture(ref Texture2D? texture, string filename)
+    {
+        GraphicsDevice device = Client.Game.GraphicsDevice;
+        if (texture is { IsDisposed: false } && texture.GraphicsDevice == device)
+            return texture;
+
+        texture?.Dispose();
+        using Stream artwork = typeof(BraidedGoldProgress).Assembly.GetManifestResourceStream(
+            "ClassicUO.Game.UI.Assets." + filename) ?? throw new FileNotFoundException(filename);
+        return texture = Texture2D.FromStream(device, artwork);
     }
 }

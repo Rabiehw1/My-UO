@@ -1000,7 +1000,7 @@ namespace ClassicUO.Game.Managers
         {
             if (ProfileManager.CurrentProfile.EnableAutoLootProgressBar && (_progressBarGump == null || _progressBarGump.IsDisposed))
             {
-                _progressBarGump = new ProgressBarGump(_world, TazLang.Get("assistant_braided_autoloot"), 0, height: 34)
+                _progressBarGump = new ProgressBarGump(_world, TazLang.Get("assistant_braided_autoloot"), 0)
                 {
                     Y = ProfileManager.CurrentProfile.GameWindowPosition.Y + ProfileManager.CurrentProfile.GameWindowSize.Y - 150
                 };

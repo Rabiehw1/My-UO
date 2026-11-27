@@ -7,7 +7,7 @@ public class ProgressBarGump : Gump
 {
     private readonly BraidedGoldProgress _progress;
 
-    public ProgressBarGump(World world, string title, double startPercentage = 1, int width = 200, int height = 30)
+    public ProgressBarGump(World world, string title, double startPercentage = 1, int width = BraidedGoldProgress.CardWidth, int height = BraidedGoldProgress.CardHeight)
         : base(world, 0, 0)
     {
         CanCloseWithRightClick = true;
@@ -15,7 +15,7 @@ public class ProgressBarGump : Gump
         WantUpdateSize = false;
         Width = width;
         Height = height;
-        Add(_progress = new BraidedGoldProgress(width, height, title, 0x0E75, itemArt: true)
+        Add(_progress = new BraidedGoldProgress(width, height, title, BraidedGoldIcon.Loot)
         {
             Fraction = startPercentage
         });
