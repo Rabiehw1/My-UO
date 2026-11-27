@@ -15,18 +15,20 @@ namespace ClassicUO.Game.UI.Gumps
         public static int DEFAULT_Y => ProfileManager.CurrentProfile.CoolDownY;
 
         private AlphaBlendControl background, foreground;
-        private readonly Control nameText, timerText;
+        private readonly Label nameText, timerText;
         private DateTime expire;
         private TimeSpan duration;
         private int startX, startY;
         public string Name { get; }
         private readonly bool isBuffBar;
+        private readonly BraidedGoldProgress _braided;
+        private readonly bool _untimed;
 
         private GumpPic gumpPic;
 
         public BuffIconType buffIconType;
 
-        public CoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, int x, int y, ushort graphic = ushort.MaxValue, BuffIconType type = BuffIconType.Unknown2, bool isBuffBar = false) : base(world, 0, 0)
+        public CoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, int x, int y, ushort graphic = ushort.MaxValue, BuffIconType type = BuffIconType.Unknown2, bool isBuffBar = false, ushort itemGraphic = ushort.MaxValue, bool untimed = false, ushort itemHue = 0) : base(world, 0, 0)
         {
             #region VARS
             Width = COOL_DOWN_WIDTH;
@@ -42,7 +44,17 @@ namespace ClassicUO.Game.UI.Gumps
             AcceptMouseInput = true;
             buffIconType = type;
             this.isBuffBar = isBuffBar;
+            _untimed = untimed;
             #endregion
+
+            if (isBuffBar || itemGraphic != ushort.MaxValue)
+            {
+                WantUpdateSize = false;
+                Add(_braided = new BraidedGoldProgress(Width, Height, _name,
+                    isBuffBar ? graphic : itemGraphic, itemArt: !isBuffBar, hue: itemHue,
+                    accentHue: isBuffBar && _hue != Profile.DefaultImprovedBuffBarHue ? _hue : (ushort)0));
+                return;
+            }
 
             #region BACK/FORE GROUND
             background = new AlphaBlendControl(0.3f);
@@ -73,21 +85,12 @@ namespace ClassicUO.Game.UI.Gumps
                 _name = _name.Substring(0, 16) + "..";
             }
 
-            if (isBuffBar)
-            {
-                nameText = CreateText(_name, background.Width, _hue);
-                timerText = CreateText("------", background.Width, _hue);
-            }
-            else
-            {
-                nameText = new Label(_name, true, _hue, background.Width, style: FontStyle.BlackBorder, align: Assets.TEXT_ALIGN_TYPE.TS_CENTER);
-                timerText = new Label("------", true, _hue, background.Width, style: FontStyle.BlackBorder, align: Assets.TEXT_ALIGN_TYPE.TS_CENTER);
-            }
+            nameText = new Label(_name, true, _hue, background.Width, style: FontStyle.BlackBorder, align: Assets.TEXT_ALIGN_TYPE.TS_CENTER);
+            timerText = new Label("", true, _hue, background.Width, style: FontStyle.BlackBorder, align: Assets.TEXT_ALIGN_TYPE.TS_CENTER);
 
             nameText.X = background.X;
             timerText.X = background.X;
             timerText.Y = COOL_DOWN_HEIGHT - timerText.Height - 2;
-            SetText(timerText, string.Empty);
             #endregion
 
             #region ADD CONTROLS
@@ -100,9 +103,6 @@ namespace ClassicUO.Game.UI.Gumps
             #endregion
         }
 
-        private static TextBox CreateText(string text, int width, ushort hue) =>
-            TextBox.GetOne(text, GetBuffBarFont(), GetBuffBarFontSize(), hue, TextBox.RTLOptions.DefaultCenterStroked(width));
-
         private static string GetBuffBarFont()
         {
             GlobalSettingsSave settings = ProfileManager.GlobalSettings;
@@ -113,46 +113,6 @@ namespace ClassicUO.Game.UI.Gumps
         {
             GlobalSettingsSave settings = ProfileManager.GlobalSettings;
             return settings == null || settings.BuffBarFontSize <= 0 ? 14 : settings.BuffBarFontSize;
-        }
-
-        private static void SetText(Control control, string text)
-        {
-            switch (control)
-            {
-                case Label label:
-                    label.Text = text;
-                    break;
-                case TextBox textBox:
-                    textBox.Text = text;
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Applies the machine-wide buff bar font to live bars so option changes take effect without
-        /// re-adding buffs.
-        /// </summary>
-        private void SyncBuffBarFont()
-        {
-            if (nameText is not TextBox nameBox || timerText is not TextBox timerBox)
-                return;
-
-            string font = GetBuffBarFont();
-            float size = GetBuffBarFontSize();
-
-            if (nameBox.Font != font)
-            {
-                nameBox.Font = font;
-                timerBox.Font = font;
-            }
-
-            if (nameBox.FontSize != size)
-            {
-                nameBox.FontSize = size;
-                timerBox.FontSize = size;
-            }
-
-            timerText.Y = COOL_DOWN_HEIGHT - timerText.Height - 2;
         }
 
         public TimeSpan Remaining => expire - DateTime.Now;
@@ -176,7 +136,7 @@ namespace ClassicUO.Game.UI.Gumps
             base.Update();
 
             if (isBuffBar)
-                SyncBuffBarFont();
+                _braided.SetFont(GetBuffBarFont(), GetBuffBarFontSize());
 
             if (
                 !isBuffBar &&
@@ -196,13 +156,21 @@ namespace ClassicUO.Game.UI.Gumps
             if (IsDisposed)
                 return false;
 
-            if (DateTime.Now >= expire)
+            if (!_untimed && DateTime.Now >= expire)
             {
                 Dispose();
                 return false;
             }
 
             TimeSpan remaing = expire - DateTime.Now;
+            if (_braided != null)
+            {
+                _braided.Fraction = _untimed ? 1 : remaing.TotalMilliseconds / Math.Max(1, duration.TotalMilliseconds);
+                _braided.Value = _untimed ? "" : isBuffBar
+                    ? $"{Math.Ceiling(remaing.TotalMinutes)}m"
+                    : $"{remaing.TotalSeconds:0.0}s";
+                return base.Draw(batcher, x, y);
+            }
 
             if (remaing < TimeSpan.FromMinutes(60))
             {
@@ -210,7 +178,7 @@ namespace ClassicUO.Game.UI.Gumps
                 if (gumpPic != null)
                     offset = gumpPic.Width;
                 foreground.Width = Math.Max(0, Math.Min(COOL_DOWN_WIDTH - offset, (int)((remaing.TotalSeconds / duration.TotalSeconds) * (COOL_DOWN_WIDTH - offset))));
-                SetText(timerText, ((int)remaing.TotalSeconds).ToString());
+                timerText.Text = ((int)remaing.TotalSeconds).ToString();
             }
 
             base.Draw(batcher, x, y);

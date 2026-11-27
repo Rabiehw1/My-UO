@@ -110,7 +110,7 @@ internal sealed class ConsumableCooldownMonitor
         bar?.Dispose();
         bar = CoolDownBarManager.CreateCoolDownBar(world, duration,
             TazLang.Get(fish ? "assistant_consumable_fish_bar" : "assistant_consumable_potion_bar"),
-            fish ? (ushort)0x0075 : (ushort)0x0021, replace: false);
+            fish ? (ushort)0x0075 : (ushort)0x0021, replace: false, itemGraphic: attempt.Graphic, itemHue: attempt.Hue);
         bar?.Update(currentValue: remaining);
     }
 

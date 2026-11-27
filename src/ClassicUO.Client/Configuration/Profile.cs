@@ -670,7 +670,8 @@ namespace ClassicUO.Configuration
 
         #region IMPROVED BUFF BAR
         public bool UseImprovedBuffBar { get; set => SetProperty(ref field, value); } = true;
-        public ushort ImprovedBuffBarHue { get; set => SetProperty(ref field, value); } = 905;
+        internal const ushort DefaultImprovedBuffBarHue = 905;
+        public ushort ImprovedBuffBarHue { get; set => SetProperty(ref field, value); } = DefaultImprovedBuffBarHue;
         #endregion
 
         #region DAMAGE NUMBER HUES

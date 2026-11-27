@@ -54,7 +54,7 @@ namespace ClassicUO.Game.Managers
         public static void AddCoolDownBar(World world, TimeSpan duration, string name, ushort hue, bool replace, bool skipIfExists = false) =>
             CreateCoolDownBar(world, duration, name, hue, replace, skipIfExists);
 
-        internal static CoolDownBar CreateCoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, bool replace, bool skipIfExists = false)
+        internal static CoolDownBar CreateCoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, bool replace, bool skipIfExists = false, ushort itemGraphic = ushort.MaxValue, ushort itemHue = 0)
         {
             if (replace || skipIfExists)
                 for (int i = 0; i < coolDownBars.Length; i++)
@@ -66,7 +66,7 @@ namespace ClassicUO.Game.Managers
                             return coolDownBars[i];
 
                         coolDownBars[i].Dispose();
-                        coolDownBars[i] = new CoolDownBar(world, _duration, _name, _hue, CoolDownBar.DEFAULT_X, CoolDownBar.DEFAULT_Y + (i * (CoolDownBar.COOL_DOWN_HEIGHT + 5)));
+                        coolDownBars[i] = new CoolDownBar(world, _duration, _name, _hue, CoolDownBar.DEFAULT_X, CoolDownBar.DEFAULT_Y + (i * (CoolDownBar.COOL_DOWN_HEIGHT + 5)), itemGraphic: itemGraphic, itemHue: itemHue);
                         UIManager.Add(coolDownBars[i]);
                         return coolDownBars[i];
                     }
@@ -75,7 +75,7 @@ namespace ClassicUO.Game.Managers
             {
                 if (coolDownBars[i] == null || coolDownBars[i].IsDisposed)
                 {
-                    coolDownBars[i] = new CoolDownBar(world, _duration, _name, _hue, CoolDownBar.DEFAULT_X, CoolDownBar.DEFAULT_Y + (i * (CoolDownBar.COOL_DOWN_HEIGHT + 5)));
+                    coolDownBars[i] = new CoolDownBar(world, _duration, _name, _hue, CoolDownBar.DEFAULT_X, CoolDownBar.DEFAULT_Y + (i * (CoolDownBar.COOL_DOWN_HEIGHT + 5)), itemGraphic: itemGraphic, itemHue: itemHue);
                     UIManager.Add(coolDownBars[i]);
                     return coolDownBars[i];
                 }

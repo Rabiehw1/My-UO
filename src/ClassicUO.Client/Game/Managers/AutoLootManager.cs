@@ -854,8 +854,11 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (_progressBarGump is { IsDisposed: false })
-                _progressBarGump.CurrentPercentage = 1 - ((double)_pendingLootCount / (double)_currentLootTotalCount);
+            if (_progressBarGump is { IsDisposed: false } && _currentLootTotalCount > 0)
+            {
+                int processed = Math.Clamp(_currentLootTotalCount - _pendingLootCount, 0, _currentLootTotalCount);
+                _progressBarGump.SetLootProgress(processed, _currentLootTotalCount);
+            }
         }
 
         /// <summary>
@@ -997,10 +1000,9 @@ namespace ClassicUO.Game.Managers
         {
             if (ProfileManager.CurrentProfile.EnableAutoLootProgressBar && (_progressBarGump == null || _progressBarGump.IsDisposed))
             {
-                _progressBarGump = new ProgressBarGump(_world, "Auto looting...", 0)
+                _progressBarGump = new ProgressBarGump(_world, TazLang.Get("assistant_braided_autoloot"), 0, height: 34)
                 {
-                    Y = ProfileManager.CurrentProfile.GameWindowPosition.Y + ProfileManager.CurrentProfile.GameWindowSize.Y - 150,
-                    ForegrouneColor = Color.DarkOrange
+                    Y = ProfileManager.CurrentProfile.GameWindowPosition.Y + ProfileManager.CurrentProfile.GameWindowSize.Y - 150
                 };
                 _progressBarGump.CenterXInViewPort();
                 UIManager.Add(_progressBarGump);

@@ -39,15 +39,53 @@ namespace ClassicUO.Game.UI.Gumps
 
         public void AddBuff(BuffIcon icon)
         {
-            if (icon != null)
+            if (icon != null && IsPositiveBuff(icon.Type))
             {
-                var coolDownBar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks), (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, icon.Graphic, icon.Type, true);
+                var coolDownBar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks), (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, icon.Graphic, icon.Type, true, untimed: icon.Timer == uint.MaxValue);
                 coolDownBar.SetTooltip(icon.Text);
                 BuffBarManager.AddCoolDownBar(coolDownBar, _direction, _box);
                 _box.Add(coolDownBar);
                 UpdateSize();
             }
         }
+
+        private static bool IsPositiveBuff(BuffIconType type) => type is
+            BuffIconType.NightSight or BuffIconType.AchievePerfection or BuffIconType.DivineFury or
+            BuffIconType.EnemyOfOne or BuffIconType.HidingAndOrStealth or BuffIconType.ActiveMeditation or
+            BuffIconType.BloodOathCaster or BuffIconType.GiftOfRenewal or BuffIconType.AttuneWeapon or
+            BuffIconType.EtherealVoyage or BuffIconType.GiftOfLife or BuffIconType.ArcaneEmpowerment or
+            BuffIconType.ReactiveArmor or BuffIconType.Protection or BuffIconType.ArchProtection or
+            BuffIconType.MagicReflection or BuffIconType.Incognito or BuffIconType.Disguised or
+            BuffIconType.AnimalForm or BuffIconType.Polymorph or BuffIconType.Invisibility or
+            BuffIconType.Agility or BuffIconType.Cunning or BuffIconType.Strength or
+            BuffIconType.Bless or BuffIconType.StoneForm or BuffIconType.Berserk or
+            BuffIconType.Fly or BuffIconType.Inspire or BuffIconType.Invigorate or
+            BuffIconType.Resilience or BuffIconType.Perseverance or BuffIconType.FishPie or
+            BuffIconType.DualWield or BuffIconType.Block or BuffIconType.DefenseMastery or
+            BuffIconType.SpellFocusingBuff or BuffIconType.RageFocusingBuff or BuffIconType.Warding or
+            BuffIconType.Surge or BuffIconType.Feint or BuffIconType.ConsecrateWeapon or
+            BuffIconType.GrapesOfWrath or BuffIconType.HorrificBeast or BuffIconType.LichForm or
+            BuffIconType.VampiricEmbrace or BuffIconType.CurseWeapon or BuffIconType.ReaperForm or
+            BuffIconType.ImmolatingWeapon or BuffIconType.Enchant or BuffIconType.HonorableExecution or
+            BuffIconType.Confidence or BuffIconType.Evasion or BuffIconType.CounterAttack or
+            BuffIconType.LightningStrike or BuffIconType.MomentumStrike or BuffIconType.OrangePetals or
+            BuffIconType.RoseOfTrinsic or BuffIconType.PoisonImmunity or BuffIconType.Perfection or
+            BuffIconType.Honored or BuffIconType.ManaPhase or BuffIconType.Rage or
+            BuffIconType.HiryuPhysicalResistance or BuffIconType.WraithForm or BuffIconType.CityTradeDeal or
+            BuffIconType.Spirituality or BuffIconType.Humility or BuffIconType.Rampage or
+            BuffIconType.Toughness or BuffIconType.Thrust or BuffIconType.PlayingTheOdds or
+            BuffIconType.FocusedEye or BuffIconType.ElementalFury or BuffIconType.CalledShot or
+            BuffIconType.SavingThrow or BuffIconType.Conduit or BuffIconType.EtherealBurst or
+            BuffIconType.MysticWeapon or BuffIconType.ManaShield or BuffIconType.AnticipateHit or
+            BuffIconType.Warcry or BuffIconType.Shadow or BuffIconType.WhiteTigerForm or
+            BuffIconType.Bodyguard or BuffIconType.HeightenedSenses or BuffIconType.Tolerance or
+            BuffIconType.Intuition or BuffIconType.EnchantedSummoning or BuffIconType.Whispering or
+            BuffIconType.CombatTraining or BuffIconType.InjectedStrike or BuffIconType.Boarding or
+            BuffIconType.Potency or BuffIconType.FistsOfFury or BuffIconType.BarrabHemolymphConcentrate or
+            BuffIconType.JukariBurnPoiltice or BuffIconType.KurakAmbushersEssence or BuffIconType.BarakoDraftOfMight or
+            BuffIconType.UraliTranceTonic or BuffIconType.SakkhraProphylaxis or BuffIconType.SwarmImmune or
+            BuffIconType.BoneBreakerImmune or BuffIconType.CaddelliteInfused or BuffIconType.PotionGloriousFortune or
+            BuffIconType.MysticalPolymorphTotem;
 
         public void RemoveBuff(BuffIconType graphic)
         {
