@@ -12,24 +12,51 @@ namespace ClassicUO.Game.Managers.Trainer;
 internal static class BlacksmithTrainer
 {
     internal sealed record Recipe(int Minimum, string Name, int Ingots);
-    // Zulu Hotel Omega Info Vault: Blacksmithy (iron recipes), Ores & Ingots (difficulty).
+    // Zulu Hotel Omega Info Vault: Blacksmithy (iron recipes).
     private static readonly Recipe[] Plate =
     [
         new(11, "Female Breastplate", 25), new(66, "Platemail Gorget", 10),
         new(69, "Platemail Gloves", 12), new(72, "Plate Helm", 15),
         new(76, "Platemail Arms", 18), new(79, "Platemail Legs", 20), new(85, "Breastplate", 25)
     ];
-    private static readonly (string Name, int Difficulty)[] Metals =
-    [
-        ("Iron",0), ("Gold",1), ("Spike",5), ("Fruity",10), ("Bronze",15), ("Ice Rock",20),
-        ("Black Dwarf",25), ("Dull Copper",30), ("Platinum",35), ("Silver Rock",40),
-        ("Dark Pagan",45), ("Copper",50), ("Mystic",55), ("Spectral",60), ("Old Britain",65),
-        ("Onyx",70), ("Red Elven",75), ("Undead",80), ("Pyrite",85), ("Virginity",90),
-        ("Malachite",95), ("Lavarock",97), ("Azurite",98), ("Dripstone",100), ("Executor",104),
-        ("Peachblue",108), ("Destruction",112), ("Anra",116), ("Crystal",119), ("Doom",122),
-        ("Goddess",125), ("Ebon Twilight Sapphire",130), ("Dark Sable Ruby",130),
-        ("Radiant Nimbus Diamond",140), ("New Zulu",150)
-    ];
+    // Measured breastplate minimums from the shard's crafting menu, keyed by ingot hue.
+    private const int TrainingMargin = 7;
+    private static readonly Dictionary<ushort, int> BreastplateMinimums = new()
+    {
+        [0x0000] = 85,
+        [0x04C7] = 86,
+        [0x046E] = 88,
+        [0x045E] = 90,
+        [0x0480] = 91,
+        [0x0451] = 93,
+        [0x03EA] = 95,
+        [0x0457] = 96,
+        [0x03E9] = 98,
+        [0x046B] = 100,
+        [0x0602] = 101,
+        [0x017F] = 103,
+        [0x0483] = 105,
+        [0x0852] = 106,
+        [0x0455] = 108,
+        [0x04B9] = 110,
+        [0x0279] = 111,
+        [0x06B8] = 113,
+        [0x0482] = 115,
+        [0x0487] = 116,
+        [0x04DF] = 117,
+        [0x0486] = 117,
+        [0x049E] = 118,
+        [0x0499] = 119,
+        [0x049C] = 121,
+        [0x0500] = 122,
+        [0x048B] = 123,
+        [0x0492] = 124,
+        [0x049F] = 125,
+        [0x0501] = 126,
+        [0x0494] = 128,
+        [0x0498] = 131,
+        [0x0488] = 135,
+    };
 
     private static Recipe? _pending;
     private static long _deadline, _cursorExpiry;
@@ -48,8 +75,15 @@ internal static class BlacksmithTrainer
 
     internal static Recipe? SelectRecipe(int skillFixed) => Array.FindLast(Plate, r => skillFixed >= 10 * r.Minimum);
 
-    internal static bool Eligible(int skillFixed, int difficulty) => skillFixed < 950
-        ? difficulty == 0 : difficulty > 0 && skillFixed >= (85 + difficulty) * 10;
+    internal static int MetalRank(int skillFixed, ushort hue)
+    {
+        // Iron is used for the early plate recipes and remains a fallback for breastplates.
+        if (hue == 0)
+            return BreastplateMinimums[0];
+
+        return BreastplateMinimums.TryGetValue(hue, out int minimum) &&
+            skillFixed >= (minimum + TrainingMargin) * 10 ? minimum : -1;
+    }
 
     internal static void Reset()
     {
@@ -110,18 +144,12 @@ internal static class BlacksmithTrainer
         {
             if (item.Graphic is < 0x1BEF or > 0x1BF5 || item.Amount < recipe.Ingots || item.BackpackOrRootContainer != bag.Serial)
                 continue;
-            string name = item.GetNormalizedName(false);
-            foreach (var metal in Metals)
-            {
-                if (metal.Difficulty <= highest || !Eligible(value, metal.Difficulty) || (metal.Difficulty == 0 && item.Hue != 0))
-                    continue;
-                if (!string.Equals(name, metal.Name + " ingots", StringComparison.OrdinalIgnoreCase)
-                    && !string.Equals(name, metal.Name + " ingot", StringComparison.OrdinalIgnoreCase)
-                    && !(metal.Difficulty == 0 && item.Hue == 0 && string.Equals(name, "ingots", StringComparison.OrdinalIgnoreCase)))
-                    continue;
-                best = item;
-                highest = metal.Difficulty;
-            }
+            int rank = MetalRank(value, item.Hue);
+            if (rank < 0 || rank < highest || (rank == highest && best != null && item.Amount <= best.Amount))
+                continue;
+
+            best = item;
+            highest = rank;
         }
         if (best == null)
             return Warn(world, "trainer_smith_stock");

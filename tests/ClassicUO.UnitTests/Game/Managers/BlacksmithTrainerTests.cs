@@ -25,14 +25,17 @@ public class BlacksmithTrainerTests
     }
 
     [Theory]
-    [InlineData(949, 0, true)]
-    [InlineData(949, 1, false)]
-    [InlineData(950, 0, false)]
-    [InlineData(950, 10, true)]
-    [InlineData(999, 15, false)]
-    [InlineData(1000, 15, true)]
-    public void UsesOnlyAppropriateMetal(int skill, int difficulty, bool expected) =>
-        Assert.Equal(expected, BlacksmithTrainer.Eligible(skill, difficulty));
+    [InlineData(110, 0x0000, 85)]
+    [InlineData(1500, 0x0000, 85)]
+    [InlineData(929, 0x04C7, -1)]
+    [InlineData(930, 0x04C7, 86)]
+    [InlineData(950, 0x046E, 88)]
+    [InlineData(1319, 0x049F, -1)]
+    [InlineData(1320, 0x049F, 125)]
+    [InlineData(1380, 0x0498, 131)]
+    [InlineData(2000, 0x0493, -1)]
+    public void RanksVerifiedIngotsWithSevenPointMargin(int skill, int hue, int expected) =>
+        Assert.Equal(expected, BlacksmithTrainer.MetalRank(skill, (ushort)hue));
 
     [Theory]
     [InlineData("Breastplate", 0x1415, true)]
