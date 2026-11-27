@@ -30,11 +30,6 @@ public sealed class MacroButtonEditorWindow : MyraControl
 {
     #region Private members
 
-    /// <summary>Scale bounds, in percent, matching what the macro itself accepts.</summary>
-    private const int MIN_SCALE = 10;
-
-    private const int MAX_SCALE = 200;
-
     /// <summary>Scale a button starts at, and the one <see cref="Reset" /> puts it back to.</summary>
     private const byte DEFAULT_SCALE = 100;
 
@@ -243,8 +238,8 @@ public sealed class MacroButtonEditorWindow : MyraControl
         };
 
         var scale = LabeledHorizontalSlider.CreateSliderWithCallback(
-            MIN_SCALE,
-            MAX_SCALE,
+            MacroButtonGump.MinButtonScale,
+            MacroButtonGump.MaxButtonScale,
             _macro.Scale,
             value =>
             {

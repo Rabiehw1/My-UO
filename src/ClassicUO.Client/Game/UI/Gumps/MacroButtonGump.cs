@@ -1,8 +1,11 @@
 using System;
+using System.Linq;
 using System.Xml;
 using ClassicUO.Assets;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.UI.Controls;
+using ClassicUO.Game.UI.MyraWindows;
 using ClassicUO.Input;
 using ClassicUO.Renderer;
 using Microsoft.Xna.Framework;
@@ -43,6 +46,9 @@ namespace ClassicUO.Game.UI.Gumps
         private Vector3 _activeHueVector;
 
         private Macro _macr;
+        internal const int MinButtonScale = 10;
+        internal const int MaxButtonScale = 200;
+        private readonly ResizeGrip _resizeGrip;
         private const int DEFAULT_WIDTH = 88;
         private const int DEFAULT_HEIGHT = 44;
         private RenderedText _gText;
@@ -84,6 +90,7 @@ namespace ClassicUO.Game.UI.Gumps
             GroupMatrixWidth = 44;
             GroupMatrixHeight = 44;
             AnchorType = ANCHOR_TYPE.SPELL;
+            Add(_resizeGrip = new ResizeGrip(this));
         }
 
         public override GumpType GumpType => GumpType.MacroButton;
@@ -123,6 +130,7 @@ namespace ClassicUO.Game.UI.Gumps
                 // which the assignments above settle. Re-handing the macro is how an edit reaches a
                 // button already on screen, so the labels have to be rebuilt here, not only at build.
                 RebuildLabels();
+                _resizeGrip.PositionInCorner();
             }
         }
 
@@ -280,6 +288,120 @@ namespace ClassicUO.Game.UI.Gumps
             RunMacro();
 
             return true;
+        }
+
+        private sealed class ResizeGrip : Control
+        {
+            private readonly MacroButtonGump _owner;
+            private Point _start;
+            private int _startWidth, _startHeight;
+            private float _startScale;
+            private bool _dragging;
+
+            internal ResizeGrip(MacroButtonGump owner)
+            {
+                _owner = owner;
+                CanMove = false;
+                SetTooltip(TazLang.Get("macrobutton_resize_grip"));
+            }
+
+            private bool CanResize => _owner.TheMacro != null &&
+                UIManager.AnchorManager[_owner] == null &&
+                UIManager.GetGump<MacroButtonEditorWindow>() == null;
+
+            public override bool AcceptMouseInput { get => CanResize; set { } }
+
+            internal void PositionInCorner()
+            {
+                Width = Math.Max(1, Math.Min(12, _owner.Width / 3));
+                Height = Math.Max(1, Math.Min(12, _owner.Height));
+                X = _owner.Width - Width;
+                Y = _owner.Height - Height;
+            }
+
+            public override void OnMouseDown(int x, int y, MouseButtonType button)
+            {
+                if (button != MouseButtonType.Left || !CanResize)
+                    return;
+
+                _dragging = true;
+                _start = Mouse.Position;
+                _startWidth = Math.Max(1, _owner.Width);
+                _startHeight = Math.Max(1, _owner.Height);
+                _startScale = _owner.Scale;
+            }
+
+            public override void Update()
+            {
+                base.Update();
+                if (_dragging)
+                {
+                    if (Mouse.LButtonPressed)
+                        Resize();
+                    else
+                        Finish();
+                }
+            }
+
+            public override void OnMouseUp(int x, int y, MouseButtonType button)
+            {
+                if (button != MouseButtonType.Left || !_dragging)
+                    return;
+
+                if (CanResize)
+                    Resize();
+                Finish();
+            }
+
+            private void Resize()
+            {
+                var delta = Mouse.Position - _start;
+                float change = ((float)delta.X * _startWidth + (float)delta.Y * _startHeight) /
+                    ((float)_startWidth * _startWidth + (float)_startHeight * _startHeight);
+                float scale = Math.Clamp(MathF.Round(_startScale * (1 + change)), MinButtonScale, MaxButtonScale);
+                if (_owner.Scale == scale)
+                    return;
+
+                _owner.Scale = scale;
+                _owner.Graphic = _owner.Graphic;
+                _owner.RebuildLabels();
+                PositionInCorner();
+            }
+
+            private void Finish()
+            {
+                _dragging = false;
+                if (!CanResize)
+                {
+                    _owner.RefreshAppearanceFromEditor(null);
+                    return;
+                }
+
+                if (_owner.Scale == _startScale)
+                    return;
+
+                Macro macro = _owner.TheMacro;
+                macro.Scale = (byte)_owner.Scale;
+                foreach (var button in UIManager.Gumps.OfType<MacroButtonGump>())
+                    if (!button.IsDisposed && !ReferenceEquals(button, _owner) && ReferenceEquals(button.TheMacro, macro))
+                        button.RefreshAppearanceFromEditor(null);
+
+                _owner.World.Macros.Save();
+            }
+
+            public override bool Draw(UltimaBatcher2D batcher, int x, int y)
+            {
+                if (CanResize && (_dragging || UIManager.MouseOverControl?.RootParent == _owner))
+                {
+                    var texture = SolidColorTextureCache.GetTexture(Color.White);
+                    var hue = ShaderHueTranslator.GetHueVector(0, false, 0.65f);
+                    int dots = Math.Min(Width, Height) / 3;
+                    for (int i = 0; i < dots; i++)
+                        batcher.Draw(texture, new Rectangle(x + Width - 3 - i * 3, y + Height - 3 - i * 3, 2, 2), hue);
+                }
+
+                return true;
+            }
         }
 
         private void RunMacro()
