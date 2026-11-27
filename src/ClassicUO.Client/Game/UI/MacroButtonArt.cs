@@ -12,12 +12,14 @@ namespace ClassicUO.Game.UI;
 internal static class MacroButtonArt
 {
     private const string MainDressResource = "ClassicUO.Game.UI.Assets.MainDress.png";
+    private const string GetDressedResource = "ClassicUO.Game.UI.Assets.GetDressed.png";
     private static SpriteInfo _mainDress;
+    private static SpriteInfo _getDressed;
 
-    internal static bool IncludesCaption(int? graphic) => graphic == Macro.MAIN_DRESS_GRAPHIC;
+    internal static bool IncludesCaption(int? graphic) => graphic is Macro.MAIN_DRESS_GRAPHIC or Macro.GET_DRESSED_GRAPHIC;
 
     internal static Point DisplaySize(int graphic, SpriteInfo sprite) =>
-        graphic == Macro.MAIN_DRESS_GRAPHIC ? new Point(182, 60) : new Point(sprite.UV.Width, sprite.UV.Height);
+        IncludesCaption(graphic) ? new Point(182, 60) : new Point(sprite.UV.Width, sprite.UV.Height);
 
     internal static bool IsPartialHue(int graphic)
     {
@@ -30,19 +32,27 @@ internal static class MacroButtonArt
 
     internal static SpriteInfo GetSprite(int graphic)
     {
-        if (graphic != Macro.MAIN_DRESS_GRAPHIC)
-            return (uint)graphic <= ushort.MaxValue ? Client.Game.UO.Gumps.GetGump((ushort)graphic) : SpriteInfo.Empty;
-
-        GraphicsDevice device = Client.Game.GraphicsDevice;
-        if (_mainDress.Texture is not { IsDisposed: false } texture || texture.GraphicsDevice != device)
+        return graphic switch
         {
-            _mainDress.Texture?.Dispose();
-            using Stream artwork = typeof(MacroButtonArt).Assembly.GetManifestResourceStream(MainDressResource)
-                ?? throw new FileNotFoundException(MainDressResource);
+            Macro.MAIN_DRESS_GRAPHIC => GetEmbeddedSprite(MainDressResource, ref _mainDress),
+            Macro.GET_DRESSED_GRAPHIC => GetEmbeddedSprite(GetDressedResource, ref _getDressed),
+            >= 0 and <= ushort.MaxValue => Client.Game.UO.Gumps.GetGump((ushort)graphic),
+            _ => SpriteInfo.Empty
+        };
+    }
+
+    private static SpriteInfo GetEmbeddedSprite(string resource, ref SpriteInfo sprite)
+    {
+        GraphicsDevice device = Client.Game.GraphicsDevice;
+        if (sprite.Texture is not { IsDisposed: false } texture || texture.GraphicsDevice != device)
+        {
+            sprite.Texture?.Dispose();
+            using Stream artwork = typeof(MacroButtonArt).Assembly.GetManifestResourceStream(resource)
+                ?? throw new FileNotFoundException(resource);
             texture = Texture2D.FromStream(device, artwork);
-            _mainDress = new SpriteInfo { Texture = texture, UV = new Rectangle(0, 0, texture.Width, texture.Height) };
+            sprite = new SpriteInfo { Texture = texture, UV = new Rectangle(0, 0, texture.Width, texture.Height) };
         }
 
-        return _mainDress;
+        return sprite;
     }
 }

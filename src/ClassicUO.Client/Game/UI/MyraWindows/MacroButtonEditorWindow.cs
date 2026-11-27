@@ -702,8 +702,11 @@ public sealed class MacroButtonEditorWindow : MyraControl
     /// <returns>The picker.</returns>
     private static IndexedComboPicker BuildGraphicPicker(int? graphic, string tooltip) =>
         new(graphic ?? GumpGraphicPicker.NO_GRAPHIC,
-            GumpGraphicPicker.Entries(null, (Macro.MAIN_DRESS_GRAPHIC, TazLang.Get("macrobtneditor_graphic_main_dress"))),
-            GumpGraphicPicker.NO_GRAPHIC, Macro.MAIN_DRESS_GRAPHIC, new HexIntInputBox())
+            GumpGraphicPicker.Entries(
+                null,
+                (Macro.MAIN_DRESS_GRAPHIC, TazLang.Get("macrobtneditor_graphic_main_dress")),
+                (Macro.GET_DRESSED_GRAPHIC, TazLang.Get("macrobtneditor_graphic_get_dressed"))),
+            GumpGraphicPicker.NO_GRAPHIC, Macro.GET_DRESSED_GRAPHIC, new HexIntInputBox())
         {
             NumberInput = { Width = GRAPHIC_NUMBER_WIDTH, HintText = TazLang.Get("macrobtneditor_graphic_hint", "Graphic # or 0x.."), Tooltip = tooltip },
             NameList = { Width = GRAPHIC_LIST_WIDTH, SearchHintText = TazLang.Get("macrobtneditor_graphic_searchhint", "Search for a gump..") }
@@ -764,10 +767,10 @@ public sealed class MacroButtonEditorWindow : MyraControl
     /// </summary>
     private void Save()
     {
-        // A momentary macro immediately returns to idle. If Main Dress was selected
+        // A momentary macro immediately returns to idle. If captioned artwork was selected
         // for Running on a bare button, also make it visible in the idle state.
-        if (!_macro.Graphic.HasValue && _macro.ActiveGraphic == Macro.MAIN_DRESS_GRAPHIC)
-            _macro.Graphic = Macro.MAIN_DRESS_GRAPHIC;
+        if (!_macro.Graphic.HasValue && MacroButtonArt.IncludesCaption(_macro.ActiveGraphic))
+            _macro.Graphic = _macro.ActiveGraphic;
 
         _committed = MacroButtonAppearance.Capture(_macro);
 

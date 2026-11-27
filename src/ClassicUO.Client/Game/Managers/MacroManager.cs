@@ -2990,6 +2990,8 @@ namespace ClassicUO.Game.Managers
 
         // Built-in button art is outside the shard's 16-bit gump ID range.
         internal const int MAIN_DRESS_GRAPHIC = ushort.MaxValue + 1;
+        internal const int GET_DRESSED_GRAPHIC = MAIN_DRESS_GRAPHIC + 1;
+        private const string GET_DRESSED_GRAPHIC_KEY = "get-dressed";
         private const string MAIN_DRESS_GRAPHIC_KEY = "main-dress";
 
         /// <summary>
@@ -3042,13 +3044,20 @@ namespace ClassicUO.Game.Managers
             return active < 0 ? null : active;
         }
 
-        private static string WriteGraphic(int? graphic) => graphic == MAIN_DRESS_GRAPHIC
-            ? MAIN_DRESS_GRAPHIC_KEY : graphic?.ToString() ?? string.Empty;
+        private static string WriteGraphic(int? graphic) => graphic switch
+        {
+            MAIN_DRESS_GRAPHIC => MAIN_DRESS_GRAPHIC_KEY,
+            GET_DRESSED_GRAPHIC => GET_DRESSED_GRAPHIC_KEY,
+            _ => graphic?.ToString() ?? string.Empty
+        };
 
         private static int? ReadGraphic(string value)
         {
             if (value == MAIN_DRESS_GRAPHIC_KEY)
                 return MAIN_DRESS_GRAPHIC;
+
+            if (value == GET_DRESSED_GRAPHIC_KEY)
+                return GET_DRESSED_GRAPHIC;
 
             return ushort.TryParse(value, out ushort graphic) ? graphic : null;
         }
