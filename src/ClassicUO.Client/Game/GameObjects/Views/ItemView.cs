@@ -117,8 +117,9 @@ namespace ClassicUO.Game.GameObjects
             }
 
             if (
-                ProfileManager.CurrentProfile.HighlightGameObjects
-                && isSelected
+                isSelected
+                && ProfileManager.CurrentProfile.HighlightGameObjects
+                && ProfileManager.CurrentProfile.HoverHighlightItems
             )
             {
                 hue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
@@ -135,18 +136,9 @@ namespace ClassicUO.Game.GameObjects
             {
                 hue = Constants.DEAD_RANGE_COLOR;
             }
-            else
+            else if (IsHidden)
             {
-                if (!IsLocked && !IsMulti && isSelected)
-                {
-                    // TODO: check why i put this.
-                    //isPartial = ItemData.Weight == 0xFF;
-                    hue = 0x0035;
-                }
-                else if (IsHidden)
-                {
-                    hue = 0x038E;
-                }
+                hue = 0x038E;
             }
 
             hueVec = ShaderHueTranslator.GetHueVector(hue, partial, alpha);
@@ -393,6 +385,7 @@ namespace ClassicUO.Game.GameObjects
                     }
                     else if (
                         ProfileManager.CurrentProfile.HighlightGameObjects
+                        && ProfileManager.CurrentProfile.HoverHighlightCorpses
                         && ReferenceEquals(SelectedObject.Object, owner)
                     )
                     {

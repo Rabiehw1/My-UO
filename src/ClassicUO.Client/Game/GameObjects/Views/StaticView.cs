@@ -81,7 +81,7 @@ namespace ClassicUO.Game.GameObjects
             bool partial = ItemData.IsPartialHue;
             bool isSelected = SelectedObject.Object == this;
 
-            if (isSelected && _profile.HighlightGameObjects)
+            if (isSelected && _profile.HighlightGameObjects && _profile.HoverHighlightScenery)
             {
                 hue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
                 partial = false;

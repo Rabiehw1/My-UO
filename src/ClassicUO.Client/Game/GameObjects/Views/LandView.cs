@@ -28,7 +28,7 @@ namespace ClassicUO.Game.GameObjects
             ushort hue = Hue;
             bool isSelected = SelectedObject.Object == this;
 
-            if (isSelected && _profile.HighlightGameObjects)
+            if (isSelected && _profile.HighlightGameObjects && _profile.HoverHighlightTerrain)
             {
                 hue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
             }

@@ -17,6 +17,7 @@ namespace ClassicUO.Game.GameObjects
     public partial class Mobile
     {
         private const int SIT_OFFSET_Y = 4;
+        private const ushort WAR_MODE_MONSTER_HOVER_HUE = 0x0023;
         private EquipConvData? _equipConvData;
         private int _characterFrameStartY;
         private int _startCharacterWaistY;
@@ -175,10 +176,17 @@ namespace ClassicUO.Game.GameObjects
             float finalAlpha = isPlayer && profile.PlayerConstantAlpha != 100 ? profile.PlayerConstantAlpha / 100f : AlphaHue / 255f;
             Vector3 hueVec = ShaderHueTranslator.GetHueVector(0, false, finalAlpha);
 
-            // Simplified hue override logic
-            if (isSelected && profile.HighlightGameObjects)
+            var targetManager = World.TargetManager;
+            bool hostileCreature = isSelected && !isPlayer && !isDead && !isHuman && !isGargoyle
+                && !inParty && !IsRenamable
+                && NotorietyFlag is NotorietyFlag.Gray or NotorietyFlag.Enemy or NotorietyFlag.Murderer;
+            bool warModeHover = hostileCreature && profile.RedMonsterHoverInWarMode
+                && World.Player is { InWarMode: true, IsDead: false } && !targetManager.IsTargeting;
+
+            if (warModeHover || (isSelected && profile.HighlightGameObjects
+                && (hostileCreature ? profile.HoverHighlightMonsters : profile.HoverHighlightOtherMobiles)))
             {
-                overridenHue = Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
+                overridenHue = warModeHover ? WAR_MODE_MONSTER_HOVER_HUE : Constants.HIGHLIGHT_CURRENT_OBJECT_HUE;
                 hueVec.Y = 1;
             }
             else if (SelectedObject.HealthbarObject == this)
@@ -226,9 +234,8 @@ namespace ClassicUO.Game.GameObjects
                 }
             }
 
-            if (!isPlayer)
+            if (!isPlayer && !warModeHover)
             {
-                Managers.TargetManager targetManager = World.TargetManager;
                 if ((targetManager.IsTargeting && isSelected) || (Serial == targetManager.LastAttack && !profile.DisableGrayEnemies))
                     overridenHue = Notoriety.GetHue(NotorietyFlag);
                 else if (inParty && profile.OverridePartyAndGuildHue)

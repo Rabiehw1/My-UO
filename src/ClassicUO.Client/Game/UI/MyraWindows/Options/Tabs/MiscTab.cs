@@ -135,16 +135,35 @@ public static class MiscTab
             Keywords: [TazLang.Get("mog_kw_misc"), TazLang.Get("mog_kw_miscellaneous"), TazLang.Get("mog_kw_other")], Tags: [TazLang.Get("mog_kw_misc")]));
     }
 
+    internal static OptionFragment HoverHighlightOptions(Profile profile, string masterLabel)
+    {
+        return OptionsUi.Vertical(
+            OptionsUi.CheckBoxGroup(
+                new PropertyBinder(new Accessor<bool>(() => profile.HighlightGameObjects), masterLabel),
+                Toggle("hover_highlight_monsters", new Accessor<bool>(() => profile.HoverHighlightMonsters)),
+                Toggle("hover_highlight_mobiles", new Accessor<bool>(() => profile.HoverHighlightOtherMobiles)),
+                Toggle("hover_highlight_items", new Accessor<bool>(() => profile.HoverHighlightItems)),
+                Toggle("hover_highlight_corpses", new Accessor<bool>(() => profile.HoverHighlightCorpses)),
+                Toggle("hover_highlight_terrain", new Accessor<bool>(() => profile.HoverHighlightTerrain)),
+                Toggle("hover_highlight_scenery", new Accessor<bool>(() => profile.HoverHighlightScenery))
+            ).WithSearch(new SearchMetadata(masterLabel, Keywords: [TazLang.Get("mog_kw_highlight")])),
+            Toggle("hover_highlight_war_red", new Accessor<bool>(() => profile.RedMonsterHoverInWarMode),
+                TazLang.Get("hover_highlight_war_red_help"))
+        );
+
+        static OptionContent Toggle(string key, Accessor<bool> value, string tooltip = null)
+        {
+            string label = TazLang.Get(key);
+            return Option.Checkbox(label, value, tooltip, new SearchMetadata(label));
+        }
+    }
+
     private static OptionFragment GetPage2()
     {
         Profile profile = ProfileManager.CurrentProfile;
 
         return OptionsUi.Vertical(
-            Option.Checkbox(
-                TazLang.Get("mog_general_highlightobjects"),
-                new Accessor<bool>(() => profile.HighlightGameObjects),
-                search: new SearchMetadata(TazLang.Get("mog_general_highlightobjects"), Keywords: [TazLang.Get("mog_kw_highlight")])
-            ),
+            HoverHighlightOptions(profile, TazLang.Get("mog_general_highlightobjects")),
             Option.Checkbox(
                 TazLang.Get("mog_general_outrangecolor"),
                 new Accessor<bool>(() => profile.NoColorObjectsOutOfRange),

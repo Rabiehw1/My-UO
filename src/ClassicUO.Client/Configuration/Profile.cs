@@ -201,6 +201,13 @@ namespace ClassicUO.Configuration
         public bool StatusGumpBarMutuallyExclusive { get; set => SetProperty(ref field, value); } = true;
         public int BackpackStyle { get; set => SetProperty(ref field, value); }
         public bool HighlightGameObjects { get; set => SetProperty(ref field, value); }
+        public bool HoverHighlightMonsters { get; set => SetProperty(ref field, value); } = true;
+        public bool HoverHighlightOtherMobiles { get; set => SetProperty(ref field, value); } = true;
+        public bool HoverHighlightItems { get; set => SetProperty(ref field, value); } = true;
+        public bool HoverHighlightCorpses { get; set => SetProperty(ref field, value); } = true;
+        public bool HoverHighlightTerrain { get; set => SetProperty(ref field, value); } = true;
+        public bool HoverHighlightScenery { get; set => SetProperty(ref field, value); } = true;
+        public bool RedMonsterHoverInWarMode { get; set => SetProperty(ref field, value); }
         public bool HighlightMobilesByParalize { get; set => SetProperty(ref field, value); } = true;
         public bool HighlightMobilesByPoisoned { get; set => SetProperty(ref field, value); } = true;
         public bool HighlightMobilesByInvul { get; set => SetProperty(ref field, value); } = true;

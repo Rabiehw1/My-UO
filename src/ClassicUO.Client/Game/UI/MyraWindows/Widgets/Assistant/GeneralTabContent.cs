@@ -26,8 +26,7 @@ public static class GeneralTabContent
 
         Widget[] visualToggles =
         [
-            MyraCheckButton.CreateWithCallback(profile.HighlightGameObjects,
-                b => profile.HighlightGameObjects = b, TazLang.Get("assistant_highlightgameobjects")),
+            MiscTab.HoverHighlightOptions(profile, TazLang.Get("assistant_highlightgameobjects")).Render(),
             MyraCheckButton.CreateWithCallback(profile.NameOverheadToggled,
                 b => profile.NameOverheadToggled = b, TazLang.Get("assistant_shownameplates")),
             MyraCheckButton.CreateWithCallback(profile.EnablePetScaling, b =>
