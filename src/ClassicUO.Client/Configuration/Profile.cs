@@ -722,6 +722,7 @@ namespace ClassicUO.Configuration
         [JsonConverter(typeof(Point2Converter))] public Point PaperdollPosition { get; set => SetProperty(ref field, value); } = new(100, 100);
         [JsonConverter(typeof(Point2Converter))] public Point JournalPosition { get; set => SetProperty(ref field, value); } = new(100, 100);
         [JsonConverter(typeof(Point2Converter))] public Point StatusGumpPosition { get; set => SetProperty(ref field, value); } = new(100, 100);
+        [JsonConverter(typeof(NullablePoint2Converter))] public Point? BackpackClassicPosition { get; set => SetProperty(ref field, value); }
         [JsonConverter(typeof(Point2Converter))] public Point BackpackGridPosition { get; set => SetProperty(ref field, value); } = new(100, 100);
         [JsonConverter(typeof(Point2Converter))] public Point BackpackGridSize { get; set => SetProperty(ref field, value); } = new(300, 300);
         public bool WorldMapLocked { get; set => SetProperty(ref field, value); } = false;

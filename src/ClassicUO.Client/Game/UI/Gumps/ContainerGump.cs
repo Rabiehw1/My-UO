@@ -760,6 +760,7 @@ namespace ClassicUO.Game.UI.Gumps
                 )
                 {
                     UIManager.SavePosition(item, Location);
+                    RememberBackpackPosition();
                 }
 
                 for (LinkedObject i = item.Items; i != null; i = i.Next)
@@ -788,6 +789,8 @@ namespace ClassicUO.Game.UI.Gumps
 
         protected override void OnDragEnd(int x, int y)
         {
+            base.OnDragEnd(x, y);
+
             if (
                 ProfileManager.CurrentProfile.OverrideContainerLocation
                 && ProfileManager.CurrentProfile.OverrideContainerLocationSetting >= 2
@@ -797,7 +800,20 @@ namespace ClassicUO.Game.UI.Gumps
                 ProfileManager.CurrentProfile.OverrideContainerLocationPosition = gumpCenter;
             }
 
-            base.OnDragEnd(x, y);
+            RememberBackpackPosition();
+        }
+
+        private void RememberBackpackPosition()
+        {
+            // XML restoration creates a temporary gump to queue an open request.
+            // Only a real container window has a background to go with its coordinates.
+            if (_gumpPicContainer == null || IsDisposed || LocalSerial != World.Player?.Backpack?.Serial
+                || ProfileManager.CurrentProfile is not { OverrideContainerLocationSetting: 3 } profile
+                || profile.BackpackClassicPosition == Location)
+                return;
+
+            profile.BackpackClassicPosition = Location;
+            profile.Save();
         }
 
         private class GumpPicContainer : GumpPic

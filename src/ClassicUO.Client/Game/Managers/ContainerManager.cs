@@ -68,7 +68,14 @@ namespace ClassicUO.Game.Managers
 
         public void CalculateContainerPosition(uint serial, ushort g)
         {
-            if (UIManager.GetGumpCachePosition(serial, out Point location))
+            Profile profile = ProfileManager.CurrentProfile;
+            if (serial == _world.Player?.Backpack?.Serial && profile.OverrideContainerLocationSetting == 3
+                && profile.BackpackClassicPosition is Point backpackPosition)
+            {
+                X = backpackPosition.X;
+                Y = backpackPosition.Y;
+            }
+            else if (UIManager.GetGumpCachePosition(serial, out Point location))
             {
                 X = location.X;
                 Y = location.Y;
