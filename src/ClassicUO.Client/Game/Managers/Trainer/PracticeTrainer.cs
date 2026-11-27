@@ -14,13 +14,44 @@ internal static class PracticeTrainer
     private enum Phase { Idle, Approach, Target, Menu, Taming }
     private sealed record Recipe(string Name, int Skill, int Amount, string Category);
     private sealed record Potion(string Family, ushort Graphic, int Skill, int Amount);
+    private static readonly Recipe BlackStaff = new("Black Staff", 94, 10, "Weapons");
+    // Measured Black Staff minimums from the shard crafting menu, keyed by log hue.
+    private static readonly Dictionary<ushort, int> BlackStaffMinimums = new()
+    {
+        [0x0000] = 94,
+        [0x046C] = 97,
+        [0x0654] = 101,
+        [0x0415] = 103,
+        [0x0203] = 106,
+        [0x0030] = 108,
+        [0x0505] = 110,
+        [0x048A] = 111,
+        [0x0455] = 113,
+        [0x0482] = 115,
+        [0x0498] = 116,
+        [0x0504] = 117,
+        [0x0499] = 118,
+        [0x0489] = 120,
+        [0x08FD] = 121,
+        [0x0542] = 122,
+        [0x0487] = 123,
+        [0x066D] = 124,
+        [0x0507] = 125,
+        [0x0492] = 125,
+        [0x049F] = 126,
+        [0x0501] = 126,
+        [0x0488] = 126,
+        [0x0485] = 129,
+        [0x048D] = 130,
+    };
+
     private static readonly Recipe[] Carpentry =
     [
         new("Barrel Staves", 2, 5, "Miscellaneous"), new("Bench", 10, 10, "Furniture"),
         new("Barrel Lid", 21, 4, "Miscellaneous"), new("Foot Stool", 28, 10, "Furniture"),
         new("Box", 44, 10, "Containers"), new("Strong Box", 64, 15, "Containers"),
         new("Chest", 84, 20, "Containers"), new("Gnarled Staff", 89, 7, "Weapons"),
-        new("Black Staff", 94, 10, "Weapons"), new("Club", 99, 7, "Weapons"),
+        BlackStaff, new("Club", 99, 7, "Weapons"),
         new("Dresser", 100, 50, "Furniture")
     ];
     private static readonly Recipe[] Bows =
@@ -266,6 +297,10 @@ internal static class PracticeTrainer
     private static bool Carried(World world, Item item) => !item.IsDestroyed &&
         (item.Container == world.Player.Serial || item.BackpackOrRootContainer == world.Player.Backpack?.Serial);
 
+    internal static int BlackStaffRank(int skillFixed, ushort hue, int amount) =>
+        amount >= BlackStaff.Amount && BlackStaffMinimums.TryGetValue(hue, out int minimum) &&
+        skillFixed >= minimum * 10 ? minimum : -1;
+
     private static int SkillValue(World world, int index) =>
         world.Player.Skills?.FirstOrDefault(s => s?.Index == index)?.ValueFixed ?? 0;
 
@@ -347,7 +382,24 @@ internal static class PracticeTrainer
                     bool bows = skill.Id == "bowcraft";
                     int skillFixed = SkillValue(world, bows ? 8 : 11);
                     int reserve = bows ? settings.FletchingLogReserve : 0;
-                    var logs = supplies.Where(i => i.Graphic is >= 0x1BDD and <= 0x1BE2 && i.Hue == 0).ToArray();
+                    var wood = supplies.Where(i => i.Graphic is >= 0x1BDD and <= 0x1BE2).ToArray();
+                    if (!bows)
+                    {
+                        int highest = -1;
+                        foreach (var stack in wood)
+                        {
+                            int rank = BlackStaffRank(skillFixed, stack.Hue, stack.Amount);
+                            if (rank <= highest)
+                                continue;
+
+                            highest = rank;
+                            target = stack.Serial;
+                            _recipe = BlackStaff;
+                        }
+                        if (target != 0)
+                            break;
+                    }
+                    var logs = wood.Where(i => i.Hue == 0).ToArray();
                     int expendable = logs.Sum(i => i.Amount) - reserve;
                     foreach (var recipe in (bows ? Bows : Carpentry).Reverse())
                     {
