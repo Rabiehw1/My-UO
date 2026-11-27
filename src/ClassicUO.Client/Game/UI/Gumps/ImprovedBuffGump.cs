@@ -15,7 +15,7 @@ namespace ClassicUO.Game.UI.Gumps
         private GumpPic _background;
         private Button _button;
         private bool _horizontal;
-        private int _lastViewportWidth;
+        private int _lastViewportWidth, _lastViewportHeight;
         private BraidedGoldResizeGrip _resizeGrip;
         private readonly List<CoolDownBar> _bars = new();
         private ushort _graphic = 2091;
@@ -128,9 +128,13 @@ namespace ClassicUO.Game.UI.Gumps
         public override void PreDraw()
         {
             base.PreDraw();
-            if (_bars.RemoveAll(bar => bar.IsDisposed) != 0 || _lastViewportWidth != ScaleHelper.LogicalWindowWidth)
+            if (_bars.RemoveAll(bar => bar.IsDisposed) != 0 ||
+                _lastViewportWidth != ScaleHelper.LogicalWindowWidth ||
+                _lastViewportHeight != ScaleHelper.LogicalWindowHeight)
                 UpdateSize();
         }
+
+        protected override void OnDragEnd(int x, int y) => UpdateSize();
 
         private void UpdateSize()
         {
@@ -138,24 +142,32 @@ namespace ClassicUO.Game.UI.Gumps
             int cardWidth = BraidedGoldResizeGrip.ScalePixels(BraidedGoldProgress.BuffWidth, scale);
             int cardHeight = BraidedGoldResizeGrip.ScalePixels(BraidedGoldProgress.BuffHeight, scale);
             _lastViewportWidth = ScaleHelper.LogicalWindowWidth;
+            _lastViewportHeight = ScaleHelper.LogicalWindowHeight;
             int columns = _horizontal
                 ? Math.Min(Math.Max(1, _bars.Count), Math.Max(1, (_lastViewportWidth + BAR_GAP) / (cardWidth + BAR_GAP)))
                 : 1;
             int rows = (_bars.Count + columns - 1) / columns;
-            int handleY = Y + Height - PADDING_HANDLE;
+            int handleY = Math.Clamp(Y + _button.Y, 0, Math.Max(0, _lastViewportHeight - PADDING_HANDLE));
+            int cardsHeight = rows * (cardHeight + BAR_GAP);
+            int roomBelow = _lastViewportHeight - handleY - PADDING_HANDLE;
+            // Keep the handle in place whenever possible and grow toward the available space.
+            bool cardsBelow = cardsHeight > handleY && roomBelow > handleY;
+            int handleOffset = cardsBelow ? 0 : cardsHeight;
             Width = columns * (cardWidth + BAR_GAP) - BAR_GAP;
-            Height = PADDING_HANDLE + rows * (cardHeight + BAR_GAP);
-            Y = handleY - Height + PADDING_HANDLE;
-            if (_horizontal && _lastViewportWidth >= Width)
-                X = Math.Clamp(X, 0, _lastViewportWidth - Width);
+            Height = PADDING_HANDLE + cardsHeight;
+            Y = handleY - handleOffset;
+            if (Height <= _lastViewportHeight)
+                Y = Math.Clamp(Y, 0, _lastViewportHeight - Height);
+            X = Math.Clamp(X, 0, Math.Max(0, _lastViewportWidth - Width));
 
             _background.Width = cardWidth;
-            _background.Y = Height - PADDING_HANDLE + 2;
-            _button.Y = Height - PADDING_HANDLE;
+            _background.Y = handleOffset + 2;
+            _button.Y = handleOffset;
             _resizeGrip.X = Width - _resizeGrip.Width;
-            _resizeGrip.Y = Height - _resizeGrip.Height;
+            _resizeGrip.Y = handleOffset;
             _box.Width = Width;
-            _box.Height = Height - PADDING_HANDLE;
+            _box.Height = cardsHeight;
+            _box.Y = cardsBelow ? PADDING_HANDLE : 0;
 
             for (int i = 0; i < _bars.Count; i++)
             {
@@ -163,7 +175,7 @@ namespace ClassicUO.Game.UI.Gumps
                 if (bar.Width != cardWidth || bar.Height != cardHeight)
                     bar.ResizeBraidedCard(scale);
                 bar.X = i % columns * (cardWidth + BAR_GAP);
-                int row = _horizontal ? i / columns : rows - i - 1;
+                int row = _horizontal || cardsBelow ? i / columns : rows - i - 1;
                 bar.Y = row * (cardHeight + BAR_GAP);
             }
         }
@@ -216,7 +228,7 @@ namespace ClassicUO.Game.UI.Gumps
 
             writer.WriteAttributeString("type", ((int)GumpType).ToString());
             writer.WriteAttributeString("x", X.ToString());
-            writer.WriteAttributeString("y", (Y + Height - PADDING_HANDLE).ToString());
+            writer.WriteAttributeString("y", (Y + _button.Y).ToString());
             writer.WriteAttributeString("serial", LocalSerial.ToString());
             writer.WriteAttributeString("serverSerial", ServerSerial.ToString());
             writer.WriteAttributeString("isLocked", IsLocked.ToString());
@@ -234,7 +246,7 @@ namespace ClassicUO.Game.UI.Gumps
             _horizontal = bool.TryParse(xml.GetAttribute("horizontal"), out bool horizontal) && horizontal;
             // The persisted Y coordinate is the handle anchor; the profile loader sets
             // it after Restore returns. Lay out the rows relative to it on the next update.
-            Height = PADDING_HANDLE;
+            _button.Y = 0;
 
             RequestUpdateContents();
         }
