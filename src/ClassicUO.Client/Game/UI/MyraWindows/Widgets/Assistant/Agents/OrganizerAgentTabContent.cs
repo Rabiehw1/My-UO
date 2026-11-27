@@ -20,13 +20,16 @@ public static class OrganizerAgentTabContent
         var organizer = OrganizerAgent.Instance;
         return AgentPresetPanel.Build(interaction, "Organizer presets", organizer.OrganizerConfigs, null,
             preset => preset.Name, organizer.NewOrganizerConfig, organizer.RenameConfig, organizer.DupeConfig,
-            organizer.DeleteConfig, BuildPreset);
+            organizer.DeleteConfig, BuildPreset, desktopFullHeight: true);
+
+        MyraButton Button(string label, Action click, bool primary = false) =>
+            interaction.IsDesktop ? DesktopAssistantForm.Button(label, click, primary) : new MyraButton(label, click);
 
         Widget BuildPreset(OrganizerConfig? preset, Action<OrganizerConfig?> refresh)
         {
             var details = new VerticalStackPanel { Spacing = 6 };
-            var actions = AgentPresetPanel.Actions();
-            var import = new MyraButton("Import Organizer", () =>
+            var actions = interaction.IsDesktop ? DesktopAssistantForm.Actions() : AgentPresetPanel.Actions();
+            var import = Button("Import Organizer", () =>
             {
                 if (Clipboard.GetClipboardText() is { Length: > 0 } json && organizer.ImportFromJson(json))
                     refresh(organizer.OrganizerConfigs.Last());
@@ -41,17 +44,17 @@ public static class OrganizerAgentTabContent
                 return details;
             }
 
-            var run = new MyraButton("Run Selected", () => organizer.RunSelected(preset));
+            var run = Button("Run Selected", () => organizer.RunSelected(preset), primary: true);
             if (interaction.IsDesktop)
-                DesktopAssistantTheme.ApplyActionButtonStyle(run, primary: true);
+                run.Enabled = preset.Enabled;
             actions.Widgets.Add(run);
-            actions.Widgets.Add(new MyraButton("Create Macro", () => interaction.RunInGame(() =>
+            actions.Widgets.Add(Button("Create Macro", () => interaction.RunInGame(() =>
             {
                 organizer.CreateOrganizerMacroButton(preset);
                 GameActions.Print($"Created Organizer Macro: {preset.Name}");
             })));
             actions.Widgets.Add(import);
-            actions.Widgets.Add(new MyraButton("Export Organizer", () =>
+            actions.Widgets.Add(Button("Export Organizer", () =>
             {
                 if (organizer.GetJsonExport(preset) is { } json)
                 {
@@ -63,6 +66,8 @@ public static class OrganizerAgentTabContent
                 MyraCheckButton.CreateWithCallback(preset.Enabled, enabled =>
                 {
                     preset.Enabled = enabled;
+                    if (interaction.IsDesktop)
+                        run.Enabled = enabled;
                     organizer.Save();
                 }, "Enabled", "Enable this preset for Run Selected, organizer commands, and macros.")));
 
@@ -94,7 +99,7 @@ public static class OrganizerAgentTabContent
                 var value = new MyraLabel(location, MyraLabel.TextStyle.P) { VerticalAlignment = VerticalAlignment.Center };
                 string targetText = interaction.IsDesktop ? TazLang.Get("organizer_target")
                     : TazLang.Get("organizer_set_container", [label]);
-                var targetButton = new MyraButton(targetText, () =>
+                var targetButton = Button(targetText, () =>
                 {
                     GameActions.Print(prompt);
                     interaction.SelectTarget(target =>
@@ -104,8 +109,10 @@ public static class OrganizerAgentTabContent
                         else
                             GameActions.Print(TazLang.Get("organizer_pick_valid_container"), Constants.HUE_ERROR);
                     });
-                }) { Tooltip = prompt };
-                var useBackpack = new MyraButton(TazLang.Get("organizer_use_backpack"), () => SaveContainer(0)) { Enabled = serial != 0 };
+                });
+                targetButton.Tooltip = prompt;
+                var useBackpack = Button(TazLang.Get("organizer_use_backpack"), () => SaveContainer(0));
+                useBackpack.Enabled = serial != 0;
                 if (interaction.IsDesktop)
                     return new DesktopAssistantForm.Field(label, value, DesktopAssistantForm.Actions(targetButton, useBackpack));
 

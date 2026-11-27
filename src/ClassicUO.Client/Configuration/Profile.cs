@@ -383,9 +383,9 @@ namespace ClassicUO.Configuration
         public int DragSelect_PlayersModifier { get; set => SetProperty(ref field, value); } = 0;
         public int DragSelect_MonstersModifier { get; set => SetProperty(ref field, value); } = 0;
         public int DragSelect_NameplateModifier { get; set => SetProperty(ref field, value); } = 0;
-        public bool OverrideContainerLocation { get; set => SetProperty(ref field, value); }
+        public bool OverrideContainerLocation { get; set => SetProperty(ref field, value); } = true;
 
-        public int OverrideContainerLocationSetting { get; set => SetProperty(ref field, value); } // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
+        public int OverrideContainerLocationSetting { get; set => SetProperty(ref field, value); } = 3; // 0 = container position, 1 = top right of screen, 2 = last dragged position, 3 = remember every container
 
         [JsonConverter(typeof(Point2Converter))] public Point OverrideContainerLocationPosition { get; set => SetProperty(ref field, value); } = new Point(200, 200);
         public bool HueContainerGumps { get; set => SetProperty(ref field, value); } = true;

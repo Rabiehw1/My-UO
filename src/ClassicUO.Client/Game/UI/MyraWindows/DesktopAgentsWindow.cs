@@ -230,9 +230,15 @@ internal sealed class DesktopAgentsWindow
     private Widget BuildLayout()
     {
         var topTabs = CreateTabStrip();
-        foreach (string name in new[] { GeneralTab.Title, _agentsTitle, ItemListsTabContent.Title, HotkeysMacrosTabContent.Title, ShardSpellBooksTabContent.Title, ScriptsTabContent.Title, FiltersTab.Title, TrainerTabContent.Title })
+        foreach (var (name, icon) in new[]
         {
-            var tab = DesktopAssistantTheme.NavigationButton(name, tab: true);
+            (GeneralTab.Title, AssistantTabIcon.Kind.Settings), (_agentsTitle, AssistantTabIcon.Kind.Agent),
+            (ItemListsTabContent.Title, AssistantTabIcon.Kind.List), (HotkeysMacrosTabContent.Title, AssistantTabIcon.Kind.Keyboard),
+            (ShardSpellBooksTabContent.Title, AssistantTabIcon.Kind.Book), (ScriptsTabContent.Title, AssistantTabIcon.Kind.Code),
+            (FiltersTab.Title, AssistantTabIcon.Kind.Filter), (TrainerTabContent.Title, AssistantTabIcon.Kind.Training)
+        })
+        {
+            var tab = DesktopAssistantTheme.PrimaryTabButton(name, icon);
             tab.Click += (_, _) => SelectPage(name);
             _primaryNavigation.Add(name, tab);
             topTabs.Widgets.Add(tab);
@@ -340,7 +346,7 @@ internal sealed class DesktopAgentsWindow
 
         string activeTab = isAgent ? _agentsTitle : _pages[index].Name;
         foreach (var (name, button) in _primaryNavigation)
-            DesktopAssistantTheme.SelectNavigation(button, name == activeTab);
+            DesktopAssistantTheme.SelectPrimaryTab(button, name == activeTab);
 
         _selectedPage = index;
         _pageTitle.Text = _pages[index].Name;

@@ -73,6 +73,15 @@ internal static class AgentPresetPanel
         };
         MyraStyle.ApplyButtonDangerStyle(delete);
 
+        if (fullHeight)
+        {
+            DesktopAssistantTheme.ApplyActionButtonStyle(edit);
+            if (duplicate != null)
+                DesktopAssistantTheme.ApplyActionButtonStyle(duplicate);
+            DesktopAssistantTheme.ApplyActionButtonStyle(delete);
+            MyraStyle.ApplyButtonDangerStyle(delete);
+        }
+
         MyraButton[] actions = duplicate == null ? [add, edit, delete] : [add, edit, duplicate, delete];
         int sidebarWidth = fullHeight ? DesktopAssistantForm.ListSidebarWidth : interaction.IsDesktop ? 210 : 175;
         MyraGrid layout = interaction.IsDesktop ? new DesktopAssistantForm.FixedSidebarLayout(details, sidebarWidth) : new MyraGrid();

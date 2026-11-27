@@ -247,6 +247,37 @@ internal sealed class DesktopAssistantTheme
         HorizontalAlignment = tab ? HorizontalAlignment.Left : HorizontalAlignment.Stretch
     };
 
+    private static readonly SolidBrush PrimaryTabFill = new(new Color(226, 234, 243));
+    private static readonly SolidBrush PrimaryTabHover = new(new Color(210, 224, 240));
+    private static readonly SolidBrush PrimaryTabSelected = new(new Color(18, 57, 98));
+
+    internal static MyraButton PrimaryTabButton(string text, AssistantTabIcon.Kind icon)
+    {
+        var button = NavigationButton(text, tab: true);
+        button.Background = PrimaryTabFill;
+        button.OverBackground = PrimaryTabHover;
+        button.DisabledBackground = button.DisabledBorder = PrimaryTabSelected;
+        button.MinHeight = 31;
+        var row = new HorizontalStackPanel { Spacing = 6, VerticalAlignment = VerticalAlignment.Center };
+        row.Widgets.Add(new AssistantTabIcon(icon, button));
+        row.Widgets.Add(new MyraLabel(text, MyraLabel.TextStyle.P)
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            TextColor = Text,
+            DisabledTextColor = Color.White
+        });
+        button.Content = row;
+        return button;
+    }
+
+    internal static void SelectPrimaryTab(MyraButton button, bool selected)
+    {
+        var caption = (Label)((HorizontalStackPanel)button.Content).Widgets[1];
+        caption.Font = Font(bold: selected);
+        caption.TextColor = selected ? Color.White : Text;
+        button.Enabled = !selected;
+    }
+
     internal static void SelectNavigation(MyraButton button, bool selected)
     {
         if (button.Content is Label caption)
