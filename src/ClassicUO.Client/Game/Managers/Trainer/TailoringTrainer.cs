@@ -35,27 +35,64 @@ internal static class TailoringTrainer
         new("Leather Tunic", 80, 12), new("Studded Gorget", 89, 6), new("Studded Gloves", 93, 8),
         new("Studded Sleeves", 97, 10), new("Studded Leggings", 101, 12), new("Studded Tunic", 105, 14)
     ];
-    private static readonly (string Name, int Difficulty)[] Hides =
-    [
-        ("silver dragon", 145), ("golden dragon", 130), ("ice crystal", 110), ("normal", 0),
-        ("rat", 10), ("wolf", 20), ("bear", 30), ("serpent", 40), ("lizard", 50), ("orc", 55),
-        ("troll", 60), ("terathan", 65), ("ostard", 70), ("necromancer", 80), ("lava", 90),
-        ("liche", 100), ("daemon", 105), ("dragon", 115), ("wyrm", 120), ("balron", 125),
-        ("balrog", 135), ("angel", 150)
-    ];
-
-    internal static int HideDifficulty(string name, ushort hue)
+    // Shard crafting menu measurements. Specialty thresholds are recipe specific.
+    private static readonly Dictionary<ushort, (int Leggings, int Tunic)> StuddedMinimums = new()
     {
-        string words = " " + name.Trim().ToLowerInvariant() + " ";
-        foreach (var hide in Hides)
-            if (words.Contains(" " + hide.Name + " "))
-                return hide.Difficulty;
-        return hue == 0 ? 0 : -1;
+        [0x048D] = (150, 150),
+        [0x0485] = (142, 146),
+        [0x0030] = (144, 148),
+        [0x0000] = (101, 105),
+        [0x0492] = (137, 141),
+        [0x0486] = (131, 135),
+        [0x0496] = (134, 138),
+        [0x0852] = (117, 121),
+        [0x0054] = (127, 131),
+        [0x041E] = (119, 123),
+        [0x0415] = (126, 130),
+        [0x07E2] = (104, 108),
+        [0x08FD] = (114, 118),
+        [0x0482] = (149, 150),
+        [0x0505] = (124, 128),
+        [0x044E] = (107, 111),
+        [0x0487] = (141, 145),
+        [0x0494] = (139, 143),
+        [0x066D] = (136, 140),
+        [0x0488] = (146, 150),
+        [0x054A] = (121, 125),
+    };
+
+    private static int Minimum(Recipe recipe, ushort hue)
+    {
+        if (hue == 0)
+            return recipe.Skill;
+
+        if (!StuddedMinimums.TryGetValue(hue, out var measured))
+            return -1;
+
+        return recipe.Name switch
+        {
+            "Studded Leggings" => measured.Leggings,
+            "Studded Tunic" => measured.Tunic,
+            _ => -1
+        };
     }
 
-    internal static Recipe? SelectRecipe(int skillFixed, int difficulty, int amount) =>
-        difficulty < 0 ? null : Array.FindLast(Armor, r =>
-            (r.Skill + difficulty) * 10 <= skillFixed && r.Cost <= amount);
+    internal static Recipe? SelectRecipe(int skillFixed, ushort hue, int amount)
+    {
+        Recipe? best = null;
+        int highest = -1;
+        foreach (var recipe in Armor)
+        {
+            int minimum = Minimum(recipe, hue);
+            if (minimum < 0 || minimum * 10 > skillFixed || recipe.Cost > amount || minimum <= highest)
+                continue;
+
+            best = recipe;
+            highest = minimum;
+        }
+
+        return best;
+    }
 
     internal static bool MatchesOutput(ushort graphic, ushort hue, string name, ushort menuGraphic,
         ushort materialHue, string recipe) => hue == materialHue && (menuGraphic != 0
@@ -83,11 +120,10 @@ internal static class TailoringTrainer
             if (bag == null || stack.IsDestroyed || stack.BackpackOrRootContainer != bag.Serial ||
                 stack.Graphic is not (0x1067 or 0x1068 or 0x1078 or 0x1079))
                 continue;
-            int difficulty = HideDifficulty(stack.GetNormalizedName(false), stack.Hue);
-            var recipe = SelectRecipe(skill, difficulty, stack.Amount);
+            var recipe = SelectRecipe(skill, stack.Hue, stack.Amount);
             if (recipe == null)
                 continue;
-            int score = difficulty + recipe.Skill;
+            int score = Minimum(recipe, stack.Hue);
             if (score < highest || (score == highest && best != null &&
                 (recipe.Skill < best.Skill || (recipe.Skill == best.Skill && stack.Serial >= leather!.Serial))))
                 continue;
