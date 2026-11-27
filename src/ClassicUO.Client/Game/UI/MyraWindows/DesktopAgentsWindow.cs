@@ -12,7 +12,6 @@ using ClassicUO.Game.UI.MyraWindows.Widgets;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Trainer;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
-using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.ItemLists;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Launcher;
 using ClassicUO.Utility.Logging;
@@ -47,7 +46,6 @@ internal sealed class DesktopAgentsWindow
         new(HotkeysMacrosTabContent.Title, AgentTab.AgentGroup.Controls, HotkeysMacrosTabContent.Build),
         new(ScriptsTabContent.Title, AgentTab.AgentGroup.Controls, ScriptsTabContent.Build),
         new(ShardSpellBooksTabContent.Title, AgentTab.AgentGroup.Controls, ShardSpellBooksTabContent.Build),
-        new(FiltersTab.Title, AgentTab.AgentGroup.Settings, FiltersTab.Build),
         new(TrainerTabContent.Title, AgentTab.AgentGroup.Controls, TrainerTabContent.Build, RebuildOnSelect: true),
         new(GeneralTab.Title, AgentTab.AgentGroup.Settings, GeneralTab.Build)
     ];
@@ -235,7 +233,7 @@ internal sealed class DesktopAgentsWindow
             (GeneralTab.Title, AssistantTabIcon.Kind.Settings), (_agentsTitle, AssistantTabIcon.Kind.Agent),
             (ItemListsTabContent.Title, AssistantTabIcon.Kind.List), (HotkeysMacrosTabContent.Title, AssistantTabIcon.Kind.Keyboard),
             (ShardSpellBooksTabContent.Title, AssistantTabIcon.Kind.Book), (ScriptsTabContent.Title, AssistantTabIcon.Kind.Code),
-            (FiltersTab.Title, AssistantTabIcon.Kind.Filter), (TrainerTabContent.Title, AssistantTabIcon.Kind.Training)
+            (TrainerTabContent.Title, AssistantTabIcon.Kind.Training)
         })
         {
             var tab = DesktopAssistantTheme.PrimaryTabButton(name, icon);

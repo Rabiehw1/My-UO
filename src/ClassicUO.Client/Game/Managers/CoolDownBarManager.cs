@@ -51,7 +51,10 @@ namespace ClassicUO.Game.Managers
             }
         }
 
-        public static void AddCoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, bool replace, bool skipIfExists = false)
+        public static void AddCoolDownBar(World world, TimeSpan duration, string name, ushort hue, bool replace, bool skipIfExists = false) =>
+            CreateCoolDownBar(world, duration, name, hue, replace, skipIfExists);
+
+        internal static CoolDownBar CreateCoolDownBar(World world, TimeSpan _duration, string _name, ushort _hue, bool replace, bool skipIfExists = false)
         {
             if (replace || skipIfExists)
                 for (int i = 0; i < coolDownBars.Length; i++)
@@ -60,12 +63,12 @@ namespace ClassicUO.Game.Managers
                     {
                         //An instance is already on-screen. Preserve the running countdown and do not add a new one.
                         if (skipIfExists)
-                            return;
+                            return coolDownBars[i];
 
                         coolDownBars[i].Dispose();
                         coolDownBars[i] = new CoolDownBar(world, _duration, _name, _hue, CoolDownBar.DEFAULT_X, CoolDownBar.DEFAULT_Y + (i * (CoolDownBar.COOL_DOWN_HEIGHT + 5)));
                         UIManager.Add(coolDownBars[i]);
-                        return;
+                        return coolDownBars[i];
                     }
                 }
             for (int i = 0; i < coolDownBars.Length; i++)
@@ -74,9 +77,11 @@ namespace ClassicUO.Game.Managers
                 {
                     coolDownBars[i] = new CoolDownBar(world, _duration, _name, _hue, CoolDownBar.DEFAULT_X, CoolDownBar.DEFAULT_Y + (i * (CoolDownBar.COOL_DOWN_HEIGHT + 5)));
                     UIManager.Add(coolDownBars[i]);
-                    return;
+                    return coolDownBars[i];
                 }
             }
+
+            return null;
         }
 
         public static CoolDownBar FindCoolDownBar(string name)

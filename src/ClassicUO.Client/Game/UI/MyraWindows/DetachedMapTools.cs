@@ -62,7 +62,8 @@ internal sealed partial class DetachedMapMarkers
             }
             if (walk && !_window.TryWalkTo(tile))
             {
-                status.Text = "Pathfinding is available on your character’s facet.";
+                status.Text = player.IsDrivingBoat && _window.SelectedFacet == _map.MapWorld.MapIndex
+                    ? TazLang.Get("detached_map_boat_unknown") : "Pathfinding is available on your character’s facet.";
                 return;
             }
             if (!walk)
@@ -71,7 +72,7 @@ internal sealed partial class DetachedMapMarkers
         }
 
         var go = DesktopAssistantTheme.ActionButton("Go to", () => Navigate(false));
-        var walkTo = DesktopAssistantTheme.ActionButton("Walk to", () => Navigate(true), primary: true);
+        var walkTo = DesktopAssistantTheme.ActionButton(player.IsDrivingBoat ? TazLang.Get("detached_map_sail_to") : "Walk to", () => Navigate(true), primary: true);
         walkTo.Enabled = _window.SelectedFacet == _map.MapWorld.MapIndex;
         location.TextChangedByUser += (_, _) =>
         {
@@ -88,7 +89,7 @@ internal sealed partial class DetachedMapMarkers
         _content.Widgets.Add(Row(go, walkTo, DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_copy_coordinates"),
             () => SDL_SetClipboardText($"{player.X}, {player.Y}, {player.Z}"))));
         _content.Widgets.Add(Row(new MyraButton("Clear destination", _map.ClearGoToMarker),
-            new MyraButton("Stop walking", _map.StopDesktopNavigation)));
+            new MyraButton(TazLang.Get("detached_map_stop_navigation"), _map.StopDesktopNavigation)));
         _content.Widgets.Add(status);
     }
 

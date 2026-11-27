@@ -133,6 +133,10 @@ internal sealed partial class DetachedMapMarkers
         {
             MapRouteStatus.Planning => TazLang.Get("detached_map_planning"),
             MapRouteStatus.Walking => TazLang.Get("detached_map_walking"),
+            MapRouteStatus.Sailing => TazLang.Get("detached_map_sailing"),
+            MapRouteStatus.BoatUnknown => TazLang.Get("detached_map_boat_unknown"),
+            MapRouteStatus.NoBoatRoute => TazLang.Get("detached_map_no_boat_route"),
+            MapRouteStatus.BoatBlocked => TazLang.Get("detached_map_boat_blocked"),
             MapRouteStatus.Arrived => TazLang.Get("detached_map_arrived"),
             MapRouteStatus.NoRoute => TazLang.Get("detached_map_no_route"),
             _ => ""

@@ -60,6 +60,9 @@ internal static class BoatMoving
 
             if (cSerial == world.Player)
             {
+                if (world.Player.IsDrivingBoat)
+                    world.BoatMovingManager.ObserveHelmedBoat(serial, x, y);
+
                 world.RangeSize.X = cx;
                 world.RangeSize.Y = cy;
             }

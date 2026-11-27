@@ -148,7 +148,10 @@ namespace ClassicUO.Network
             }
 
             if (MainThreadQueue.IsMainThread && socket.IsConnected && ProfileManager.CurrentProfile is { } profile)
+            {
                 GameScene.Instance?.PotionTrace.Begin(World.Instance, profile, serial, fromHealingAssistant);
+                GameScene.Instance?.ConsumableCooldowns.Begin(World.Instance, profile, serial);
+            }
 
             socket.Send(writer.BufferWritten);
 
@@ -539,6 +542,9 @@ namespace ClassicUO.Network
 
             writer.WriteUInt32BE(serial);
             writer.WriteUInt16BE(count);
+
+            if (MainThreadQueue.IsMainThread && socket.IsConnected)
+                GameScene.Instance?.ConsumableCooldowns.Cancel(serial);
 
             if (length < 0)
             {

@@ -1,13 +1,16 @@
 using System;
 using System.Collections.Generic;
+using ClassicUO.Common;
 using ClassicUO.Common.Enums;
 using ClassicUO.Configuration;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Processes;
+using ClassicUO.Game.UI.MyraWindows.Options;
 using ClassicUO.Game.UI.MyraWindows.Options.Tabs;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Search;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
 
@@ -27,6 +30,7 @@ public static class GeneralTabContent
         Widget[] visualToggles =
         [
             MiscTab.HoverHighlightOptions(profile, TazLang.Get("assistant_highlightgameobjects")).Render(),
+            BuildConsumableCooldownOptions(profile),
             MyraCheckButton.CreateWithCallback(profile.NameOverheadToggled,
                 b => profile.NameOverheadToggled = b, TazLang.Get("assistant_shownameplates")),
             MyraCheckButton.CreateWithCallback(profile.EnablePetScaling, b =>
@@ -147,6 +151,41 @@ public static class GeneralTabContent
         {
             Client.Game.SetScale(gameScale);
             ProfileManager.GlobalSettings.GlobalScale = gameScale;
+        }
+    }
+
+    private static Widget BuildConsumableCooldownOptions(Profile profile)
+    {
+        string potion = TazLang.Get("assistant_consumable_potion_seconds");
+        string fish = TazLang.Get("assistant_consumable_fish_seconds");
+        return OptionsUi.CheckBoxGroup(
+            new PropertyBinder(new Accessor<bool>(() => profile.ShowConsumableCooldowns),
+                TazLang.Get("assistant_consumable_cooldowns"), TazLang.Get("assistant_consumable_cooldowns_help")),
+            Option.IntegerInput(potion, new Accessor<int>(() => profile.PotionDisplayCooldownSeconds), 1, 300,
+                search: new SearchMetadata(potion)),
+            Option.IntegerInput(fish, new Accessor<int>(() => profile.FishDisplayCooldownSeconds), 1, 300,
+                search: new SearchMetadata(fish)),
+            OptionsUi.VisualContainer(
+                new VisualContainerProps { LabelText = TazLang.Get("assistant_consumable_potions") },
+                PotionToggle(ConsumableCooldownItems.GreaterHeal, "assistant_consumable_greater_heal"),
+                PotionToggle(ConsumableCooldownItems.Tamala, "assistant_consumable_tamala"),
+                PotionToggle(ConsumableCooldownItems.MageRefresh, "assistant_consumable_mage_refresh"),
+                PotionToggle(ConsumableCooldownItems.GreaterCure, "assistant_consumable_greater_cure"),
+                PotionToggle(ConsumableCooldownItems.FullRefresh, "assistant_consumable_full_refresh"),
+                PotionToggle(ConsumableCooldownItems.Homeric, "assistant_consumable_homeric"),
+                PotionToggle(ConsumableCooldownItems.Dispel, "assistant_consumable_dispel")
+            )
+        ).Render();
+
+        OptionEntry PotionToggle(ConsumableCooldownItems potionKind, string key)
+        {
+            string label = TazLang.Get(key);
+            return Option.Checkbox(label, new Accessor<bool>(
+                () => (profile.TrackedCooldownPotions & potionKind) != 0,
+                enabled => profile.TrackedCooldownPotions = enabled
+                    ? profile.TrackedCooldownPotions | potionKind
+                    : profile.TrackedCooldownPotions & ~potionKind),
+                search: new SearchMetadata(label));
         }
     }
 

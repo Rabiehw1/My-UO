@@ -30,6 +30,21 @@ using ClassicUO.Game.UI.MyraWindows.Widgets.Search;
 
 namespace ClassicUO.Configuration
 {
+    [Flags]
+    public enum ConsumableCooldownItems
+    {
+        None = 0,
+        GreaterHeal = 1 << 0,
+        Tamala = 1 << 1,
+        MageRefresh = 1 << 2,
+        GreaterCure = 1 << 3,
+        FullRefresh = 1 << 4,
+        Homeric = 1 << 5,
+        Dispel = 1 << 6,
+        Fish = 1 << 7,
+        AllPotions = GreaterHeal | Tamala | MageRefresh | GreaterCure | FullRefresh | Homeric | Dispel
+    }
+
     public enum HealingMethod
     {
         Bandages,
@@ -243,6 +258,11 @@ namespace ClassicUO.Configuration
         public bool EnableMousewheelScaleZoom { get; set => SetProperty(ref field, value); } = true;
         public bool RestoreScaleAfterUnpressCtrl { get; set => SetProperty(ref field, value); }
         public bool BandageSelfOld { get; set => SetProperty(ref field, value); } = true;
+
+        public bool ShowConsumableCooldowns { get; set => SetProperty(ref field, value); }
+        public ConsumableCooldownItems TrackedCooldownPotions { get; set => SetProperty(ref field, value); } = ConsumableCooldownItems.AllPotions;
+        public int PotionDisplayCooldownSeconds { get; set => SetProperty(ref field, value); } = 20;
+        public int FishDisplayCooldownSeconds { get; set => SetProperty(ref field, value); } = 20;
 
         // Healing Assistant settings. The default preserves previously enabled bandage profiles.
         public bool EnableHealingAssistant { get; set => SetProperty(ref field, value); } = true;

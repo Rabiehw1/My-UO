@@ -3,6 +3,7 @@ using ClassicUO.Game;
 using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Game.Managers;
+using ClassicUO.Game.Scenes;
 using ClassicUO.Game.UI;
 using ClassicUO.Game.UI.Gumps;
 using ClassicUO.IO;
@@ -110,6 +111,7 @@ internal static class DeleteObject
         else
         {
             var item = (Item)entity;
+            GameScene.Instance?.ConsumableCooldowns.OnItemRemoved(world, item);
 
             if (item.IsMulti)
                 world.HouseManager.Remove(serial);

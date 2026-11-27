@@ -6,6 +6,7 @@ using ClassicUO.Game.Data;
 using ClassicUO.Game.GameObjects;
 using ClassicUO.Network;
 using ClassicUO.Utility.Collections;
+using Microsoft.Xna.Framework;
 
 namespace ClassicUO.Game.Managers
 {
@@ -44,9 +45,21 @@ namespace ClassicUO.Game.Managers
             }
         }
 
-        public void MoveRequest(Direction direciton, byte speed)
+        internal (uint Serial, int Facet, uint Helm, Point Position)? HelmedBoat { get; private set; }
+        internal int ManualMoveVersion { get; private set; }
+
+        internal void ObserveHelmedBoat(uint serial, int x, int y) =>
+            HelmedBoat = (serial, _world.MapIndex, _world.Player.Mount.Serial, new Point(x, y));
+
+        public void MoveRequest(Direction direction, byte speed)
         {
-            AsyncNetClient.Socket.Send_MultiBoatMoveRequest(_world.Player, direciton, speed);
+            ManualMoveVersion++;
+            SendNavigationMove(direction, speed);
+        }
+
+        internal void SendNavigationMove(Direction direction, byte speed)
+        {
+            AsyncNetClient.Socket.Send_MultiBoatMoveRequest(_world.Player, direction, speed);
             _timePacket = Time.Ticks;
         }
 

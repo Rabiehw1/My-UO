@@ -113,6 +113,7 @@ namespace ClassicUO.Game.Scenes
         private readonly World _world;
         internal WeaponSwitchManager WeaponSwitch { get; } = new();
         internal PotionUseTrace PotionTrace { get; } = new();
+        internal ConsumableCooldownMonitor ConsumableCooldowns { get; } = new();
 
         internal void SwitchWeapon() => WeaponSwitch.Start(_world);
 
@@ -246,6 +247,8 @@ namespace ClassicUO.Game.Scenes
             AsyncNetClient.Socket.Disconnected += SocketOnDisconnected;
             EventSink.MessageReceived += ChatOnMessageReceived;
             EventSink.OnItemCreatedInternal += PotionTrace.OnItemCreated;
+            EventSink.OnItemCreatedInternal += ConsumableCooldowns.OnItemChanged;
+            EventSink.OnItemUpdatedInternal += ConsumableCooldowns.OnItemChanged;
             UIManager.ContainerScale = ProfileManager.CurrentProfile.ContainersScale / 100f;
 
             Plugin.OnConnected();
@@ -411,6 +414,9 @@ namespace ClassicUO.Game.Scenes
             Instance = null;
             EventSink.OnItemCreatedInternal -= PotionTrace.OnItemCreated;
             PotionTrace.EndSession();
+            EventSink.OnItemCreatedInternal -= ConsumableCooldowns.OnItemChanged;
+            EventSink.OnItemUpdatedInternal -= ConsumableCooldowns.OnItemChanged;
+            ConsumableCooldowns.Reset();
             DetachedWorldMapWindow.Close(restoreMap: false);
             _world.MapSightings.Flush();
 
@@ -1176,6 +1182,7 @@ namespace ClassicUO.Game.Scenes
             AutoLootManager.Instance.Update();
             ScavengerManager.Instance.Update();
             PotionTrace.Observe(_world);
+            ConsumableCooldowns.Update(_world);
             BandageManager.Instance.Update();
             SupportAgentManager.Instance.Update();
             LegionScripting.ScriptSequence.Update();

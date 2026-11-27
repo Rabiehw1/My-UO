@@ -26,7 +26,7 @@ public partial class WorldMapGump
     private int _navigationFacet;
     private MapRouteStatus _navigationStatus;
 
-    internal enum MapRouteStatus { Idle, Planning, Walking, Arrived, NoRoute }
+    internal enum MapRouteStatus { Idle, Planning, Walking, Arrived, NoRoute, Sailing, BoatUnknown, NoBoatRoute, BoatBlocked }
 
     internal MapRouteStatus NavigationStatus => _navigationStatus;
 
@@ -34,6 +34,8 @@ public partial class WorldMapGump
 
     internal void WalkFromDesktop(int facet, Point tile, bool append)
     {
+        if (_boatPlan != null || _boatRoute != null)
+            StopDesktopNavigation();
         if (append && CanAppendNavigation(facet))
             StartNavPath(facet, _navPlannedEnd.X, _navPlannedEnd.Y, _navPlannedEndZ, tile.X, tile.Y, firstAttempt: true, append: true);
         else
@@ -47,6 +49,11 @@ public partial class WorldMapGump
 
     private void UpdateNavigationState()
     {
+        if (_boatPlan != null || _boatRoute != null)
+        {
+            UpdateBoatNavigation();
+            return;
+        }
         if (!HasMapRoute)
             return;
         if (World.MapIndex != _navigationFacet || World.Player?.Pathfinder == null)
@@ -214,6 +221,11 @@ public partial class WorldMapGump
     internal void StopDesktopNavigation()
     {
         _navVersion++;
+        if (_boatPlan != null || _boatRoute != null)
+        {
+            StopBoatNavigation(MapRouteStatus.Idle);
+            return;
+        }
         if (HasMapRoute)
         {
             WorldMapPathfinder.Cancel();

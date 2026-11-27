@@ -3,6 +3,7 @@ using ClassicUO.Configuration;
 using ClassicUO.Game.UI.MyraWindows.Options.Tabs;
 using ClassicUO.Game.UI.MyraWindows.Theme;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Agents;
+using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Filters;
 using ClassicUO.Game.UI.MyraWindows.Widgets.Assistant.Launcher;
 using Myra.Graphics2D;
 using Myra.Graphics2D.UI;
@@ -25,6 +26,7 @@ public static class GeneralTab
         tabs.AddTab(TazLang.Get("assistant_general_tab_spellindicators", "Spell Indicators"), SpellIndicatorTabContent.Build);
         tabs.AddTab(TazLang.Get("assistant_general_tab_friends", "Friends"), FriendsListTabContent.Build, rebuildOnSelect: true);
         tabs.AddTab(TazLang.Get("assistant_general_tab_pathfinding", "Pathfinding"), PathfindingTabContent.Build);
+        tabs.AddTab(FiltersTab.Title, FiltersTab.Build, rebuildOnSelect: true);
         tabs.SelectFirst();
         return tabs;
     }
@@ -45,7 +47,8 @@ public static class GeneralTab
             (TazLang.Get("assistant_general_tab_spellindicators", "Spell Indicators"), SpellIndicatorTabContent.Build),
             (TazLang.Get("assistant_general_tab_friends", "Friends"), () => FriendsListTabContent.Build(interaction)),
             (TazLang.Get("assistant_general_tab_pathfinding", "Pathfinding"), PathfindingTabContent.Build),
-            (TazLang.Get("mog_misctab_label", "Miscellaneous"), () => MiscTab.GetContent().Render())
+            (TazLang.Get("mog_misctab_label", "Miscellaneous"), () => MiscTab.GetContent().Render()),
+            (FiltersTab.Title, () => FiltersTab.Build(interaction))
         ];
 
         int sidebarWidth = DesktopAssistantTheme.SidebarWidth - 14;
