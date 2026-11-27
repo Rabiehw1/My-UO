@@ -170,6 +170,7 @@ namespace ClassicUO.Game.GameObjects
 
         public Rectangle? MultiInfo;
         public bool Opened;
+        internal bool CorpseOpenConfirmed { get; set; }
 
         public uint Price;
         public bool UsedLayer;
@@ -258,6 +259,7 @@ namespace ClassicUO.Game.GameObjects
                 // Item is no longer a corpse, remove from collection
                 World.RemoveCorpse(this);
                 _wasCorpse = false;
+                CorpseOpenConfirmed = false;
             }
         }
 
@@ -273,6 +275,7 @@ namespace ClassicUO.Game.GameObjects
             {
                 World.RemoveCorpse(this);
                 _wasCorpse = false;
+                CorpseOpenConfirmed = false;
             }
 
             if (Opened)

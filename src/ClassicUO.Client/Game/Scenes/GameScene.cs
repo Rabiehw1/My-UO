@@ -254,7 +254,6 @@ namespace ClassicUO.Game.Scenes
             SpellDefinition.LoadCustomSpells(_world);
             SpellVisualRangeManager.Instance.OnSceneLoad();
             AutoLootManager.Instance.OnSceneLoad();
-            AutoSkinningManager.Instance.OnSceneLoad();
             ScavengerManager.Instance.OnSceneLoad();
             DressAgentManager.Instance.Load();
             FriendsListManager.Instance.OnSceneLoad();
@@ -1173,7 +1172,6 @@ namespace ClassicUO.Game.Scenes
             }
 
             WeaponSwitch.Update(_world);
-            ObjectActionQueue.Instance.Update();
             Managers.Trainer.TrainerManager.Instance.Update();
             AutoLootManager.Instance.Update();
             ScavengerManager.Instance.Update();
@@ -1183,6 +1181,7 @@ namespace ClassicUO.Game.Scenes
             LegionScripting.ScriptSequence.Update();
             ShardSpellCaster.Instance.Update();
             AutoSkinningManager.Instance.Update(_world);
+            ObjectActionQueue.Instance.Update();
             EnhancedMapManager.Instance.Update();
             GridHighlightData.ProcessQueue(_world);
             Profiler.ExitContext("Actions");

@@ -46,7 +46,7 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
     public new void ClearByPriority(ActionPriority priority) => CancelActions((_, queuedPriority) => queuedPriority == priority);
 
     internal void CancelAutomaticCorpseOpens() => CancelActions(static (_, priority) =>
-        priority is ActionPriority.OpenCorpse or ActionPriority.OpenCorpseForSkinning);
+        priority is ActionPriority.OpenCorpse or ActionPriority.OpenCorpseForAgents);
 
     /// <summary>
     /// Cancel every queued action that moves <paramref name="serial"/>.
@@ -318,18 +318,21 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
 
     internal bool TryDequeueScheduled(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence) =>
         _yieldToLoot
-            ? TryDequeueYielding(ActionPriority.OpenCorpseForSkinning, IsLoot, out item, out priority, out sequence)
+            ? TryDequeueYielding(IsCorpseSetup, IsLoot, out item, out priority, out sequence)
             : TryDequeue(out item, out priority, out sequence);
 
     internal void RecordExecutedPriority(ActionPriority priority)
     {
-        // A real promoted open lets the next pending loot move run before more opens.
+        // Give ready loot a turn between automatic opens and knife uses.
         // Canceled actions and no-ops do not take anyone's turn.
-        if (priority == ActionPriority.OpenCorpseForSkinning)
+        if (IsCorpseSetup(priority))
             _yieldToLoot = true;
         else if (IsLoot(priority))
             _yieldToLoot = false;
     }
+
+    private static bool IsCorpseSetup(ActionPriority priority) =>
+        priority is ActionPriority.OpenCorpseForAgents or ActionPriority.AutoSkinning;
 
     private static bool IsLoot(ActionPriority priority) =>
         priority is >= ActionPriority.LootItemHigh and <= ActionPriority.LootItem;
@@ -405,9 +408,9 @@ public enum ActionPriority
     UnequipItem, //Unequip item to make room for equipping - must run before EquipItem
     EquipItem,
     ManualMoveItem, //A move the player initiated - must run before queued/automated moves
-    AutoSkinning,  //A knife use that is ready to reserve the target cursor.
     MoveItem,
-    OpenCorpseForSkinning, //Shares turns with automatic loot moves.
+    AutoSkinning,  //A knife use that is ready to reserve the target cursor.
+    OpenCorpseForAgents, //Shares turns with automatic loot moves.
     LootItemHigh,   //Auto-loot: High priority items (still lower than manual moves)
     LootItemMedium, //Auto-loot: Normal priority items
     LootItem,       //Auto-loot: Low priority items - lowest overall priority

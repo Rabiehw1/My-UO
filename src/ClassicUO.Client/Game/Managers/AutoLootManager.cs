@@ -111,6 +111,109 @@ namespace ClassicUO.Game.Managers
         private bool CanLoot => _world.Player is { IsDead: false };
         private bool CanScanCorpses => _loaded && IsEnabled && CanLoot;
 
+        private const int CorpseReopenDelayMs = 120_000;
+        private const int CorpseOpenTimeoutMs = 5_000;
+        private const int ContentsQuietMs = 250;
+        private readonly Queue<uint> _corpseQueue = new();
+        private readonly HashSet<uint> _queuedCorpses = new();
+        private readonly HashSet<uint> _nearbyLootRequests = new();
+        private readonly Dictionary<uint, long> _corpseReopenAfter = new();
+        private readonly Queue<(uint Serial, long Expires)> _corpseOpenHistory = new();
+        private uint _activeCorpse;
+        private long _corpseDeadline, _contentsQuietUntil;
+        private bool _skinStarted;
+
+        internal bool IsProcessingCorpse(uint serial) => serial != 0 && serial == _activeCorpse;
+
+        internal bool IsReopenCoolingDown(uint serial) =>
+            _corpseReopenAfter.TryGetValue(serial, out long until) && Time.Ticks < until;
+
+        internal bool ManagesCorpse(Item corpse) =>
+            CanLoot && (CanPrioritizeOpen(corpse) || AutoSkinningManager.Instance.CanPrioritizeOpen(corpse));
+
+        internal void EnqueueCorpse(uint serial, bool requestedByNearbyLoot = false)
+        {
+            if (requestedByNearbyLoot && !IsProcessingCorpse(serial))
+                _nearbyLootRequests.Add(serial);
+            if (!IsProcessingCorpse(serial) && _queuedCorpses.Add(serial))
+                _corpseQueue.Enqueue(serial);
+        }
+
+        private void UpdateCorpseQueue()
+        {
+            long now = Time.Ticks;
+            while (_corpseOpenHistory.TryPeek(out var opened) && now >= opened.Expires)
+            {
+                _corpseOpenHistory.Dequeue();
+                if (_corpseReopenAfter.TryGetValue(opened.Serial, out long latest) && latest == opened.Expires)
+                    _corpseReopenAfter.Remove(opened.Serial);
+            }
+
+            if (_activeCorpse != 0)
+            {
+                var corpse = _world.Items.Get(_activeCorpse);
+                if (IsReachableCorpse(corpse) && ManagesCorpse(corpse))
+                {
+                    if (!corpse.CorpseOpenConfirmed)
+                    {
+                        if (now < _corpseDeadline)
+                            return;
+                        if (!ProfileManager.CurrentProfile.DisableAutolootCorpseRetry)
+                            _world.Player.AutoOpenedCorpses.Remove(_activeCorpse);
+                    }
+                    else
+                    {
+                        if (_pendingLootCount != 0 || ObjectActionQueue.Instance.HasPendingMove || now < _contentsQuietUntil)
+                            return;
+
+                        var skinning = AutoSkinningManager.Instance;
+                        if (!_skinStarted)
+                        {
+                            _skinStarted = true;
+                            skinning.TrySkin(corpse);
+                        }
+                        if (skinning.HasPendingCarve(_activeCorpse))
+                            return;
+                    }
+                }
+                _activeCorpse = 0;
+            }
+
+            if (ObjectActionQueue.Instance.HasPendingMove || AutoSkinningManager.Instance.IsWaitingForCursor)
+                return;
+
+            while (_corpseQueue.TryDequeue(out uint serial))
+            {
+                _queuedCorpses.Remove(serial);
+                bool requestedByNearbyLoot = _nearbyLootRequests.Remove(serial);
+                var corpse = _world.Items.Get(serial);
+                if (!IsReachableCorpse(corpse) || !ManagesCorpse(corpse))
+                    continue;
+                bool alreadyOpened = corpse.CorpseOpenConfirmed;
+                if (!alreadyOpened && (IsReopenCoolingDown(serial) ||
+                    _world.Player.IsAutomaticCorpseOpenBlocked ||
+                    !requestedByNearbyLoot && !ProfileManager.CurrentProfile.AutoOpenCorpses))
+                    continue;
+
+                _activeCorpse = serial;
+                _skinStarted = false;
+                _corpseDeadline = now + CorpseOpenTimeoutMs;
+                _contentsQuietUntil = now + ContentsQuietMs;
+                if (alreadyOpened)
+                {
+                    if (CanScanCorpses)
+                        HandleCorpse(corpse);
+                }
+                else
+                    GameActions.QueueOpenCorpse(serial, automaticallyQueued: !requestedByNearbyLoot, fromCorpseQueue: true);
+                return;
+            }
+        }
+
+        private bool IsReachableCorpse(Item corpse) =>
+            corpse is { IsCorpse: true, IsDestroyed: false } &&
+            corpse.Distance <= ProfileManager.CurrentProfile.AutoOpenCorpseRange;
+
         private readonly World _world;
 
         private AutoLootManager()
@@ -182,14 +285,21 @@ namespace ClassicUO.Game.Managers
         private bool IsIgnored(Item item) =>
             ItemListLibrary.Resolve(_currentList?.IgnoreItemListId)?.Find(item) != null;
 
+        internal bool CanPrioritizeOpen(Item corpse) => CanScanCorpses && !IsExcludedCorpse(corpse);
+
         private bool IsExcludedCorpse(Item corpse) =>
             corpse is { IsHumanCorpse: true } && _currentList?.LootHumanCorpses != true;
+
+        private bool CanLootCorpse(Item corpse) =>
+            !IsExcludedCorpse(corpse) && (corpse.CorpseOpenConfirmed ||
+                ProfileManager.ServerSettings is { DoNotReopenCorpses: true } && CorpseManager.IsCorpseOpened(corpse.Serial));
 
         private bool IsAutomaticLootExcluded(Item item)
         {
             uint rootSerial = item.RootContainer;
             // Wait until the container chain is known. A nested item can arrive before its corpse.
-            return rootSerial == 0 || IsExcludedCorpse(_world.Items.Get(rootSerial)) || IsIgnored(item);
+            return rootSerial == 0 ||
+                (_world.Items.Get(rootSerial) is { IsCorpse: true } corpse && (!CanLootCorpse(corpse) || !IsProcessingCorpse(rootSerial))) || IsIgnored(item);
         }
 
         public void ForceLootContainer(uint serial)
@@ -315,7 +425,7 @@ namespace ClassicUO.Game.Managers
                 return;
             }
 
-            if (IsExcludedCorpse(corpse)) return;
+            if (!IsProcessingCorpse(corpse.Serial) || !CanLootCorpse(corpse)) return;
 
             for (LinkedObject i = corpse.Items; i != null; i = i.Next)
                 CheckAndLoot((Item)i);
@@ -524,8 +634,9 @@ namespace ClassicUO.Game.Managers
             }
 
             Item root = _world.Items.Get(i.RootContainer);
-            if (root is { IsCorpse: true } && !IsExcludedCorpse(root))
+            if (root is { IsCorpse: true } && IsProcessingCorpse(root.Serial) && CanLootCorpse(root))
             {
+                _contentsQuietUntil = Time.Ticks + ContentsQuietMs;
                 // Each corpse item raises its own event, so only check the triggering item (avoids O(N²)).
                 CheckAndLoot(i);
             }
@@ -610,9 +721,24 @@ namespace ClassicUO.Game.Managers
 
         private void OnOpenContainer(object sender, uint e)
         {
-            if (!CanScanCorpses) return;
+            if (sender is not Item item)
+                return;
 
-            CheckCorpse((Item)sender);
+            // Contents can arrive before the shard confirms an open. Rescan them on confirmation.
+            if (item.IsCorpse)
+            {
+                item.CorpseOpenConfirmed = true;
+                long expires = Time.Ticks + CorpseReopenDelayMs;
+                _corpseReopenAfter[item.Serial] = expires;
+                _corpseOpenHistory.Enqueue((item.Serial, expires));
+                if (IsProcessingCorpse(item.Serial))
+                    _contentsQuietUntil = Time.Ticks + ContentsQuietMs;
+                else if (ManagesCorpse(item))
+                    EnqueueCorpse(item.Serial);
+            }
+
+            if (CanScanCorpses)
+                CheckCorpse(item);
         }
 
         private void OnItemCreatedOrUpdated(object sender, EventArgs e)
@@ -641,6 +767,10 @@ namespace ClassicUO.Game.Managers
                 {
                     _pausedForDeath = true;
                     ClearActiveLootQueue();
+                    _activeCorpse = 0;
+                    _corpseQueue.Clear();
+                    _queuedCorpses.Clear();
+                    _nearbyLootRequests.Clear();
                 }
                 return;
             }
@@ -660,6 +790,8 @@ namespace ClassicUO.Game.Managers
                 _sharedListRevision = ItemListLibrary.Instance.Revision;
                 InvalidateScannedCorpses();
             }
+
+            UpdateCorpseQueue();
 
             if (_pendingLootCount == 0)
             {

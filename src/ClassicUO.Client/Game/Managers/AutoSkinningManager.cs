@@ -67,14 +67,8 @@ public sealed class AutoSkinningManager
     /// <summary>Whether automated actions should leave the next target cursor to the knife.</summary>
     internal bool IsWaitingForCursor => _awaitingCursor != null && Time.Ticks < _cursorDeadline;
 
-    public void OnSceneLoad()
-    {
-        EventSink.OnOpenContainer += OnOpenContainer;
-    }
-
     public void OnSceneUnload()
     {
-        EventSink.OnOpenContainer -= OnOpenContainer;
         _carvedMoves.Clear();
         _recentMaterialDrops.Clear();
         _watchCarvedUntil = 0;
@@ -85,21 +79,14 @@ public sealed class AutoSkinningManager
         Instance = null;
     }
 
-    private void OnOpenContainer(object sender, uint serial)
-    {
-        if (!IsEnabled)
-            return;
-
-        if (sender is Item corpse && corpse.IsCorpse)
-            TrySkin(corpse);
-    }
-
     /// <summary>
     /// Records an opened corpse for skinning when combat and item actions leave a free slot.
     /// </summary>
+    internal bool HasPendingCarve(uint serial) => _pending.ContainsKey(serial);
+
     public void TrySkin(Item corpse)
     {
-        if (!IsEligible(corpse) || _pending.Count >= MaxPendingCorpses)
+        if (!CanPrioritizeOpen(corpse) || _pending.Count >= MaxPendingCorpses)
             return;
 
         _pending.TryAdd(corpse.Serial, new PendingCarve(corpse.Serial, (long)Time.Ticks + PendingLifetimeMs));
@@ -157,7 +144,7 @@ public sealed class AutoSkinningManager
         foreach (PendingCarve carve in _pending.Values)
         {
             Item corpse = world.Items.Get(carve.Serial);
-            if (now >= carve.Expires || !IsEligible(corpse))
+            if (now >= carve.Expires || !IsEligible(corpse) || !AutoLootManager.Instance.IsProcessingCorpse(carve.Serial))
             {
                 _pending.Remove(carve.Serial);
                 continue;
@@ -168,6 +155,8 @@ public sealed class AutoSkinningManager
 
             if (CanStart(world) && FindKnife() != null)
                 EnqueueCarve(world, carve);
+            else
+                _nextCheck = now;
             return;
         }
     }
@@ -191,6 +180,7 @@ public sealed class AutoSkinningManager
         ObjectActionQueue.Instance.Enqueue(new ObjectActionQueueItem(() =>
         {
             if (!_pending.TryGetValue(carve.Serial, out PendingCarve current) || current != carve
+                || !AutoLootManager.Instance.IsProcessingCorpse(carve.Serial)
                 || Time.Ticks >= carve.Expires || !CanStart(world) || !IsWithinReach(world.Items.Get(carve.Serial))
                 || FindKnife() is not { } knife)
                 return;

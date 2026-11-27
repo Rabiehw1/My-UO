@@ -625,7 +625,7 @@ internal static class GameActions
         Socket.Send_AttackRequest(serial);
     }
 
-    internal static void QueueOpenCorpse(uint serial, bool ownCorpse = false, bool automaticallyQueued = false)
+    internal static void QueueOpenCorpse(uint serial, bool ownCorpse = false, bool automaticallyQueued = false, bool fromCorpseQueue = false)
     {
         World world = World.Instance;
         PlayerMobile player = world?.Player;
@@ -635,12 +635,23 @@ internal static class GameActions
 
         bool manual = player.ManualOpenedCorpses.Contains(serial);
         bool autoPriority = !ownCorpse && !manual;
+        var loot = AutoLootManager.Instance;
+        if (loot.IsReopenCoolingDown(serial))
+            return;
+        if (autoPriority && !fromCorpseQueue && loot.ManagesCorpse(corpse))
+        {
+            if (!player.IsAutomaticCorpseOpenBlocked)
+                loot.EnqueueCorpse(serial, requestedByNearbyLoot: !automaticallyQueued);
+            return;
+        }
+
         if (autoPriority && player.IsAutomaticCorpseOpenBlocked || !player.QueuedCorpseOpens.Add(serial))
             return;
 
         ActionPriority priority = ownCorpse ? ActionPriority.Immediate
             : manual ? ActionPriority.ManualUseItem
-            : AutoSkinningManager.Instance.CanPrioritizeOpen(corpse) ? ActionPriority.OpenCorpseForSkinning
+            : (AutoLootManager.Instance.CanPrioritizeOpen(corpse) || AutoSkinningManager.Instance.CanPrioritizeOpen(corpse))
+                ? ActionPriority.OpenCorpseForAgents
             : ActionPriority.OpenCorpse;
         bool opened = false;
         ObjectActionQueue.Instance.Enqueue(
@@ -655,6 +666,8 @@ internal static class GameActions
                 || ProfileManager.CurrentProfile is not { } profile
                 || World.Instance.Items.Get(serial) is not { IsCorpse: true, IsDestroyed: false } current
                 || current.Distance > profile.AutoOpenCorpseRange
+                || fromCorpseQueue && !loot.IsProcessingCorpse(serial)
+                || loot.IsReopenCoolingDown(serial)
                 || autoPriority && player.IsAutomaticCorpseOpenBlocked
                 || automaticallyQueued && !profile.AutoOpenCorpses && !(ownCorpse && profile.AutoOpenOwnCorpse)
                 || ProfileManager.ServerSettings is { DoNotReopenCorpses: true } && CorpseManager.IsCorpseOpened(serial))

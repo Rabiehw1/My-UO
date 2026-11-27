@@ -34,13 +34,12 @@ public class ConcurrentPriorityQueue<TElement, TPriority>
     /// Let the next priority group go first when the head group is yielding and work from
     /// the other group is available. The yielded items keep their original FIFO order.
     /// </summary>
-    protected bool TryDequeueYielding(TPriority yieldPriority, Predicate<TPriority> mayTakeTurn,
+    protected bool TryDequeueYielding(Predicate<TPriority> isYielding, Predicate<TPriority> mayTakeTurn,
         out TElement element, out TPriority priority, out long sequence)
     {
         lock (_lock)
         {
-            var comparer = EqualityComparer<TPriority>.Default;
-            if (!_queue.TryPeek(out _, out var head) || !comparer.Equals(head.Priority, yieldPriority))
+            if (!_queue.TryPeek(out _, out var head) || !isYielding(head.Priority))
                 return TryDequeueCore(out element, out priority, out sequence);
 
             bool hasOtherWork = false;
@@ -56,7 +55,7 @@ public class ConcurrentPriorityQueue<TElement, TPriority>
                 return TryDequeueCore(out element, out priority, out sequence);
 
             var yielded = new List<(TElement Element, (TPriority Priority, long Sequence) Priority)>();
-            while (_queue.TryPeek(out var next, out var nextPriority) && comparer.Equals(nextPriority.Priority, yieldPriority))
+            while (_queue.TryPeek(out var next, out var nextPriority) && isYielding(nextPriority.Priority))
             {
                 _queue.Dequeue();
                 yielded.Add((next, nextPriority));
