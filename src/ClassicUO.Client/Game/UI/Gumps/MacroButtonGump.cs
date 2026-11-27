@@ -176,7 +176,8 @@ namespace ClassicUO.Game.UI.Gumps
                     SpriteInfo texture = MacroButtonArt.GetSprite(value.Value);
                     if (texture.Texture != null)
                     {
-                        bounds = texture.UV;
+                        Point size = MacroButtonArt.DisplaySize(value.Value, texture);
+                        bounds = new Rectangle(0, 0, size.X, size.Y);
                         IsPartialHue = MacroButtonArt.IsPartialHue(value.Value);
                     }
                 }

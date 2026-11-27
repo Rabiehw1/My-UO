@@ -16,6 +16,9 @@ internal static class MacroButtonArt
 
     internal static bool IncludesCaption(int? graphic) => graphic == Macro.MAIN_DRESS_GRAPHIC;
 
+    internal static Point DisplaySize(int graphic, SpriteInfo sprite) =>
+        graphic == Macro.MAIN_DRESS_GRAPHIC ? new Point(182, 60) : new Point(sprite.UV.Width, sprite.UV.Height);
+
     internal static bool IsPartialHue(int graphic)
     {
         if ((uint)graphic > ushort.MaxValue)

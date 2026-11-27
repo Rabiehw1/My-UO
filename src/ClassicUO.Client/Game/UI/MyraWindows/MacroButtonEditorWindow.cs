@@ -764,6 +764,11 @@ public sealed class MacroButtonEditorWindow : MyraControl
     /// </summary>
     private void Save()
     {
+        // A momentary macro immediately returns to idle. If Main Dress was selected
+        // for Running on a bare button, also make it visible in the idle state.
+        if (!_macro.Graphic.HasValue && _macro.ActiveGraphic == Macro.MAIN_DRESS_GRAPHIC)
+            _macro.Graphic = Macro.MAIN_DRESS_GRAPHIC;
+
         _committed = MacroButtonAppearance.Capture(_macro);
 
         World.Instance.Macros.Save();

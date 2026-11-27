@@ -275,7 +275,7 @@ public sealed class MacroButtonPreview : Panel, IDisposable
 
         SpriteInfo sprite = MacroButtonArt.GetSprite(graphic);
 
-        return sprite.Texture == null ? new Point(PLATE_WIDTH, PLATE_HEIGHT) : new Point(sprite.UV.Width, sprite.UV.Height);
+        return sprite.Texture == null ? new Point(PLATE_WIDTH, PLATE_HEIGHT) : MacroButtonArt.DisplaySize(graphic, sprite);
     }
 
     /// <summary>Drops the hue bake and the image pointing at it. Idempotent.</summary>
