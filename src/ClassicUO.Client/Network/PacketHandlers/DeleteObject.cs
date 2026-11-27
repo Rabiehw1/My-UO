@@ -38,9 +38,6 @@ internal static class DeleteObject
 
                 if (top != null)
                 {
-                    if (it.Layer == Layer.Mount && top is Mobile mob)
-                        mob.Mount = null;
-
                     if (top == world.Player)
                     {
                         updateAbilities =

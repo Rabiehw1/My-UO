@@ -698,6 +698,9 @@ namespace ClassicUO.Configuration
 
         public ushort MainWindowBackgroundHue { get; set => SetProperty(ref field, value); } = 1;
 
+        // Null preserves the existing movement delay until the player sets an Auto Loot override.
+        public int? AutoLootItemMoveDelay { get; set => SetProperty(ref field, value); }
+
         public int MoveMultiObjectDelay { get; set => SetProperty(ref field, value); } = 1000;
 
         public bool SpellIcon_DisplayHotkey { get; set => SetProperty(ref field, value); } = true;

@@ -12,14 +12,15 @@ public class CarveMaterialRoutingTests
     [InlineData(0x1BD1, true)] // Feathers
     [InlineData(0x101F, true)] // Tainted wool
     [InlineData(0x26B4, true)] // Scales
+    [InlineData(0, false)]
     [InlineData(0x0E20, false)] // Bloody bandages
-    [InlineData(0x0E21, false)] // Bandages
-    [InlineData(0x0E22, false)] // Alternate bandage art
-    [InlineData(0x0EED, false)] // Gold
-    [InlineData(0x0F0C, false)] // Potion
-    public void RoutesOnlyKnownCarvingMaterials(int graphic, bool expected)
+    [InlineData(0x0E21, true)] // Bandages
+    [InlineData(0x0E22, true)] // Alternate bandage art
+    [InlineData(0x0EED, true)] // Gold
+    [InlineData(0x0F0C, true)] // Potion
+    public void RoutesNewItemsExceptBloodyBandages(int graphic, bool expected)
     {
-        Assert.Equal(expected, AutoSkinningManager.IsCarvingMaterial((ushort)graphic));
+        Assert.Equal(expected, AutoSkinningManager.CanRouteCarvedItem((ushort)graphic));
     }
 
     [Fact]

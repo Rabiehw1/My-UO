@@ -52,6 +52,11 @@ public static class GeneralTabContent
 
         var objectDelay = LabeledHorizontalSlider.CreateSliderWithCallback(0, 3000, profile.MoveMultiObjectDelay,
             v => profile.MoveMultiObjectDelay = (int)v, valueSuffix: " ms");
+        objectDelay.Tooltip = TazLang.Get("assistant_general_movement_delay_tooltip");
+        var autoLootDelay = LabeledHorizontalSlider.CreateSliderWithCallback(0, 3000,
+            profile.AutoLootItemMoveDelay ?? profile.MoveMultiObjectDelay,
+            v => profile.AutoLootItemMoveDelay = (int)v, valueSuffix: " ms");
+        autoLootDelay.Tooltip = TazLang.Get("assistant_autoloot_pickup_delay_tooltip");
         var checkDelay = new MyraButton(TazLang.Get("assistant_autodelaychecker"),
             () => interaction.RunInGame(() => AutomatedObjectDelay.Begin(() => objectDelay.Value = profile.MoveMultiObjectDelay)))
         { Tooltip = TazLang.Get("assistant_autodelaychecker_tooltip") };
@@ -82,7 +87,8 @@ public static class GeneralTabContent
 
         string dragDistanceLabel = TazLang.Get("assistant_mingumpdragdist");
         string scaleLabel = TazLang.Get("assistant_gamescale");
-        string delayLabel = TazLang.Get("assistant_objectdelay");
+        string delayLabel = TazLang.Get("assistant_general_movement_delay");
+        string lootDelayLabel = TazLang.Get("assistant_autoloot_pickup_delay");
         string healLabel = TazLang.Get("assistant_quickhealspell");
         string cureLabel = TazLang.Get("assistant_quickcurespell");
 
@@ -102,7 +108,8 @@ public static class GeneralTabContent
             var visuals = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_visuals"),
                 [.. visualToggles, DesktopAssistantForm.Fields(new(dragDistanceLabel, dragDistance), new(scaleLabel, scale)), applyScale]);
             var timing = DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_object_timing"),
-                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(delayLabel, objectDelay)), checkDelay);
+                DesktopAssistantForm.Fields(new DesktopAssistantForm.Field(delayLabel, objectDelay),
+                    new DesktopAssistantForm.Field(lootDelayLabel, autoLootDelay)), checkDelay);
             desktop.Widgets.Add(new DesktopAssistantForm.SectionPair(visuals, timing));
             desktop.Widgets.Add(DesktopAssistantTheme.Group(TazLang.Get("assistant_desktop_game_interaction"),
                 [.. gameplayToggles, DesktopAssistantForm.Fields(new(healLabel, quickHeal), new(cureLabel, quickCure)), setLastTarget]));
@@ -122,6 +129,7 @@ public static class GeneralTabContent
         left.Widgets.Add(applyScale);
         right.Widgets.Add(new MyraLabel(TazLang.Get("assistant_delayconfig"), MyraLabel.TextStyle.H2));
         right.Widgets.Add(GameSliderRow(delayLabel, objectDelay));
+        right.Widgets.Add(GameSliderRow(lootDelayLabel, autoLootDelay));
         right.Widgets.Add(checkDelay);
         right.Widgets.Add(new MyraSpacer(20, 15));
         right.Widgets.Add(new MyraLabel(TazLang.Get("assistant_misc"), MyraLabel.TextStyle.H2));

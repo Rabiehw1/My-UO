@@ -114,16 +114,23 @@ namespace ClassicUO.Game.Managers
         private const int CorpseReopenDelayMs = 120_000;
         private const int CorpseOpenTimeoutMs = 5_000;
         private const int ContentsQuietMs = 150;
+        private const int PostSkinLootDelayMs = 150;
         private readonly Queue<uint> _corpseQueue = new();
         private readonly HashSet<uint> _queuedCorpses = new();
         private readonly HashSet<uint> _nearbyLootRequests = new();
         private readonly Dictionary<uint, long> _corpseReopenAfter = new();
         private readonly Queue<(uint Serial, long Expires)> _corpseOpenHistory = new();
         private uint _activeCorpse;
-        private long _corpseDeadline, _contentsQuietUntil;
+        private long _corpseDeadline, _contentsQuietUntil, _postSkinLootAt;
         private bool _skinStarted;
 
         internal bool IsProcessingCorpse(uint serial) => serial != 0 && serial == _activeCorpse;
+
+        internal void OnSkinningTargetSent(uint serial)
+        {
+            if (IsProcessingCorpse(serial) && CanScanCorpses)
+                _postSkinLootAt = Time.Ticks + PostSkinLootDelayMs;
+        }
 
         internal bool IsReopenCoolingDown(uint serial) =>
             _corpseReopenAfter.TryGetValue(serial, out long until) && Time.Ticks < until;
@@ -174,6 +181,17 @@ namespace ClassicUO.Game.Managers
                         }
                         if (skinning.HasPendingCarve(_activeCorpse))
                             return;
+
+                        if (_postSkinLootAt != 0 && CanScanCorpses)
+                        {
+                            if (now < _postSkinLootAt)
+                                return;
+
+                            _postSkinLootAt = 0;
+                            HandleCorpse(corpse, retryRemaining: true);
+                            if (_pendingLootCount != 0)
+                                return;
+                        }
                     }
                 }
                 _activeCorpse = 0;
@@ -197,6 +215,7 @@ namespace ClassicUO.Game.Managers
 
                 _activeCorpse = serial;
                 _skinStarted = false;
+                _postSkinLootAt = 0;
                 _corpseDeadline = now + CorpseOpenTimeoutMs;
                 _contentsQuietUntil = now + ContentsQuietMs;
                 if (alreadyOpened)
@@ -260,6 +279,7 @@ namespace ClassicUO.Game.Managers
                 })
             {
                 Serial = serial,
+                UsesAutoLootDelay = automatic && _world.Items.Get(item.RootContainer) is { IsCorpse: true },
                 TriggersGlobalCooldown = () => ObjectActionQueue.Instance.HasPendingMove
             };
             if (automatic)
@@ -410,7 +430,7 @@ namespace ClassicUO.Game.Managers
         /// it may not have all items yet when the method is called.
         /// </summary>
         /// <param name="corpse"></param>
-        private void HandleCorpse(Item corpse)
+        private void HandleCorpse(Item corpse, bool retryRemaining = false)
         {
             if (corpse is not { IsCorpse: true }) return;
 
@@ -436,6 +456,8 @@ namespace ClassicUO.Game.Managers
                     var item = (Item)node;
                     if (item.IsCorpse)
                         continue;
+                    if (retryRemaining && !_quickContainsLookup.Contains(item.Serial))
+                        _recentlyLooted.Remove(item.Serial);
                     CheckAndLoot(item);
                     if (item.Items != null)
                         ScanContents(item);

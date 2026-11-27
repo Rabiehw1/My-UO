@@ -796,6 +796,9 @@ namespace ClassicUO.Game
 
                 Entity container = Get(containerSerial);
 
+                if (container is Mobile mobile && ReferenceEquals(mobile.Mount, obj))
+                    mobile.Mount = null;
+
                 if (container != null)
                 {
                     container.Remove(obj);

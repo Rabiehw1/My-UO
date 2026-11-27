@@ -82,6 +82,35 @@ public class ConcurrentPriorityQueue<TElement, TPriority>
         }
     }
 
+    protected bool TryDequeueEligible(Predicate<TElement> eligible, out TElement element, out TPriority priority, out long sequence)
+    {
+        lock (_lock)
+        {
+            if (_queue.TryPeek(out var head, out _) && eligible(head))
+                return TryDequeueCore(out element, out priority, out sequence);
+
+            element = default;
+            priority = default;
+            sequence = 0;
+            bool found = false;
+            foreach (var (candidate, order) in _queue.UnorderedItems)
+            {
+                if (!eligible(candidate) || found && _queue.Comparer.Compare(order, (priority, sequence)) >= 0)
+                    continue;
+
+                element = candidate;
+                (priority, sequence) = order;
+                found = true;
+            }
+            if (!found)
+                return false;
+
+            _queue.Remove(element, out _, out _);
+            FinishDequeue();
+            return true;
+        }
+    }
+
     private bool TryDequeueCore(out TElement element, out TPriority priority, out long sequence)
     {
         bool result = _queue.TryDequeue(out element, out var compositePriority);

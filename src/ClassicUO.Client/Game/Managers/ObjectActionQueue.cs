@@ -282,9 +282,10 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
                 "Item moves paused while waiting for the shard to confirm the last move."));
         }
 
-        if (IsEmpty || GlobalActionCooldown.IsOnCooldown) return; //Quick bool return if empty to avoid checking the queue when unnecessary
+        if (IsEmpty || GlobalActionCooldown.IsOnCooldown && GlobalActionCooldown.IsOnAutoLootCooldown)
+            return;
 
-        while (TryDequeueScheduled(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence))
+        while (TryDequeueReady(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence))
         {
             if (item.Canceled)
             {
@@ -310,9 +311,19 @@ public class ObjectActionQueue : ConcurrentPriorityQueue<ObjectActionQueueItem, 
                 continue;
 
             RecordExecutedPriority(priority);
-            GlobalActionCooldown.BeginCooldown();
+            GlobalActionCooldown.BeginCooldown(item.UsesAutoLootDelay);
             break;
         }
+    }
+
+    private bool TryDequeueReady(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence)
+    {
+        bool generalCoolingDown = GlobalActionCooldown.IsOnCooldown;
+        bool lootCoolingDown = GlobalActionCooldown.IsOnAutoLootCooldown;
+        return generalCoolingDown || lootCoolingDown
+            ? TryDequeueEligible(action => action.Canceled ||
+                !(action.UsesAutoLootDelay ? lootCoolingDown : generalCoolingDown), out item, out priority, out sequence)
+            : TryDequeueScheduled(out item, out priority, out sequence);
     }
 
     internal bool TryDequeueScheduled(out ObjectActionQueueItem item, out ActionPriority priority, out long sequence) =>
@@ -353,6 +364,8 @@ public class ObjectActionQueueItem(Action action, Action<ObjectActionQueueItem> 
     /// Used to cancel queued moves for an item the server refused.
     /// </summary>
     public uint Serial { get; init; }
+
+    internal bool UsesAutoLootDelay { get; init; }
 
     /// <summary>
     /// Evaluated by the queue after <see cref="Action"/> runs to decide whether this item

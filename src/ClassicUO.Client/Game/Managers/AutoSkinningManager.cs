@@ -222,6 +222,7 @@ public sealed class AutoSkinningManager
         _awaitingCursor = null;
         _pending.Remove(carve.Serial);
         RememberTargetSent(carve.Serial);
+        AutoLootManager.Instance.OnSkinningTargetSent(carve.Serial);
         return true;
     }
 
@@ -260,7 +261,7 @@ public sealed class AutoSkinningManager
         Item source = world.Items.Get(serial);
         bool held = hold.Dropped && hold.Serial == serial;
         ushort graphic = source?.OriginalGraphic ?? (held ? hold.OriginalGraphic : (ushort)0);
-        if (!IsCarvingMaterial(graphic))
+        if (!CanRouteCarvedItem(graphic))
             return;
 
         // Keep the drop after the shard's acknowledgment, which can arrive before its inventory update.
@@ -280,7 +281,7 @@ public sealed class AutoSkinningManager
         bool canAdd = IsEnabled
             && now < _watchCarvedUntil
             && _carveBag == ProfileManager.CurrentProfile?.AutoSkinningBagSerial
-            && IsCarvingMaterial(item.OriginalGraphic)
+            && CanRouteCarvedItem(item.OriginalGraphic)
             && !knownMove;
 
         if (_carvedMoves.TryGetValue(item.Serial, out CarvedMove queued))
@@ -343,11 +344,8 @@ public sealed class AutoSkinningManager
         return possibleMerge;
     }
 
-    // Standard RunUO carving resources. Resource quality variants share graphics and use different hues.
-    internal static bool IsCarvingMaterial(ushort graphic) => graphic is
-        0x1078 or 0x1079 or 0x1081 or 0x1082 // Hides and cut leather
-        or 0x09F1 or 0x09B9 or 0x1609 // Raw ribs, raw bird and raw lamb leg
-        or 0x1BD1 or 0x0DF8 or 0x101F or 0x26B4; // Feathers, wool, tainted wool and scales
+    // The shard may award custom carving items. Bloody bandage updates can arrive during the same window.
+    internal static bool CanRouteCarvedItem(ushort graphic) => graphic != 0 && graphic != 0x0E20;
 
     private readonly record struct MaterialDrop(uint Serial, uint Destination, ushort Graphic, ushort Hue, long Expires);
 
