@@ -805,8 +805,6 @@ namespace ClassicUO.Game.UI.Gumps
 
         private void RememberBackpackPosition()
         {
-            // XML restoration creates a temporary gump to queue an open request.
-            // Only a real container window has a background to go with its coordinates.
             if (_gumpPicContainer == null || IsDisposed || LocalSerial != World.Player?.Backpack?.Serial
                 || ProfileManager.CurrentProfile is not { OverrideContainerLocationSetting: 3 } profile
                 || profile.BackpackClassicPosition == Location)

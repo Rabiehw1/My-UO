@@ -1032,7 +1032,6 @@ namespace ClassicUO.Configuration
         public int MinGumpMoveDistance { get; set; } = 5;
         public HealthBarQuickAction QuickHealAction { get; set; } = HealthBarQuickAction.Heal;
         public HealthBarQuickAction QuickCureAction { get; set; } = HealthBarQuickAction.Cure;
-        [JsonConverter(typeof(Point2Converter))] public Point CoprseContainerPosition { get; set => SetProperty(ref field, value); } = new Point(100, 100);
 
 
         private long lastSave;
@@ -1110,6 +1109,8 @@ namespace ClassicUO.Configuration
 
                 var gumps = new LinkedList<Gump>();
                 var myraWindows = new List<MyraControl>();
+                var openBackpackWindows = new HashSet<uint>();
+                ContainerWindowRestore windowRestore = world.ContainerManager.WindowRestore;
 
                 foreach (IGui igui in UIManager.Gumps)
                 {
@@ -1121,11 +1122,29 @@ namespace ClassicUO.Configuration
 
                     if (igui is not Gump gump) continue;
 
-                    if (!gump.IsDisposed && gump.CanBeSaved && !(gump is AnchorableGump anchored && UIManager.AnchorManager[anchored] != null))
+                    if (!gump.IsDisposed && gump.CanBeSaved)
                     {
-                        gumps.AddLast(gump);
+                        bool anchored = gump is AnchorableGump anchorable && UIManager.AnchorManager[anchorable] != null;
+                        if (gump.GumpType is GumpType.Container or GumpType.GridContainer
+                            && windowRestore.GetBackpackPath(gump.LocalSerial) is { } backpackPath)
+                        {
+                            openBackpackWindows.Add(gump.LocalSerial);
+                            if (!anchored)
+                            {
+                                xml.WriteStartElement("gump");
+                                gump.Save(xml);
+                                xml.WriteAttributeString("backpackPath", backpackPath);
+                                xml.WriteEndElement();
+                            }
+                        }
+                        else if (!anchored)
+                        {
+                            gumps.AddLast(gump);
+                        }
                     }
                 }
+
+                windowRestore.SavePending(xml, openBackpackWindows);
 
                 LinkedListNode<Gump> first = gumps.First;
 
@@ -1139,7 +1158,7 @@ namespace ClassicUO.Configuration
 
                         if (item != null && !item.IsDestroyed && item.Opened)
                         {
-                            while (SerialHelper.IsItem(item.Container))
+                            while (item != null && SerialHelper.IsItem(item.Container))
                             {
                                 item = world.Items.Get(item.Container);
                             }
@@ -1294,6 +1313,12 @@ namespace ClassicUO.Configuration
                             int y = int.Parse(xml.GetAttribute(nameof(y)));
                             uint serial = uint.Parse(xml.GetAttribute(nameof(serial)));
                             uint? parent = uint.TryParse(xml.GetAttribute(nameof(parent)), out uint result) ? result : null;
+                            if (type is GumpType.Container or GumpType.GridContainer)
+                            {
+                                world.ContainerManager.WindowRestore.Schedule(serial, parent, new Point(x, y),
+                                    xml.GetAttribute("backpackPath"));
+                                continue;
+                            }
 
                             if (uint.TryParse(xml.GetAttribute("serverSerial"), out uint serverSerial))
                             {
@@ -1310,11 +1335,6 @@ namespace ClassicUO.Configuration
                                         gump = new ImprovedBuffGump(world);
                                     else
                                         gump = new BuffGump(world);
-
-                                    break;
-
-                                case GumpType.Container:
-                                    gump = new ContainerGump(world);
 
                                     break;
 
@@ -1460,16 +1480,6 @@ namespace ClassicUO.Configuration
                                 case GumpType.NameOverHeadHandler:
                                     NameOverHeadHandlerGump.LastPosition = new Point(x, y);
                                     // Gump gets opened by NameOverHeadManager, we just want to save the last position from profile
-                                    break;
-
-                                case GumpType.GridContainer:
-                                    ushort ogContainer = ushort.Parse(xml.GetAttribute("ogContainer"));
-                                    gump = new GridContainer(world, serial, ogContainer);
-                                    if (((GridContainer)gump).IsPlayerBackpack)
-                                    {
-                                        x = ProfileManager.CurrentProfile.BackpackGridPosition.X;
-                                        y = ProfileManager.CurrentProfile.BackpackGridPosition.Y;
-                                    }
                                     break;
 
                                 case GumpType.DurabilityGump:
@@ -1620,8 +1630,9 @@ namespace ClassicUO.Configuration
 
                                         break;
                                     case GumpType.GridContainer:
-                                        ushort ogContainer = ushort.Parse(xml.GetAttribute("ogContainer"));
-                                        gump = new GridContainer(world, serial, ogContainer);
+                                        uint? parent = uint.TryParse(xml.GetAttribute("parent"), out uint container) ? container : null;
+                                        world.ContainerManager.WindowRestore.Schedule(serial, parent, new Point(x, y),
+                                            xml.GetAttribute("backpackPath"), ancoGroup, new Point(matrix_x, matrix_y));
                                         break;
                                     case GumpType.Journal:
                                         gump = new ResizableJournal(world);

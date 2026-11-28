@@ -28,7 +28,7 @@ public partial class GridContainer : ResizableGump
         #endregion
 
         #region private static vars
-        private static int _lastX = 100, _lastY = 100, _lastCorpseX = 100, _lastCorpseY = 100;
+        private static int _lastX = 100, _lastY = 100;
         public static int GridItemSize => (int)Math.Round(50 * (ProfileManager.CurrentProfile.GridContainersScale / 100f));
         private const int DEFAULT_BORDER_WIDTH = 4;
         // Per-instance so containers can't stomp each other's border width; the static size
@@ -268,7 +268,8 @@ public partial class GridContainer : ResizableGump
             // Load minimized state from save data
             bool loadMinimized = _gridContainerEntry.IsMinimized;
 
-            Point lastPos = IsPlayerBackpack ? ProfileManager.CurrentProfile.BackpackGridPosition : _isCorpse ? ProfileManager.CurrentProfile.CoprseContainerPosition : _gridContainerEntry.GetPositionForState(loadMinimized);
+            Point lastPos = IsPlayerBackpack ? ProfileManager.CurrentProfile.BackpackGridPosition :
+                _isCorpse ? ContainerManager.GetCorpseWindowPosition(local) : _gridContainerEntry.GetPositionForState(loadMinimized);
             if (!IsPlayerBackpack && (lastPos == Point.Zero || (lastPos.X == 100 && lastPos.Y == 100)))
             {
                 lastPos.X = _lastX;
@@ -289,8 +290,7 @@ public partial class GridContainer : ResizableGump
 
             if (_isCorpse)
             {
-                X = _lastCorpseX = lastPos.X;
-                Y = _lastCorpseY = lastPos.Y;
+                Location = lastPos;
             }
             else
             {
@@ -1024,10 +1024,6 @@ public partial class GridContainer : ResizableGump
                 ProfileManager.CurrentProfile.BackpackGridPosition = Location;
                 ProfileManager.CurrentProfile.BackpackGridSize = new Point(Width, Height);
             }
-            else if (_isCorpse && ProfileManager.CurrentProfile != null)
-            {
-                ProfileManager.CurrentProfile.CoprseContainerPosition = Location;
-            }
 
             Item item = World.Items.Get(LocalSerial);
             if (item is not null)
@@ -1200,9 +1196,6 @@ public partial class GridContainer : ResizableGump
             // Backpack special handling
             if (IsPlayerBackpack)
                 ProfileManager.CurrentProfile?.BackpackGridPosition = new Point(X, Y);
-
-            if (_isCorpse)
-                ProfileManager.CurrentProfile?.CoprseContainerPosition = new Point(X, Y);
         }
 
         protected override void OnDragEnd(int x, int y)
@@ -1218,12 +1211,7 @@ public partial class GridContainer : ResizableGump
 
         public override void Dispose()
         {
-            if (_isCorpse)
-            {
-                _lastCorpseX = X;
-                _lastCorpseY = Y;
-            }
-            else
+            if (!_isCorpse)
             {
                 _lastX = X;
                 _lastY = Y;

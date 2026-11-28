@@ -477,6 +477,7 @@ namespace ClassicUO.Game.Scenes
             UIManager.GetGump<WorldMapGump>()?.SaveSettings();
 
             ProfileManager.CurrentProfile?.Save(_world, ProfileManager.ProfilePath);
+            _world.ContainerManager.WindowRestore.Clear();
             MapWebServerManager.Instance.Stop();
             EnhancedMapManager.Instance.Stop();
             TileMarkerManager.Instance.Save();
@@ -1188,6 +1189,7 @@ namespace ClassicUO.Game.Scenes
             LegionScripting.ScriptSequence.Update();
             ShardSpellCaster.Instance.Update();
             AutoSkinningManager.Instance.Update(_world);
+            _world.ContainerManager.WindowRestore.Update();
             ObjectActionQueue.Instance.Update();
             EnhancedMapManager.Instance.Update();
             GridHighlightData.ProcessQueue(_world);

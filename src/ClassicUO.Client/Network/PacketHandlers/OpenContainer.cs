@@ -148,7 +148,7 @@ internal static class OpenContainer
 
             if (item != null)
             {
-                if (!NearbyLootGump.IsCorpseRequested(serial))
+                if (!NearbyLootGump.IsCorpseRequested(serial) && !world.ContainerManager.WindowRestore.IsOpeningHiddenParent(serial))
                 {
                     CorpseContainerStyle corpseStyle = ProfileManager.CurrentProfile.CorpseContainerStyle;
 
@@ -208,6 +208,7 @@ internal static class OpenContainer
                     }
                 }
 
+                world.ContainerManager.WindowRestore.Opened(serial);
                 EventSink.InvokeOnOpenContainer(item, serial);
 
                 UIManager.RemovePosition(serial);
@@ -338,7 +339,7 @@ internal static class OpenContainer
 
             if (item != null)
             {
-                if (!NearbyLootGump.IsCorpseRequested(serial))
+                if (!NearbyLootGump.IsCorpseRequested(serial) && !world.ContainerManager.WindowRestore.IsOpeningHiddenParent(serial))
                 {
                     CorpseContainerStyle corpseStyle = ProfileManager.CurrentProfile.CorpseContainerStyle;
 
@@ -421,6 +422,7 @@ internal static class OpenContainer
                     }
                 }
 
+                world.ContainerManager.WindowRestore.Opened(serial);
                 EventSink.InvokeOnOpenContainer(item, serial);
 
                 UIManager.RemovePosition(serial);

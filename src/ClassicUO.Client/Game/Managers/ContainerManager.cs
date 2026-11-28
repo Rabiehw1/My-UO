@@ -32,6 +32,7 @@ namespace ClassicUO.Game.Managers
         public ContainerManager(World world)
         {
             _world = world;
+            WindowRestore = new ContainerWindowRestore(world);
 
             if (Settings.GlobalSettings.ResolvedUltimaOnlineDirectory.NotNullNotEmpty())
                 BuildContainerFile(false, Settings.GlobalSettings.ResolvedUltimaOnlineDirectory); //Use UO folder for containers.txt if it exists
@@ -42,6 +43,7 @@ namespace ClassicUO.Game.Managers
 
         public int DefaultX { get; } = DEFAULT_CONTAINER_OFFSET;
         public int DefaultY { get; } = DEFAULT_CONTAINER_OFFSET;
+        internal ContainerWindowRestore WindowRestore { get; }
 
         public int X { get; private set; } = DEFAULT_CONTAINER_OFFSET;
         public int Y { get; private set; } = DEFAULT_CONTAINER_OFFSET;
@@ -66,10 +68,30 @@ namespace ClassicUO.Game.Managers
             return value;
         }
 
+        internal static Point GetCorpseWindowPosition(uint serial, bool legacyLoot = false)
+        {
+            const int margin = 8;
+            int y = UIManager.GetGump<TopBarGump>() is { IsVisible: true, Y: <= margin } topBar
+                ? Math.Max(margin, topBar.Bounds.Bottom + margin)
+                : margin;
+            int x = margin;
+            // Combined mode shows both windows. Leave room for the legacy loot grid on the left.
+            if (!legacyLoot && UIManager.GetGump<GridLootGump>(serial) is { IsVisible: true } loot)
+                x = loot.X + Math.Max(loot.Width, GridLootGump.MAX_WIDTH) + margin;
+
+            return new Point(x, y);
+        }
+
         public void CalculateContainerPosition(uint serial, ushort g)
         {
             Profile profile = ProfileManager.CurrentProfile;
-            if (serial == _world.Player?.Backpack?.Serial && profile.OverrideContainerLocationSetting == 3
+            if (_world.Items.Get(serial)?.IsCorpse == true)
+            {
+                Point corpsePosition = GetCorpseWindowPosition(serial);
+                X = corpsePosition.X;
+                Y = corpsePosition.Y;
+            }
+            else if (serial == _world.Player?.Backpack?.Serial && profile.OverrideContainerLocationSetting == 3
                 && profile.BackpackClassicPosition is Point backpackPosition)
             {
                 X = backpackPosition.X;

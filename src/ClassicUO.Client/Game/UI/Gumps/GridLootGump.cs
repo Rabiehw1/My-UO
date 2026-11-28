@@ -16,11 +16,9 @@ namespace ClassicUO.Game.UI.Gumps
 {
     public class GridLootGump : Gump
     {
-        private const int MAX_WIDTH = 300;
+        internal const int MAX_WIDTH = 300;
         private const int MAX_HEIGHT = 420;
 
-        private static int _lastX = ProfileManager.CurrentProfile.CorpseContainerStyle == CorpseContainerStyle.OldGridLootAndContainer ? 200 : 100;
-        private static int _lastY = 100;
         private readonly AlphaBlendControl _background;
         private readonly NiceButton _buttonPrev,
             _buttonNext,
@@ -49,8 +47,7 @@ namespace ClassicUO.Game.UI.Gumps
                 World.Player.ManualOpenedCorpses.Remove(LocalSerial);
             }
 
-            X = _lastX;
-            Y = _lastY;
+            Location = ContainerManager.GetCorpseWindowPosition(local, legacyLoot: true);
 
             CanMove = true;
             AcceptMouseInput = true;
@@ -304,9 +301,6 @@ namespace ClassicUO.Game.UI.Gumps
                     SelectedObject.CorpseObject = null;
                 }
             }
-
-            _lastX = X;
-            _lastY = Y;
 
             base.Dispose();
         }

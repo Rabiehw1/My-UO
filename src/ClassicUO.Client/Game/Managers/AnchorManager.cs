@@ -287,6 +287,21 @@ namespace ClassicUO.Game.Managers
                 }
             }
 
+            internal bool TryRestoreControl(int x, int y, AnchorableGump control)
+            {
+                if (x < 0 || y < 0 || x > controlMatrix.GetLength(0) - control.WidthMultiplier ||
+                    y > controlMatrix.GetLength(1) - control.HeightMultiplier)
+                    return false;
+
+                for (int row = y; row < y + control.HeightMultiplier; row++)
+                    for (int column = x; column < x + control.WidthMultiplier; column++)
+                        if (controlMatrix[column, row] != null)
+                            return false;
+
+                AddControlToMatrix(x, y, control);
+                return true;
+            }
+
             public void Save(XmlTextWriter writer)
             {
                 writer.WriteStartElement("anchored_group_gump");
@@ -305,6 +320,9 @@ namespace ClassicUO.Game.Managers
                         {
                             writer.WriteStartElement("gump");
                             gump.Save(writer);
+                            if (gump is GridContainer grid &&
+                                grid.World.ContainerManager.WindowRestore.GetBackpackPath(grid.LocalSerial) is { } path)
+                                writer.WriteAttributeString("backpackPath", path);
                             writer.WriteAttributeString("matrix_x", x.ToString());
                             writer.WriteAttributeString("matrix_y", y.ToString());
                             writer.WriteEndElement();
