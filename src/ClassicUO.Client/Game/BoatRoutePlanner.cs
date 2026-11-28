@@ -23,7 +23,7 @@ internal static class BoatRoutePlanner
         if (!CanSail(goal))
             return null;
 
-        open.Enqueue((start, 0), Distance(start));
+        open.Enqueue((start, 0), Priority(start, 0));
         int expanded = 0;
         long deadline = Environment.TickCount64 + 5000;
         while (open.TryDequeue(out var node, out _) && ++expanded <= 250_000
@@ -47,12 +47,15 @@ internal static class BoatRoutePlanner
                 if ((routes.TryGetValue(next, out var existing) && existing.Cost <= cost) || !CanSail(next))
                     continue;
                 routes[next] = (node.Tile, cost);
-                open.Enqueue((next, cost), cost + Distance(next));
+                open.Enqueue((next, cost), Priority(next, cost));
             }
         }
         return null;
 
-        int Distance(Point point) => Math.Abs(goal.X - point.X) + Math.Abs(goal.Y - point.Y);
+        // Bias toward the destination so long stretches of open water do not exhaust
+        // the node budget exploring every equally short route.
+        int Priority(Point point, int cost) =>
+            cost * 4 + (Math.Abs(goal.X - point.X) + Math.Abs(goal.Y - point.Y)) * 5;
 
         bool CanSail(Point anchor)
         {
@@ -80,12 +83,17 @@ internal static class BoatRoutePlanner
             return 0;
 
         var cells = index.MapFile.ReadAt<MapBlock>((long)index.MapAddress).Cells;
+        Span<sbyte> waterZ = stackalloc sbyte[64];
         ulong water = 0;
         for (int i = 0; i < 64; i++)
         {
             int id = cells[i].TileID & 0x3FFF;
-            if (id < tiles.LandData.Length && tiles.LandData[id].IsWet)
+            if ((id < tiles.LandData.Length && tiles.LandData[id].IsWet)
+                || id is >= 0x00A8 and <= 0x00AB or >= 0x0136 and <= 0x0137)
+            {
                 water |= 1UL << i;
+                waterZ[i] = cells[i].Z;
+            }
         }
 
         if (index.StaticCount == 0)
@@ -98,15 +106,34 @@ internal static class BoatRoutePlanner
             index.StaticFile.ReadAt((long)index.StaticAddress, MemoryMarshal.AsBytes(statics));
             foreach (var tile in statics)
             {
+                if (tile.X >= 8 || tile.Y >= 8 || tile.Color >= tiles.StaticData.Length
+                    || !tiles.StaticData[tile.Color].IsWet)
+                    continue;
+
+                int local = tile.Y * 8 + tile.X;
+                ulong bit = 1UL << local;
+                if ((water & bit) == 0 || tile.Z > waterZ[local])
+                    waterZ[local] = tile.Z;
+                water |= bit;
+            }
+
+            ulong blocked = 0;
+            foreach (var tile in statics)
+            {
                 if (tile.X >= 8 || tile.Y >= 8 || tile.Color >= tiles.StaticData.Length)
                     continue;
-                var data = tiles.StaticData[tile.Color];
+
                 int local = tile.Y * 8 + tile.X;
-                if (!data.IsWet && (data.IsImpassable || data.IsSurface) && tile.Z >= cells[local].Z - 2
-                    && tile.Z <= cells[local].Z + 20)
-                    water &= ~(1UL << local);
+                ulong bit = 1UL << local;
+                if ((water & bit) == 0)
+                    continue;
+
+                var data = tiles.StaticData[tile.Color];
+                if (!data.IsWet && (data.IsImpassable || data.IsSurface)
+                    && tile.Z >= waterZ[local] - 2 && tile.Z <= waterZ[local] + 20)
+                    blocked |= bit;
             }
-            return water;
+            return water & ~blocked;
         }
         finally
         {

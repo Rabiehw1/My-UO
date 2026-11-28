@@ -39,18 +39,11 @@ public partial class WorldMapGump
             return false;
         }
 
-        // Leave room for the hull in every cardinal orientation when the boat turns.
-        var footprint = new HashSet<Point>();
-        foreach (var part in hull.Components.Where(part => !part.IsDestroyed))
-        {
-            int x = part.MultiOffsetX;
-            int y = part.MultiOffsetY;
-            footprint.Add(new Point(x, y));
-            footprint.Add(new Point(-y, x));
-            footprint.Add(new Point(-x, -y));
-            footprint.Add(new Point(y, -x));
-        }
-        if (footprint.Count == 0)
+        // The direction commands translate the boat. Check its current hull
+        // instead of requiring clearance for hypothetical rotations at every tile.
+        Point[] footprint = hull.Components.Where(part => !part.IsDestroyed)
+            .Select(part => new Point(part.MultiOffsetX, part.MultiOffsetY)).Distinct().ToArray();
+        if (footprint.Length == 0)
         {
             FinishNavigation(MapRouteStatus.BoatUnknown);
             return false;
@@ -67,9 +60,8 @@ public partial class WorldMapGump
         _boatSearch = new CancellationTokenSource();
         var cancellation = _boatSearch.Token;
         var files = Client.Game.UO.FileManager;
-        Point[] clearance = footprint.ToArray();
         _boatPlan = Task.Run(() => BoatRoutePlanner.Find(files.Maps, files.TileData, facet, boat.Position,
-            goal, clearance, cancellation), cancellation);
+            goal, footprint, cancellation), cancellation);
         return true;
     }
 
@@ -92,11 +84,16 @@ public partial class WorldMapGump
             _boatPlan = null;
             _boatSearch?.Dispose();
             _boatSearch = null;
-            if (!plan.IsCompletedSuccessfully || plan.Result == null || boat.Position != _boatPosition)
+            if (!plan.IsCompletedSuccessfully || plan.Result == null)
             {
                 if (plan.IsFaulted)
                     Utility.Logging.Log.Error($"Boat route search failed: {plan.Exception}");
                 StopBoatNavigation(MapRouteStatus.NoBoatRoute);
+                return;
+            }
+            if (boat.Position != _boatPosition)
+            {
+                StopBoatNavigation(MapRouteStatus.BoatBlocked);
                 return;
             }
             _boatRoute = plan.Result;

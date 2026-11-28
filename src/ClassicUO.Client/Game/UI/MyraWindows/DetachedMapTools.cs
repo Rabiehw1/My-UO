@@ -53,11 +53,16 @@ internal sealed partial class DetachedMapMarkers
         var player = _map.MapWorld.Player;
         var location = new MyraInputBox { HintText = "Coordinates", Text = $"{player.X}, {player.Y}" };
         _content.Widgets.Add(location);
-        void Navigate(bool walk)
+        void Navigate(bool walk, bool sail = false)
         {
             if (!_map.TryParseDesktopLocation(location.Text, _window.SelectedFacet, out var tile))
             {
                 status.Text = "Enter valid coordinates on this facet.";
+                return;
+            }
+            if (sail && !_window.TrySailTo(tile))
+            {
+                status.Text = TazLang.Get(player.IsDrivingBoat ? "detached_map_boat_unknown" : "detached_map_helm_required");
                 return;
             }
             if (walk && !_window.TryWalkTo(tile))
@@ -66,19 +71,22 @@ internal sealed partial class DetachedMapMarkers
                     ? TazLang.Get("detached_map_boat_unknown") : "Pathfinding is available on your character’s facet.";
                 return;
             }
-            if (!walk)
+            if (!walk && !sail)
                 _window.GoTo(tile);
             Hide();
         }
 
         var go = DesktopAssistantTheme.ActionButton("Go to", () => Navigate(false));
-        var walkTo = DesktopAssistantTheme.ActionButton(player.IsDrivingBoat ? TazLang.Get("detached_map_sail_to") : "Walk to", () => Navigate(true), primary: true);
-        walkTo.Enabled = _window.SelectedFacet == _map.MapWorld.MapIndex;
+        var walkTo = DesktopAssistantTheme.ActionButton("Walk to", () => Navigate(true), primary: true);
+        var sailTo = DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_sail_to"), () => Navigate(false, sail: true), primary: true);
+        sailTo.Enabled = _window.SelectedFacet == _map.MapWorld.MapIndex;
+        walkTo.Enabled = sailTo.Enabled && !player.IsDrivingBoat;
         location.TextChangedByUser += (_, _) =>
         {
             bool valid = _map.TryParseDesktopLocation(location.Text, _window.SelectedFacet, out _);
             go.Enabled = valid;
-            walkTo.Enabled = valid && _window.SelectedFacet == _map.MapWorld.MapIndex;
+            sailTo.Enabled = valid && _window.SelectedFacet == _map.MapWorld.MapIndex;
+            walkTo.Enabled = sailTo.Enabled && !player.IsDrivingBoat;
             status.Text = valid ? "" : TazLang.Get("detached_map_invalid_coordinates");
         };
         location.KeyDown += (_, args) =>
@@ -86,7 +94,8 @@ internal sealed partial class DetachedMapMarkers
             if (args.Data == Microsoft.Xna.Framework.Input.Keys.Enter && go.Enabled)
                 Navigate(false);
         };
-        _content.Widgets.Add(Row(go, walkTo, DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_copy_coordinates"),
+        _content.Widgets.Add(Row(go, walkTo, sailTo));
+        _content.Widgets.Add(Row(DesktopAssistantTheme.ActionButton(TazLang.Get("detached_map_copy_coordinates"),
             () => SDL_SetClipboardText($"{player.X}, {player.Y}, {player.Z}"))));
         _content.Widgets.Add(Row(new MyraButton("Clear destination", _map.ClearGoToMarker),
             new MyraButton(TazLang.Get("detached_map_stop_navigation"), _map.StopDesktopNavigation)));

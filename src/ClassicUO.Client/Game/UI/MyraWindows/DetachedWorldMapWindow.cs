@@ -101,15 +101,19 @@ internal sealed class DetachedWorldMapWindow
             return false;
 
         if (_map.MapWorld.Player.IsDrivingBoat)
-        {
-            bool started = _map.TrySailFromDesktop(facet, tile);
-            if (started)
-                Follow(null);
-            return started;
-        }
+            return TrySailTo(tile);
 
         Follow(null);
         _map.WalkFromDesktop(facet, tile, append);
+        return true;
+    }
+
+    internal bool TrySailTo(Point tile)
+    {
+        if (!_map.TrySailFromDesktop(SelectedFacet, tile))
+            return false;
+
+        Follow(null);
         return true;
     }
 
