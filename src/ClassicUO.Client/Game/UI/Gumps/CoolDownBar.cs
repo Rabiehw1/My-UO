@@ -24,6 +24,7 @@ namespace ClassicUO.Game.UI.Gumps
         private readonly BraidedGoldProgress _braided;
         private readonly bool _untimed;
         private readonly BraidedGoldResizeGrip _resizeGrip;
+        internal bool IsEstimated { get; init; }
 
         private GumpPic gumpPic;
 
@@ -207,7 +208,7 @@ namespace ClassicUO.Game.UI.Gumps
             {
                 _braided.Fraction = _untimed ? 1 : remaing.TotalMilliseconds / Math.Max(1, duration.TotalMilliseconds);
                 _braided.Value = _untimed ? "" : isBuffBar
-                    ? $"{Math.Ceiling(remaing.TotalMinutes)}m"
+                    ? $"{(IsEstimated ? "~" : "")}{Math.Ceiling(remaing.TotalMinutes)}m"
                     : $"{remaing.TotalSeconds:0.0}s";
                 return base.Draw(batcher, x, y);
             }

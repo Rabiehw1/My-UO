@@ -16,6 +16,7 @@ namespace ClassicUO.Game.UI.Gumps
         private Button _button;
         private bool _horizontal;
         private int _lastViewportWidth, _lastViewportHeight;
+        private long _restoredBlessExpiry;
         private BraidedGoldResizeGrip _resizeGrip;
         private readonly List<CoolDownBar> _bars = new();
         private ushort _graphic = 2091;
@@ -41,24 +42,35 @@ namespace ClassicUO.Game.UI.Gumps
 
         public void AddBuff(BuffIcon icon)
         {
-            if (icon != null && IsPositiveBuff(icon.Type))
+            if (icon == null || !IsPositiveBuff(icon.Type))
+                return;
+
+            if (icon.Type == BuffIconType.Bless)
+                _restoredBlessExpiry = 0;
+
+            var bar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks),
+                (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue,
+                0, 0, icon.Graphic, icon.Type, true, IconArt(icon.Type), untimed: icon.Timer == uint.MaxValue);
+            bar.SetTooltip(icon.Text);
+            AddCard(bar);
+        }
+
+        private void AddCard(CoolDownBar bar)
+        {
+            _bars.RemoveAll(existing => existing.IsDisposed);
+            int index = _bars.FindIndex(existing => existing.buffIconType == bar.buffIconType);
+            if (index >= 0)
             {
-                var coolDownBar = new CoolDownBar(World, TimeSpan.FromMilliseconds(icon.Timer - Time.Ticks), (icon.Title ?? string.Empty).Replace("<br>", " "), ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, icon.Graphic, icon.Type, true, IconArt(icon.Type), untimed: icon.Timer == uint.MaxValue);
-                coolDownBar.SetTooltip(icon.Text);
-                _bars.RemoveAll(bar => bar.IsDisposed);
-                int index = _bars.FindIndex(bar => bar.buffIconType == icon.Type);
-                if (index >= 0)
-                {
-                    _bars[index].Dispose();
-                    _bars[index] = coolDownBar;
-                }
-                else
-                {
-                    _bars.Add(coolDownBar);
-                }
-                _box.Add(coolDownBar);
-                UpdateSize();
+                _bars[index].Dispose();
+                _bars[index] = bar;
             }
+            else
+            {
+                _bars.Add(bar);
+            }
+
+            _box.Add(bar);
+            UpdateSize();
         }
 
         private static BraidedGoldIcon? IconArt(BuffIconType type) => type switch
@@ -111,6 +123,9 @@ namespace ClassicUO.Game.UI.Gumps
 
         public void RemoveBuff(BuffIconType type)
         {
+            if (type == BuffIconType.Bless)
+                _restoredBlessExpiry = 0;
+
             foreach (CoolDownBar bar in _bars)
                 if (bar.buffIconType == type)
                     bar.Dispose();
@@ -127,6 +142,9 @@ namespace ClassicUO.Game.UI.Gumps
 
         public override void PreDraw()
         {
+            if (_restoredBlessExpiry != 0 && World.Player is not { IsDead: false, HasReceivedBlessUpdate: false })
+                RemoveBuff(BuffIconType.Bless);
+
             base.PreDraw();
             if (_bars.RemoveAll(bar => bar.IsDisposed) != 0 ||
                 _lastViewportWidth != ScaleHelper.LogicalWindowWidth ||
@@ -236,6 +254,7 @@ namespace ClassicUO.Game.UI.Gumps
 
             writer.WriteAttributeString("graphic", _graphic.ToString());
             writer.WriteAttributeString("horizontal", _horizontal.ToString());
+            SaveBlessTimer(writer);
         }
 
         public override void Restore(XmlElement xml)
@@ -244,11 +263,49 @@ namespace ClassicUO.Game.UI.Gumps
 
             _graphic = ushort.Parse(xml.GetAttribute("graphic"));
             _horizontal = bool.TryParse(xml.GetAttribute("horizontal"), out bool horizontal) && horizontal;
+            RestoreBlessTimer(xml);
             // The persisted Y coordinate is the handle anchor; the profile loader sets
             // it after Restore returns. Lay out the rows relative to it on the next update.
             _button.Y = 0;
 
             RequestUpdateContents();
+        }
+
+        private void SaveBlessTimer(XmlTextWriter writer)
+        {
+            if (World.Player is not { IsDead: false } player)
+                return;
+
+            long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            long expiry = player.HasReceivedBlessUpdate ? 0 : _restoredBlessExpiry;
+            if (player.BuffIcons.TryGetValue(BuffIconType.Bless, out BuffIcon bless) && bless.Timer != uint.MaxValue)
+                expiry = now + bless.Timer - Time.Ticks;
+
+            if (expiry > now)
+            {
+                writer.WriteAttributeString("blessCharacter", player.Serial.ToString());
+                writer.WriteAttributeString("blessExpiry", expiry.ToString());
+            }
+        }
+
+        private void RestoreBlessTimer(XmlElement xml)
+        {
+            // This estimate only lives on the buff bar. Gameplay consumers still use the shard's buff list.
+            if (World.Player is not { IsDead: false, HasReceivedBlessUpdate: false } player ||
+                !uint.TryParse(xml.GetAttribute("blessCharacter"), out uint serial) || serial != player.Serial ||
+                !long.TryParse(xml.GetAttribute("blessExpiry"), out long expiry))
+                return;
+
+            long remaining = expiry - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (remaining <= 0 || remaining > ushort.MaxValue * 1000L)
+                return;
+
+            _restoredBlessExpiry = expiry;
+            var bar = new CoolDownBar(World, TimeSpan.FromMilliseconds(remaining), TazLang.Get("assistant_braided_bless"),
+                ProfileManager.CurrentProfile.ImprovedBuffBarHue, 0, 0, ushort.MaxValue, BuffIconType.Bless, true,
+                BraidedGoldIcon.Bless, untimed: false) { IsEstimated = true };
+            bar.SetTooltip(TazLang.Get("assistant_braided_bless_estimate"));
+            AddCard(bar);
         }
 
         public override GumpType GumpType => GumpType.Buff;

@@ -48,6 +48,7 @@ namespace ClassicUO.Game.GameObjects
         public Skill[] Skills { get; }
         public override bool InWarMode { get; set; }
         public IReadOnlyDictionary<BuffIconType, BuffIcon> BuffIcons => _buffIcons;
+        internal bool HasReceivedBlessUpdate { get; private set; }
 
         public ref Ability PrimaryAbility => ref Abilities[0];
         public ref Ability SecondaryAbility => ref Abilities[1];
@@ -295,18 +296,24 @@ namespace ClassicUO.Game.GameObjects
 
         public void AddBuff(BuffIconType type, ushort graphic, uint time, string text, string title = "")
         {
-            _buffIcons[type] = new BuffIcon(type, graphic, time, text, title);
+            var buff = new BuffIcon(type, graphic, time, text, title);
+            _buffIcons[type] = buff;
+            if (type == BuffIconType.Bless)
+                HasReceivedBlessUpdate = true;
 
             if (ProfileManager.CurrentProfile.UseImprovedBuffBar)
-                UIManager.ForEach<ImprovedBuffGump>(g => g.AddBuff(new BuffIcon(type, graphic, time, text, title)));
+                UIManager.ForEach<ImprovedBuffGump>(g => g.AddBuff(buff));
 
-            EventSink.InvokeOnBuffAdded(null, new BuffEventArgs(_buffIcons[type]));
+            EventSink.InvokeOnBuffAdded(null, new BuffEventArgs(buff));
         }
 
         public bool IsBuffIconExists(BuffIconType graphic) => _buffIcons.ContainsKey(graphic);
 
         public void RemoveBuff(BuffIconType graphic)
         {
+            if (graphic == BuffIconType.Bless)
+                HasReceivedBlessUpdate = true;
+
             if (_buffIcons.TryGetValue(graphic, out BuffIcon ev))
             {
                 EventSink.InvokeOnBuffRemoved(null, new BuffEventArgs(ev));
